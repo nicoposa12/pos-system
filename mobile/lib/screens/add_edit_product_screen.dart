@@ -7,6 +7,7 @@ import '../core/app_theme.dart';
 import '../models/product.dart';
 import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
+import '../widgets/product_image_view.dart';
 import 'scanner_screen.dart';
 
 class AddEditProductScreen extends StatefulWidget {
@@ -250,10 +251,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasValidMainImage =
-        _selectedImagePath != null &&
+    final hasValidMainImage = _selectedImagePath != null &&
         _selectedImagePath!.isNotEmpty &&
-        File(_selectedImagePath!).existsSync();
+        (_selectedImagePath!.startsWith('http://') ||
+            _selectedImagePath!.startsWith('https://') ||
+            File(_selectedImagePath!).existsSync());
 
     return Scaffold(
       appBar: AppBar(
@@ -313,8 +315,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                   ),
                                 ),
                                 child: hasValidMainImage
-                                    ? Image.file(
-                                        File(_selectedImagePath!),
+                                    ? ProductImageView(
+                                        imagePath: _selectedImagePath,
                                         fit: BoxFit.cover,
                                       )
                                     : Column(
@@ -759,10 +761,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                             children: [
                               ...List.generate(_variantFields.length, (i) {
                                 final field = _variantFields[i];
-                                final hasVarImage =
-                                    field.imagePath != null &&
+                                final hasVarImage = field.imagePath != null &&
                                     field.imagePath!.isNotEmpty &&
-                                    File(field.imagePath!).existsSync();
+                                    (field.imagePath!.startsWith('http://') ||
+                                        field.imagePath!.startsWith('https://') ||
+                                        File(field.imagePath!).existsSync());
 
                                 return Container(
                                   margin: EdgeInsets.only(
@@ -882,8 +885,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                                 ),
                                               ),
                                               child: hasVarImage
-                                                  ? Image.file(
-                                                      File(field.imagePath!),
+                                                  ? ProductImageView(
+                                                      imagePath:
+                                                          field.imagePath,
                                                       fit: BoxFit.cover,
                                                     )
                                                   : const Icon(

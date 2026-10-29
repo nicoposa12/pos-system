@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/transaction_provider.dart';
+import '../widgets/product_image_view.dart';
 import '../widgets/skeleton.dart';
 import 'add_edit_product_screen.dart';
 import 'product_list_screen.dart';
@@ -710,9 +711,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                 final isOut = product.stock <= 0;
                 final badgeColor =
                     isOut ? AppTheme.accentRose : AppTheme.accentAmber;
-                final hasImage = product.hasValidImage &&
-                    File(product.imagePath!).existsSync();
-
                 return InkWell(
                   onTap: () {
                     Navigator.push(
@@ -737,21 +735,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                             color: AppTheme.subtleSurface(context),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: hasImage
-                              ? Image.file(
-                                  File(product.imagePath!),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) => Icon(
-                                    Icons.inventory_2_outlined,
-                                    size: 18,
-                                    color: AppTheme.mutedText(context),
-                                  ),
-                                )
-                              : Icon(
-                                  Icons.inventory_2_outlined,
-                                  size: 18,
-                                  color: AppTheme.mutedText(context),
-                                ),
+                          child: ProductImageView(
+                            imagePath: product.imagePath,
+                            fit: BoxFit.cover,
+                            placeholder: Icon(
+                              Icons.inventory_2_outlined,
+                              size: 18,
+                              color: AppTheme.mutedText(context),
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(

@@ -10,6 +10,7 @@ import '../providers/cart_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/transaction_provider.dart';
+import '../widgets/product_image_view.dart';
 import '../widgets/receipt_dialog.dart';
 import '../widgets/skeleton.dart';
 import 'scanner_screen.dart';
@@ -1948,9 +1949,6 @@ class _PosProductCardState extends State<_PosProductCard>
           .where((item) => item.product.id == widget.product.id)
           .fold<int>(0, (sum, item) => sum + item.quantity),
     );
-    final hasValidFile = widget.product.hasValidImage &&
-        File(widget.product.imagePath!).existsSync();
-
     return Semantics(
       button: !isOutOfStock,
       enabled: !isOutOfStock,
@@ -1999,21 +1997,15 @@ class _PosProductCardState extends State<_PosProductCard>
                                 .withValues(alpha: 0.6),
                           ),
                         ),
-                        child: hasValidFile
-                            ? Image.file(
-                                File(widget.product.imagePath!),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Icon(
-                                  Icons.inventory_2_outlined,
-                                  color: AppTheme.mutedText(context),
-                                  size: 26,
-                                ),
-                              )
-                            : Icon(
-                                Icons.inventory_2_outlined,
-                                color: AppTheme.mutedText(context),
-                                size: 26,
-                              ),
+                        child: ProductImageView(
+                          imagePath: widget.product.imagePath,
+                          fit: BoxFit.cover,
+                          placeholder: Icon(
+                            Icons.inventory_2_outlined,
+                            color: AppTheme.mutedText(context),
+                            size: 26,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -2290,9 +2282,6 @@ class _VariantOptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasFile =
-        imagePath != null && imagePath!.isNotEmpty && File(imagePath!).existsSync();
-
     return Material(
       color: AppTheme.subtleSurface(context),
       borderRadius: BorderRadius.circular(AppTheme.radiusMd),
@@ -2311,13 +2300,15 @@ class _VariantOptionTile extends StatelessWidget {
                   color: Theme.of(context).cardTheme.color,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: hasFile
-                    ? Image.file(File(imagePath!), fit: BoxFit.cover)
-                    : Icon(
-                        Icons.inventory_2_outlined,
-                        size: 18,
-                        color: AppTheme.mutedText(context),
-                      ),
+                child: ProductImageView(
+                  imagePath: imagePath,
+                  fit: BoxFit.cover,
+                  placeholder: Icon(
+                    Icons.inventory_2_outlined,
+                    size: 18,
+                    color: AppTheme.mutedText(context),
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(

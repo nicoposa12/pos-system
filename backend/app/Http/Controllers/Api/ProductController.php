@@ -52,8 +52,9 @@ class ProductController extends Controller
 
         $imagePath = null;
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('products', 'public');
-            $imagePath = Storage::url($path);
+            $disk = env('FILESYSTEM_DISK', 'public');
+            $path = $request->file('image')->store('products', $disk);
+            $imagePath = Storage::disk($disk)->url($path);
         }
 
         $product = $request->user()->products()->create([
@@ -106,12 +107,10 @@ class ProductController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            // Delete old image if exists
-            if ($product->image_path && Storage::disk('public')->exists(str_replace('/storage/', '', $product->image_path))) {
-                Storage::disk('public')->delete(str_replace('/storage/', '', $product->image_path));
-            }
-            $path = $request->file('image')->store('products', 'public');
-            $validated['image_path'] = Storage::url($path);
+            $disk = env('FILESYSTEM_DISK', 'public');
+            $this->deleteImageIfExists($product->image_path);
+            $path = $request->file('image')->store('products', $disk);
+            $validated['image_path'] = Storage::disk($disk)->url($path);
         }
 
         if (isset($validated['variants']) && is_string($validated['variants'])) {
@@ -135,15 +134,36 @@ class ProductController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if ($product->image_path && Storage::disk('public')->exists(str_replace('/storage/', '', $product->image_path))) {
-            Storage::disk('public')->delete(str_replace('/storage/', '', $product->image_path));
-        }
+        $this->deleteImageIfExists($product->image_path);
 
         $product->delete();
 
         return response()->json([
             'message' => 'Product deleted successfully',
         ]);
+    }
+
+    /**
+     * Delete stored image file from local or cloud storage if it exists.
+     */
+    private function deleteImageIfExists(?string $imagePath): void
+    {
+        if (!$imagePath) {
+            return;
+        }
+
+        $disk = env('FILESYSTEM_DISK', 'public');
+        try {
+            $parsedPath = parse_url($imagePath, PHP_URL_PATH);
+            $cleanPath = ltrim($parsedPath ?? $imagePath, '/');
+            $cleanPath = preg_replace('#^storage/#', '', $cleanPath);
+
+            if (Storage::disk($disk)->exists($cleanPath)) {
+                Storage::disk($disk)->delete($cleanPath);
+            }
+        } catch (\Throwable $e) {
+            // Silently ignore if remote file is already missing
+        }
     }
 
     /**

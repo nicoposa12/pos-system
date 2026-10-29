@@ -1,10 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../models/product.dart';
 import '../providers/product_provider.dart';
+import '../widgets/product_image_view.dart';
 import '../widgets/skeleton.dart';
 import 'add_edit_product_screen.dart';
 import 'scanner_screen.dart';
@@ -656,9 +656,6 @@ class _InventoryProductCard extends StatelessWidget {
         ? 'Out of stock'
         : (isLow ? '${product.stock} low' : '${product.stock} in stock');
 
-    final hasValidFile =
-        product.hasValidImage && File(product.imagePath!).existsSync();
-
     return Container(
       decoration: BoxDecoration(
         color: theme.cardTheme.color,
@@ -687,21 +684,15 @@ class _InventoryProductCard extends StatelessWidget {
                       color: AppTheme.borderColor(context).withValues(alpha: 0.6),
                     ),
                   ),
-                  child: hasValidFile
-                      ? Image.file(
-                          File(product.imagePath!),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Icon(
-                            Icons.inventory_2_outlined,
-                            color: AppTheme.mutedText(context),
-                            size: 26,
-                          ),
-                        )
-                      : Icon(
-                          Icons.inventory_2_outlined,
-                          color: AppTheme.mutedText(context),
-                          size: 26,
-                        ),
+                  child: ProductImageView(
+                    imagePath: product.imagePath,
+                    fit: BoxFit.cover,
+                    placeholder: Icon(
+                      Icons.inventory_2_outlined,
+                      color: AppTheme.mutedText(context),
+                      size: 26,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 14),
 
