@@ -3,23 +3,33 @@ import 'dart:convert';
 class ProductVariant {
   final String name;
   final double price;
+  final int? stock;
   final String? imagePath;
 
-  ProductVariant({required this.name, required this.price, this.imagePath});
+  ProductVariant({
+    required this.name,
+    required this.price,
+    this.stock,
+    this.imagePath,
+  });
 
   bool get hasValidImage => imagePath != null && imagePath!.isNotEmpty;
 
   Map<String, dynamic> toMap() => {
     'name': name,
     'price': price,
+    'stock': stock,
     'imagePath': imagePath,
   };
 
   factory ProductVariant.fromMap(Map<String, dynamic> map) => 
       ProductVariant(
-        name: map['name'], 
-        price: map['price'].toDouble(),
-        imagePath: map['imagePath'],
+        name: map['name'] as String? ?? '', 
+        price: (map['price'] as num?)?.toDouble() ?? 0.0,
+        stock: (map['stock'] ?? map['quantity']) != null
+            ? ((map['stock'] ?? map['quantity']) as num).toInt()
+            : null,
+        imagePath: map['imagePath'] as String?,
       );
 }
 

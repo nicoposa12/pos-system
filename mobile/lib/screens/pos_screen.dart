@@ -295,6 +295,7 @@ class _PosScreenState extends State<PosScreen> {
                             itemBuilder: (_, index) {
                               final entry = entries[index];
                               return _CartLineTile(
+                                key: ValueKey('cart_tile_${entry.key}'),
                                 variantKey: entry.key,
                                 item: entry.value,
                               );
@@ -1041,6 +1042,7 @@ class _CartSidePanel extends StatelessWidget {
                     itemBuilder: (_, index) {
                       final entry = entries[index];
                       return _CartLineTile(
+                        key: ValueKey('cart_tile_${entry.key}'),
                         variantKey: entry.key,
                         item: entry.value,
                       );
@@ -1099,36 +1101,138 @@ class _CartSidePanel extends StatelessWidget {
   }
 }
 
-class _CartLineTile extends StatelessWidget {
+class _CartLineTile extends StatefulWidget {
   final String variantKey;
   final CartItem item;
 
   const _CartLineTile({
+    super.key,
     required this.variantKey,
     required this.item,
   });
 
   @override
+  State<_CartLineTile> createState() => _CartLineTileState();
+}
+
+class _CartLineTileState extends State<_CartLineTile> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: '${widget.item.quantity}');
+    _focusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CartLineTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focusNode.hasFocus &&
+        widget.item.quantity != oldWidget.item.quantity) {
+      _controller.text = '${widget.item.quantity}';
+    }
+  }
+
+  void _handleFocusChange() {
+    if (_focusNode.hasFocus) {
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _controller.text.length,
+      );
+    } else {
+      _commitQuantity();
+    }
+  }
+
+  void _commitQuantity() {
+    final text = _controller.text.trim();
+    final parsed = int.tryParse(text);
+    final cart = context.read<CartProvider>();
+
+    if (parsed == null || text.isEmpty) {
+      _controller.text = '${widget.item.quantity}';
+      return;
+    }
+
+    if (parsed <= 0) {
+      cart.removeItem(widget.variantKey);
+      return;
+    }
+
+    if (parsed == widget.item.quantity) return;
+
+    ProductVariant? matchedVariant;
+    if (widget.item.variantName != null) {
+      final matches = widget.item.product.variants
+          .where((v) => v.name == widget.item.variantName)
+          .toList();
+      if (matches.isNotEmpty) matchedVariant = matches.first;
+    }
+
+    final variantStock = matchedVariant?.stock;
+    final int maxAvailable;
+    if (variantStock != null) {
+      maxAvailable = variantStock;
+    } else {
+      final otherLinesCount = cart.items.entries
+          .where((e) =>
+              e.key != widget.variantKey && e.value.product.id == widget.item.product.id)
+          .fold(0, (sum, e) => sum + e.value.quantity);
+      maxAvailable =
+          (widget.item.product.stock - otherLinesCount).clamp(0, widget.item.product.stock);
+    }
+
+    final exact = cart.updateQuantity(widget.variantKey, parsed);
+    if (!exact) {
+      _controller.text = '$maxAvailable';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Quantity adjusted to available stock ($maxAvailable)',
+            ),
+            backgroundColor: AppTheme.accentAmber,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_handleFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cart = context.read<CartProvider>();
     String? imgPath;
-    if (item.variantName != null) {
-      final match = item.product.variants
-          .where((v) => v.name == item.variantName && v.hasValidImage)
+    if (widget.item.variantName != null) {
+      final match = widget.item.product.variants
+          .where((v) => v.name == widget.item.variantName && v.hasValidImage)
           .toList();
       if (match.isNotEmpty) {
         imgPath = match.first.imagePath;
       }
     }
-    imgPath ??= item.product.hasValidImage ? item.product.imagePath : null;
+    imgPath ??= widget.item.product.hasValidImage
+        ? widget.item.product.imagePath
+        : null;
     final hasFile = imgPath != null && File(imgPath).existsSync();
 
     return Dismissible(
-      key: ValueKey('cart_$variantKey'),
+      key: ValueKey('cart_${widget.variantKey}'),
       direction: DismissDirection.endToStart,
       onDismissed: (_) {
         HapticFeedback.mediumImpact();
-        cart.removeItem(variantKey);
+        cart.removeItem(widget.variantKey);
       },
       background: Container(
         alignment: Alignment.centerRight,
@@ -1174,7 +1278,7 @@ class _CartLineTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item.displayName,
+                  widget.item.displayName,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
@@ -1184,7 +1288,7 @@ class _CartLineTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '₱${item.price.toStringAsFixed(2)}  •  ₱${item.subtotal.toStringAsFixed(2)}',
+                  '₱${widget.item.price.toStringAsFixed(2)}  •  ₱${widget.item.subtotal.toStringAsFixed(2)}',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -1206,13 +1310,16 @@ class _CartLineTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  tooltip: item.quantity == 1 ? 'Remove item' : 'Decrease',
+                  tooltip:
+                      widget.item.quantity == 1 ? 'Remove item' : 'Decrease',
                   icon: Icon(
-                    item.quantity == 1
+                    widget.item.quantity == 1
                         ? Icons.delete_outline_rounded
                         : Icons.remove_rounded,
                     size: 18,
-                    color: item.quantity == 1 ? AppTheme.accentRose : null,
+                    color: widget.item.quantity == 1
+                        ? AppTheme.accentRose
+                        : null,
                   ),
                   constraints: const BoxConstraints(
                     minWidth: 38,
@@ -1221,18 +1328,48 @@ class _CartLineTile extends StatelessWidget {
                   padding: EdgeInsets.zero,
                   onPressed: () {
                     HapticFeedback.selectionClick();
-                    cart.removeSingleItem(variantKey);
+                    _focusNode.unfocus();
+                    cart.removeSingleItem(widget.variantKey);
                   },
                 ),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 24),
-                  child: Text(
-                    '${item.quantity}',
+                Container(
+                  width: 44,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardTheme.color,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _focusNode.hasFocus
+                          ? AppTheme.accentOrange
+                          : AppTheme.borderColor(context),
+                      width: _focusNode.hasFocus ? 1.5 : 1,
+                    ),
+                  ),
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    keyboardType: TextInputType.number,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 14,
                       fontFeatures: AppTheme.tabularFigures,
+                    ),
+                    textInputAction: TextInputAction.done,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4),
+                    ],
+                    onSubmitted: (_) {
+                      _focusNode.unfocus();
+                    },
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 6),
+                      border: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      enabledBorder: InputBorder.none,
                     ),
                   ),
                 ),
@@ -1246,14 +1383,17 @@ class _CartLineTile extends StatelessWidget {
                   padding: EdgeInsets.zero,
                   onPressed: () {
                     HapticFeedback.selectionClick();
+                    _focusNode.unfocus();
                     ProductVariant? matchedVariant;
-                    if (item.variantName != null) {
-                      final matches = item.product.variants
-                          .where((v) => v.name == item.variantName)
+                    if (widget.item.variantName != null) {
+                      final matches = widget.item.product.variants
+                          .where((v) => v.name == widget.item.variantName)
                           .toList();
-                      if (matches.isNotEmpty) matchedVariant = matches.first;
+                      if (matches.isNotEmpty) {
+                        matchedVariant = matches.first;
+                      }
                     }
-                    cart.addItem(item.product, variant: matchedVariant);
+                    cart.addItem(widget.item.product, variant: matchedVariant);
                   },
                 ),
               ],
@@ -2099,6 +2239,7 @@ class _PosProductCardState extends State<_PosProductCard>
                   _VariantOptionTile(
                     label: 'Standard / Base',
                     price: widget.product.price,
+                    stock: widget.product.stock,
                     imagePath: widget.product.imagePath,
                     onTap: () {
                       Navigator.pop(ctx);
@@ -2111,6 +2252,7 @@ class _PosProductCardState extends State<_PosProductCard>
                       child: _VariantOptionTile(
                         label: v.name,
                         price: v.price,
+                        stock: v.stock,
                         imagePath: v.hasValidImage
                             ? v.imagePath
                             : widget.product.imagePath,
@@ -2134,12 +2276,14 @@ class _PosProductCardState extends State<_PosProductCard>
 class _VariantOptionTile extends StatelessWidget {
   final String label;
   final double price;
+  final int? stock;
   final String? imagePath;
   final VoidCallback onTap;
 
   const _VariantOptionTile({
     required this.label,
     required this.price,
+    this.stock,
     this.imagePath,
     required this.onTap,
   });
@@ -2177,12 +2321,30 @@ class _VariantOptionTile extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    if (stock != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        stock! > 0 ? 'Stock: $stock' : 'Out of stock',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: stock! <= 5
+                              ? AppTheme.accentRose
+                              : AppTheme.mutedText(context),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               Text(

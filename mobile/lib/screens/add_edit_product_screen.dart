@@ -34,19 +34,22 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.product?.name ?? '');
-    _categoryController =
-        TextEditingController(text: widget.product?.category ?? '');
+    _categoryController = TextEditingController(
+      text: widget.product?.category ?? '',
+    );
     _priceController = TextEditingController(
       text: widget.product != null
           ? (widget.product!.price % 1 == 0
-              ? widget.product!.price.toStringAsFixed(0)
-              : widget.product!.price.toString())
+                ? widget.product!.price.toStringAsFixed(0)
+                : widget.product!.price.toString())
           : '',
     );
-    _stockController =
-        TextEditingController(text: widget.product?.stock.toString() ?? '');
-    _barcodeController =
-        TextEditingController(text: widget.product?.barcode ?? '');
+    _stockController = TextEditingController(
+      text: widget.product?.stock.toString() ?? '',
+    );
+    _barcodeController = TextEditingController(
+      text: widget.product?.barcode ?? '',
+    );
     _selectedImagePath = widget.product?.imagePath;
 
     if (widget.product?.variants != null) {
@@ -54,8 +57,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         _variantFields.add(
           _VariantField(
             nameController: TextEditingController(text: variant.name),
-            priceController:
-                TextEditingController(text: variant.price.toString()),
+            priceController: TextEditingController(
+              text: variant.price.toString(),
+            ),
+            stockController: TextEditingController(
+              text: variant.stock != null ? variant.stock.toString() : '',
+            ),
             imagePath: variant.imagePath,
           ),
         );
@@ -71,8 +78,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     _stockController.dispose();
     _barcodeController.dispose();
     for (final field in _variantFields) {
-      field.nameController.dispose();
-      field.priceController.dispose();
+      field.dispose();
     }
     super.dispose();
   }
@@ -84,6 +90,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         _VariantField(
           nameController: TextEditingController(),
           priceController: TextEditingController(),
+          stockController: TextEditingController(),
         ),
       );
     });
@@ -92,8 +99,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   void _removeVariant(int index) {
     HapticFeedback.selectionClick();
     setState(() {
-      _variantFields[index].nameController.dispose();
-      _variantFields[index].priceController.dispose();
+      _variantFields[index].dispose();
       _variantFields.removeAt(index);
     });
   }
@@ -163,9 +169,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
               ),
               Text(
                 title,
-                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  ctx,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 20),
               Row(
@@ -216,9 +222,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           'Delete Product?',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        content: Text(
-          'Remove "${widget.product!.name}" from inventory?',
-        ),
+        content: Text('Remove "${widget.product!.name}" from inventory?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -246,7 +250,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasValidMainImage = _selectedImagePath != null &&
+    final hasValidMainImage =
+        _selectedImagePath != null &&
         _selectedImagePath!.isNotEmpty &&
         File(_selectedImagePath!).existsSync();
 
@@ -300,8 +305,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                 clipBehavior: Clip.antiAlias,
                                 decoration: BoxDecoration(
                                   color: AppTheme.subtleSurface(context),
-                                  borderRadius:
-                                      BorderRadius.circular(AppTheme.radiusLg),
+                                  borderRadius: BorderRadius.circular(
+                                    AppTheme.radiusLg,
+                                  ),
                                   border: Border.all(
                                     color: AppTheme.borderColor(context),
                                   ),
@@ -326,7 +332,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                             style: TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w600,
-                                              color: AppTheme.mutedText(context),
+                                              color: AppTheme.mutedText(
+                                                context,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -435,8 +443,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                     }
                                     return presets.where(
                                       (option) => option.toLowerCase().contains(
-                                            textEditingValue.text.toLowerCase(),
-                                          ),
+                                        textEditingValue.text.toLowerCase(),
+                                      ),
                                     );
                                   },
                                   onSelected: (selection) {
@@ -444,37 +452,38 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                       _categoryController.text = selection;
                                     });
                                   },
-                                  fieldViewBuilder: (
-                                    context,
-                                    controller,
-                                    focusNode,
-                                    onFieldSubmitted,
-                                  ) {
-                                    if (controller.text !=
-                                            _categoryController.text &&
-                                        !focusNode.hasFocus) {
-                                      controller.text =
-                                          _categoryController.text;
-                                    }
-                                    return TextFormField(
-                                      controller: controller,
-                                      focusNode: focusNode,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Category',
-                                        hintText: 'e.g. Drinks, Snacks',
-                                        prefixIcon: Icon(
-                                          Icons.category_outlined,
-                                        ),
-                                      ),
-                                      textCapitalization:
-                                          TextCapitalization.words,
-                                      onChanged: (val) {
-                                        _categoryController.text = val;
+                                  fieldViewBuilder:
+                                      (
+                                        context,
+                                        controller,
+                                        focusNode,
+                                        onFieldSubmitted,
+                                      ) {
+                                        if (controller.text !=
+                                                _categoryController.text &&
+                                            !focusNode.hasFocus) {
+                                          controller.text =
+                                              _categoryController.text;
+                                        }
+                                        return TextFormField(
+                                          controller: controller,
+                                          focusNode: focusNode,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Category',
+                                            hintText: 'e.g. Drinks, Snacks',
+                                            prefixIcon: Icon(
+                                              Icons.category_outlined,
+                                            ),
+                                          ),
+                                          textCapitalization:
+                                              TextCapitalization.words,
+                                          onChanged: (val) {
+                                            _categoryController.text = val;
+                                          },
+                                          onFieldSubmitted: (_) =>
+                                              onFieldSubmitted(),
+                                        );
                                       },
-                                      onFieldSubmitted: (_) =>
-                                          onFieldSubmitted(),
-                                    );
-                                  },
                                 ),
                                 const SizedBox(height: 10),
                                 SingleChildScrollView(
@@ -482,7 +491,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                   child: Row(
                                     children: presets.take(6).map((cat) {
                                       return Padding(
-                                        padding: const EdgeInsets.only(right: 6),
+                                        padding: const EdgeInsets.only(
+                                          right: 6,
+                                        ),
                                         child: ActionChip(
                                           label: Text(cat),
                                           visualDensity: VisualDensity.compact,
@@ -650,117 +661,351 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                   // ── 3. Variants / Sub-prices Card ──
                   _FormSectionCard(
                     title: 'Variants & Sub-prices',
-                    trailing: TextButton.icon(
-                      onPressed: _addVariant,
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(0, 36),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                      ),
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('Add Option'),
-                    ),
+                    trailing: _variantFields.isNotEmpty
+                        ? TextButton.icon(
+                            onPressed: _addVariant,
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 36),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                            ),
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: const Text('Add Option'),
+                          )
+                        : null,
                     child: _variantFields.isEmpty
-                        ? Text(
-                            'Optional: Add sizes or unit options (e.g. Half Kilo, Per Piece, 1.5L) with separate prices.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              height: 1.4,
-                              color: AppTheme.mutedText(context),
+                        ? InkWell(
+                            onTap: _addVariant,
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusMd,
+                            ),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 20,
+                                horizontal: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.subtleSurface(context),
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.radiusMd,
+                                ),
+                                border: Border.all(
+                                  color: AppTheme.borderColor(context),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.accentOrange.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.tune_rounded,
+                                      size: 22,
+                                      color: AppTheme.accentOrange,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    'No variants added',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Optional: Add sizes, portions, or packaging options with separate prices & quantities.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      height: 1.4,
+                                      color: AppTheme.mutedText(context),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(
+                                        Icons.add_circle_outline_rounded,
+                                        size: 16,
+                                        color: AppTheme.accentOrange,
+                                      ),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        'Add First Option',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppTheme.accentOrange,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           )
                         : Column(
-                            children: List.generate(_variantFields.length, (i) {
-                              final field = _variantFields[i];
-                              final hasVarImage = field.imagePath != null &&
-                                  field.imagePath!.isNotEmpty &&
-                                  File(field.imagePath!).existsSync();
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              ...List.generate(_variantFields.length, (i) {
+                                final field = _variantFields[i];
+                                final hasVarImage =
+                                    field.imagePath != null &&
+                                    field.imagePath!.isNotEmpty &&
+                                    File(field.imagePath!).existsSync();
 
-                              return Padding(
-                                padding: EdgeInsets.only(
-                                  bottom: i == _variantFields.length - 1 ? 0 : 12,
-                                ),
-                                child: Row(
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () => _showImagePickerSheet(
-                                        title: 'Variant Photo',
-                                        hasImage: hasVarImage,
-                                        onCamera: () => _pickVariantImage(
-                                          i,
-                                          ImageSource.camera,
-                                        ),
-                                        onGallery: () => _pickVariantImage(
-                                          i,
-                                          ImageSource.gallery,
-                                        ),
-                                        onRemove: () => setState(
-                                          () => field.imagePath = null,
-                                        ),
-                                      ),
-                                      child: Container(
-                                        width: 48,
-                                        height: 48,
-                                        clipBehavior: Clip.antiAlias,
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.subtleSurface(context),
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                          border: Border.all(
-                                            color: AppTheme.borderColor(context),
-                                          ),
-                                        ),
-                                        child: hasVarImage
-                                            ? Image.file(
-                                                File(field.imagePath!),
-                                                fit: BoxFit.cover,
-                                              )
-                                            : const Icon(
-                                                Icons.add_a_photo_outlined,
-                                                size: 18,
+                                return Container(
+                                  margin: EdgeInsets.only(
+                                    bottom: i == _variantFields.length - 1
+                                        ? 0
+                                        : 12,
+                                  ),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.subtleSurface(context),
+                                    borderRadius: BorderRadius.circular(
+                                      AppTheme.radiusMd,
+                                    ),
+                                    border: Border.all(
+                                      color: AppTheme.borderColor(context),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      // ── Option Header: Badge & Remove Action ──
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.accentOrange
+                                                  .withValues(alpha: 0.12),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              'Option ${i + 1}',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
                                                 color: AppTheme.accentOrange,
                                               ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      flex: 3,
-                                      child: TextFormField(
-                                        controller: field.nameController,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Option (e.g. Half)',
-                                          isDense: true,
-                                        ),
-                                        textCapitalization:
-                                            TextCapitalization.words,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      flex: 2,
-                                      child: TextFormField(
-                                        controller: field.priceController,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Price (₱)',
-                                          isDense: true,
-                                        ),
-                                        keyboardType:
-                                            const TextInputType.numberWithOptions(
-                                              decimal: true,
                                             ),
+                                          ),
+                                          const Spacer(),
+                                          InkWell(
+                                            onTap: () => _removeVariant(i),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: const [
+                                                  Icon(
+                                                    Icons
+                                                        .delete_outline_rounded,
+                                                    size: 16,
+                                                    color: AppTheme.accentRose,
+                                                  ),
+                                                  SizedBox(width: 4),
+                                                  Text(
+                                                    'Remove',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color:
+                                                          AppTheme.accentRose,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Remove option',
-                                      icon: const Icon(
-                                        Icons.remove_circle_outline_rounded,
-                                        color: AppTheme.accentRose,
+                                      const SizedBox(height: 10),
+
+                                      // ── Row 1: Variant Photo + Option Name ──
+                                      Row(
+                                        children: [
+                                          GestureDetector(
+                                            onTap: () => _showImagePickerSheet(
+                                              title: 'Variant Photo',
+                                              hasImage: hasVarImage,
+                                              onCamera: () => _pickVariantImage(
+                                                i,
+                                                ImageSource.camera,
+                                              ),
+                                              onGallery: () =>
+                                                  _pickVariantImage(
+                                                    i,
+                                                    ImageSource.gallery,
+                                                  ),
+                                              onRemove: () => setState(
+                                                () => field.imagePath = null,
+                                              ),
+                                            ),
+                                            child: Container(
+                                              width: 46,
+                                              height: 46,
+                                              clipBehavior: Clip.antiAlias,
+                                              decoration: BoxDecoration(
+                                                color: theme.cardTheme.color,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: AppTheme.borderColor(
+                                                    context,
+                                                  ),
+                                                ),
+                                              ),
+                                              child: hasVarImage
+                                                  ? Image.file(
+                                                      File(field.imagePath!),
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : const Icon(
+                                                      Icons
+                                                          .add_a_photo_outlined,
+                                                      size: 18,
+                                                      color:
+                                                          AppTheme.accentOrange,
+                                                    ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: TextFormField(
+                                              controller: field.nameController,
+                                              decoration: InputDecoration(
+                                                labelText: 'Option Name',
+                                                hintText:
+                                                    'e.g. Small, 500ml, Per Kilo',
+                                                isDense: true,
+                                                filled: true,
+                                                fillColor:
+                                                    theme.cardTheme.color,
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 12,
+                                                    ),
+                                              ),
+                                              textCapitalization:
+                                                  TextCapitalization.words,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      onPressed: () => _removeVariant(i),
+                                      const SizedBox(height: 10),
+
+                                      // ── Row 2: Price & Quantity Inputs ──
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextFormField(
+                                              controller: field.priceController,
+                                              decoration: InputDecoration(
+                                                labelText: 'Price',
+                                                prefixText: '₱ ',
+                                                isDense: true,
+                                                filled: true,
+                                                fillColor:
+                                                    theme.cardTheme.color,
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 12,
+                                                    ),
+                                              ),
+                                              keyboardType:
+                                                  const TextInputType.numberWithOptions(
+                                                    decimal: true,
+                                                  ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: TextFormField(
+                                              controller: field.stockController,
+                                              decoration: InputDecoration(
+                                                labelText: 'Stock Qty',
+                                                hintText: '0',
+                                                isDense: true,
+                                                filled: true,
+                                                fillColor:
+                                                    theme.cardTheme.color,
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 12,
+                                                    ),
+                                              ),
+                                              keyboardType:
+                                                  TextInputType.number,
+                                              inputFormatters: [
+                                                FilteringTextInputFormatter
+                                                    .digitsOnly,
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: _addVariant,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.accentOrange,
+                                  side: BorderSide(
+                                    color: AppTheme.accentOrange.withValues(
+                                      alpha: 0.35,
                                     ),
-                                  ],
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 11,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      AppTheme.radiusMd,
+                                    ),
+                                  ),
                                 ),
-                              );
-                            }),
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                label: const Text(
+                                  'Add Another Option',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                   ),
                 ],
@@ -772,9 +1017,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: theme.cardTheme.color,
-          border: Border(
-            top: BorderSide(color: AppTheme.borderColor(context)),
-          ),
+          border: Border(top: BorderSide(color: AppTheme.borderColor(context))),
         ),
         child: SafeArea(
           child: Center(
@@ -790,9 +1033,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                     icon: Icon(
                       isEditing ? Icons.check_rounded : Icons.add_rounded,
                     ),
-                    label: Text(
-                      isEditing ? 'Save Changes' : 'Create Product',
-                    ),
+                    label: Text(isEditing ? 'Save Changes' : 'Create Product'),
                   ),
                 ),
               ),
@@ -820,6 +1061,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
             (f) => ProductVariant(
               name: f.nameController.text.trim(),
               price: double.tryParse(f.priceController.text.trim()) ?? 0.0,
+              stock: int.tryParse(f.stockController.text.trim()),
               imagePath: f.imagePath,
             ),
           )
@@ -955,10 +1197,7 @@ class _ImageSourceOption extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
             ),
           ],
         ),
@@ -968,13 +1207,30 @@ class _ImageSourceOption extends StatelessWidget {
 }
 
 class _VariantField {
-  final TextEditingController nameController;
-  final TextEditingController priceController;
+  TextEditingController? _nameController;
+  TextEditingController? _priceController;
+  TextEditingController? _stockController;
   String? imagePath;
 
+  TextEditingController get nameController =>
+      _nameController ??= TextEditingController();
+  TextEditingController get priceController =>
+      _priceController ??= TextEditingController();
+  TextEditingController get stockController =>
+      _stockController ??= TextEditingController();
+
   _VariantField({
-    required this.nameController,
-    required this.priceController,
+    TextEditingController? nameController,
+    TextEditingController? priceController,
+    TextEditingController? stockController,
     this.imagePath,
-  });
+  }) : _nameController = nameController,
+       _priceController = priceController,
+       _stockController = stockController;
+
+  void dispose() {
+    _nameController?.dispose();
+    _priceController?.dispose();
+    _stockController?.dispose();
+  }
 }

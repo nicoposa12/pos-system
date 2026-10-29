@@ -8,6 +8,7 @@ class SettingsProvider with ChangeNotifier {
   String _storePhone = '09XX XXX XXXX';
   String _gcashNumber = '';
   String _gcashQrPath = '';
+  String _businessPhotoPath = '';
   ThemeMode _themeMode = ThemeMode.system;
 
   String get storeName => _storeName;
@@ -15,6 +16,7 @@ class SettingsProvider with ChangeNotifier {
   String get storePhone => _storePhone;
   String get gcashNumber => _gcashNumber;
   String get gcashQrPath => _gcashQrPath;
+  String get businessPhotoPath => _businessPhotoPath;
   ThemeMode get themeMode => _themeMode;
 
   void setUserId(int? id) {
@@ -36,6 +38,7 @@ class SettingsProvider with ChangeNotifier {
     _storePhone = prefs.getString(_getKey('storePhone')) ?? '09XX XXX XXXX';
     _gcashNumber = prefs.getString(_getKey('gcashNumber')) ?? '';
     _gcashQrPath = prefs.getString(_getKey('gcashQrPath')) ?? '';
+    _businessPhotoPath = prefs.getString(_getKey('businessPhotoPath')) ?? '';
     final themeIndex = prefs.getInt(_getKey('themeMode')) ?? 0;
     _themeMode = ThemeMode.values[themeIndex];
     notifyListeners();
@@ -47,12 +50,14 @@ class SettingsProvider with ChangeNotifier {
     required String phone,
     String? gcashNumber,
     String? gcashQrPath,
+    String? businessPhotoPath,
   }) async {
     _storeName = name;
     _storeAddress = address;
     _storePhone = phone;
     if (gcashNumber != null) _gcashNumber = gcashNumber;
     if (gcashQrPath != null) _gcashQrPath = gcashQrPath;
+    if (businessPhotoPath != null) _businessPhotoPath = businessPhotoPath;
     
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_getKey('storeName'), name);
@@ -60,6 +65,14 @@ class SettingsProvider with ChangeNotifier {
     await prefs.setString(_getKey('storePhone'), phone);
     await prefs.setString(_getKey('gcashNumber'), _gcashNumber);
     await prefs.setString(_getKey('gcashQrPath'), _gcashQrPath);
+    await prefs.setString(_getKey('businessPhotoPath'), _businessPhotoPath);
+    notifyListeners();
+  }
+
+  Future<void> updateBusinessPhoto(String path) async {
+    _businessPhotoPath = path;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_getKey('businessPhotoPath'), path);
     notifyListeners();
   }
 

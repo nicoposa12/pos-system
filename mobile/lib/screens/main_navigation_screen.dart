@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -85,7 +86,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final cartCount = context.watch<CartProvider>().itemCount;
     final lowStockCount =
         context.watch<ProductProvider>().lowStockProducts.length;
-    final storeName = context.watch<SettingsProvider>().storeName;
+    final settings = context.watch<SettingsProvider>();
+    final storeName = settings.storeName;
+    final hasBusinessPhoto = settings.businessPhotoPath.isNotEmpty &&
+        File(settings.businessPhotoPath).existsSync();
 
     if (useRail) {
       return Scaffold(
@@ -118,10 +122,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                                 height: 38,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(10),
-                                  image: const DecorationImage(
-                                    image: AssetImage(
-                                      'assets/images/app_icon.png',
-                                    ),
+                                  image: DecorationImage(
+                                    image: hasBusinessPhoto
+                                        ? FileImage(File(settings.businessPhotoPath))
+                                        : const AssetImage(
+                                            'assets/images/app_icon.png',
+                                          ) as ImageProvider,
                                     fit: BoxFit.cover,
                                   ),
                                 ),
@@ -160,8 +166,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           height: 40,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
-                            image: const DecorationImage(
-                              image: AssetImage('assets/images/app_icon.png'),
+                            image: DecorationImage(
+                              image: hasBusinessPhoto
+                                  ? FileImage(File(settings.businessPhotoPath))
+                                  : const AssetImage('assets/images/app_icon.png')
+                                      as ImageProvider,
                               fit: BoxFit.cover,
                             ),
                           ),

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:barcode/barcode.dart' as bc;
 import 'package:flutter/material.dart';
@@ -32,6 +33,7 @@ Future<void> showReceiptDialog(
       storeName: settings.storeName,
       storeAddress: settings.storeAddress,
       storePhone: settings.storePhone,
+      businessPhotoPath: settings.businessPhotoPath,
     ),
   );
 }
@@ -43,6 +45,7 @@ class ReceiptDialog extends StatelessWidget {
   final String storeName;
   final String storeAddress;
   final String storePhone;
+  final String? businessPhotoPath;
 
   const ReceiptDialog({
     super.key,
@@ -52,6 +55,7 @@ class ReceiptDialog extends StatelessWidget {
     required this.storeName,
     required this.storeAddress,
     required this.storePhone,
+    this.businessPhotoPath,
   });
 
   void _shareReceipt() {
@@ -244,6 +248,24 @@ class ReceiptDialog extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // Store Header
+                        if (businessPhotoPath != null &&
+                            businessPhotoPath!.isNotEmpty &&
+                            File(businessPhotoPath!).existsSync()) ...[
+                          Center(
+                            child: Container(
+                              width: 52,
+                              height: 52,
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                image: DecorationImage(
+                                  image: FileImage(File(businessPhotoPath!)),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                         Center(
                           child: Text(
                             storeName.trim().isNotEmpty

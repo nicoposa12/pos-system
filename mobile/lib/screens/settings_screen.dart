@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../core/app_theme.dart';
@@ -25,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _phoneController;
   late final TextEditingController _gcashNumberController;
   String? _gcashQrPath;
+  String? _businessPhotoPath;
 
   @override
   void initState() {
@@ -35,6 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _phoneController = TextEditingController(text: settings.storePhone);
     _gcashNumberController = TextEditingController(text: settings.gcashNumber);
     _gcashQrPath = settings.gcashQrPath;
+    _businessPhotoPath = settings.businessPhotoPath;
   }
 
   @override
@@ -49,13 +53,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _saveSettings() {
     if (_formKey.currentState!.validate()) {
       HapticFeedback.mediumImpact();
-      context.read<SettingsProvider>().updateStoreInfo(
-            name: _nameController.text.trim(),
-            address: _addressController.text.trim(),
-            phone: _phoneController.text.trim(),
-            gcashNumber: _gcashNumberController.text.trim(),
-            gcashQrPath: _gcashQrPath ?? '',
-          );
+      final settings = context.read<SettingsProvider>();
+      settings.updateStoreInfo(
+        name: _nameController.text.trim(),
+        address: _addressController.text.trim(),
+        phone: _phoneController.text.trim(),
+        gcashNumber: _gcashNumberController.text.trim(),
+        gcashQrPath: _gcashQrPath ?? '',
+        businessPhotoPath: _businessPhotoPath ?? settings.businessPhotoPath,
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Row(
@@ -77,6 +83,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settings = context.watch<SettingsProvider>();
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
+    final currentBusinessPhoto =
+        _businessPhotoPath ?? settings.businessPhotoPath;
+    final hasValidBusinessPhoto = currentBusinessPhoto.isNotEmpty &&
+        File(currentBusinessPhoto).existsSync();
     final hasValidQr = _gcashQrPath != null &&
         _gcashQrPath!.isNotEmpty &&
         File(_gcashQrPath!).existsSync();
@@ -115,22 +125,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          width: 54,
-                          height: 54,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            gradient: AppTheme.orangeGradient,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            user.fullName.isNotEmpty
-                                ? user.fullName[0].toUpperCase()
-                                : 'T',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
+                        GestureDetector(
+                          onTap: _showBusinessPhotoPickerSheet,
+                          child: Tooltip(
+                            message: 'Change Business Photo',
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  width: 56,
+                                  height: 56,
+                                  clipBehavior: Clip.antiAlias,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    gradient: hasValidBusinessPhoto
+                                        ? null
+                                        : AppTheme.orangeGradient,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.2),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: hasValidBusinessPhoto
+                                      ? Image.file(
+                                          File(currentBusinessPhoto),
+                                          width: 56,
+                                          height: 56,
+                                          fit: BoxFit.cover,
+                                        )
+                                      : Text(
+                                          user.fullName.isNotEmpty
+                                              ? user.fullName[0].toUpperCase()
+                                              : 'T',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 22,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                ),
+                                Positioned(
+                                  right: -2,
+                                  bottom: -2,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.accentOrange,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: const Color(0xFF1E222D),
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.camera_alt_rounded,
+                                      size: 11,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -223,7 +279,158 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           boxShadow: AppTheme.cardShadow(context),
                         ),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            // ── Business Photo Picker ──
+                            Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: _showBusinessPhotoPickerSheet,
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Container(
+                                        height: 88,
+                                        width: 88,
+                                        clipBehavior: Clip.antiAlias,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.subtleSurface(context),
+                                          borderRadius:
+                                              BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color:
+                                                AppTheme.borderColor(context),
+                                          ),
+                                        ),
+                                        child: hasValidBusinessPhoto
+                                            ? Image.file(
+                                                File(currentBusinessPhoto),
+                                                fit: BoxFit.cover,
+                                              )
+                                            : Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.storefront_outlined,
+                                                    size: 32,
+                                                    color: AppTheme.mutedText(
+                                                        context),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Add Photo',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: AppTheme.mutedText(
+                                                          context),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                      ),
+                                      Positioned(
+                                        right: 4,
+                                        bottom: 4,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.accentOrange,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: theme.cardTheme.color ??
+                                                  Colors.white,
+                                              width: 1.5,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.camera_alt_rounded,
+                                            size: 12,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Business Photo',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Logo or storefront image displayed on POS headers and receipts.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          height: 1.4,
+                                          color: AppTheme.mutedText(context),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          OutlinedButton.icon(
+                                            onPressed:
+                                                _showBusinessPhotoPickerSheet,
+                                            style: OutlinedButton.styleFrom(
+                                              minimumSize: const Size(0, 36),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                              ),
+                                            ),
+                                            icon: const Icon(
+                                              Icons.upload_outlined,
+                                              size: 16,
+                                            ),
+                                            label: Text(
+                                              hasValidBusinessPhoto
+                                                  ? 'Replace'
+                                                  : 'Upload',
+                                              style: const TextStyle(
+                                                  fontSize: 12),
+                                            ),
+                                          ),
+                                          if (hasValidBusinessPhoto)
+                                            TextButton(
+                                              onPressed: _removeBusinessPhoto,
+                                              style: TextButton.styleFrom(
+                                                foregroundColor:
+                                                    AppTheme.accentRose,
+                                                minimumSize:
+                                                    const Size(0, 36),
+                                              ),
+                                              child: const Text(
+                                                'Remove',
+                                                style: TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Divider(
+                              height: 1,
+                              color: AppTheme.borderColor(context),
+                            ),
+                            const SizedBox(height: 16),
                             TextFormField(
                               controller: _nameController,
                               decoration: const InputDecoration(
@@ -635,6 +842,140 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _pickBusinessPhoto(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1000,
+        maxHeight: 1000,
+        imageQuality: 85,
+      );
+
+      if (pickedFile != null && mounted) {
+        String finalPath = pickedFile.path;
+        try {
+          final dir = await getApplicationDocumentsDirectory();
+          final ext = pickedFile.path.contains('.')
+              ? pickedFile.path.split('.').last
+              : 'jpg';
+          final savedPath =
+              '${dir.path}/business_photo_${DateTime.now().millisecondsSinceEpoch}.$ext';
+          final savedFile = await File(pickedFile.path).copy(savedPath);
+          finalPath = savedFile.path;
+        } catch (_) {}
+
+        setState(() {
+          _businessPhotoPath = finalPath;
+        });
+
+        if (mounted) {
+          context.read<SettingsProvider>().updateBusinessPhoto(finalPath);
+        }
+      }
+    } catch (_) {
+      final result = await FilePicker.pickFiles(type: FileType.image);
+      if (result != null && result.files.single.path != null && mounted) {
+        final path = result.files.single.path!;
+        setState(() {
+          _businessPhotoPath = path;
+        });
+        if (mounted) {
+          context.read<SettingsProvider>().updateBusinessPhoto(path);
+        }
+      }
+    }
+  }
+
+  void _removeBusinessPhoto() {
+    setState(() {
+      _businessPhotoPath = '';
+    });
+    context.read<SettingsProvider>().updateBusinessPhoto('');
+  }
+
+  void _showBusinessPhotoPickerSheet() {
+    final currentPhoto = _businessPhotoPath ??
+        context.read<SettingsProvider>().businessPhotoPath;
+    final hasValidBusinessPhoto = currentPhoto.isNotEmpty &&
+        File(currentPhoto).existsSync();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardTheme.color,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: AppTheme.borderColor(ctx),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              Text(
+                'Business Photo',
+                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Choose a store logo or business photo to display on the POS dashboard, receipts, and navigation.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.mutedText(ctx),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _SettingsImageSourceOption(
+                    icon: Icons.camera_alt_rounded,
+                    label: 'Camera',
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _pickBusinessPhoto(ImageSource.camera);
+                    },
+                  ),
+                  _SettingsImageSourceOption(
+                    icon: Icons.photo_library_rounded,
+                    label: 'Gallery',
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _pickBusinessPhoto(ImageSource.gallery);
+                    },
+                  ),
+                  if (hasValidBusinessPhoto)
+                    _SettingsImageSourceOption(
+                      icon: Icons.delete_outline_rounded,
+                      label: 'Remove',
+                      color: AppTheme.accentRose,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _removeBusinessPhoto();
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showChangePasswordDialog(BuildContext context) {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
@@ -965,6 +1306,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+}
+
+class _SettingsImageSourceOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+
+  const _SettingsImageSourceOption({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final themeColor = color ?? AppTheme.accentOrange;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: themeColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: themeColor, size: 26),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: color ?? Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

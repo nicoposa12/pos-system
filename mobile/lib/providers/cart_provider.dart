@@ -45,26 +45,40 @@ class CartProvider with ChangeNotifier {
   void addItem(Product product, {ProductVariant? variant}) {
     final String variantKey = variant != null ? '${product.id}_${variant.name}' : '${product.id}_base';
     final double price = variant?.price ?? product.price;
+    final int itemStock = variant?.stock ?? product.stock;
 
     if (_items.containsKey(variantKey)) {
-      // Check total quantity of this product in cart vs stock
-      int totalInCart = _items.values
-          .where((item) => item.product.id == product.id)
-          .fold(0, (sum, item) => sum + item.quantity);
+      if (variant?.stock != null) {
+        if (_items[variantKey]!.quantity < variant!.stock!) {
+          _items.update(
+            variantKey,
+            (existingItem) => CartItem(
+              product: existingItem.product,
+              variantName: existingItem.variantName,
+              price: existingItem.price,
+              quantity: existingItem.quantity + 1,
+            ),
+          );
+        }
+      } else {
+        int totalInCart = _items.values
+            .where((item) => item.product.id == product.id)
+            .fold(0, (sum, item) => sum + item.quantity);
 
-      if (totalInCart < product.stock) {
-        _items.update(
-          variantKey,
-          (existingItem) => CartItem(
-            product: existingItem.product,
-            variantName: existingItem.variantName,
-            price: existingItem.price,
-            quantity: existingItem.quantity + 1,
-          ),
-        );
+        if (totalInCart < product.stock) {
+          _items.update(
+            variantKey,
+            (existingItem) => CartItem(
+              product: existingItem.product,
+              variantName: existingItem.variantName,
+              price: existingItem.price,
+              quantity: existingItem.quantity + 1,
+            ),
+          );
+        }
       }
     } else {
-      if (product.stock > 0) {
+      if (itemStock > 0) {
         _items.putIfAbsent(
           variantKey,
           () => CartItem(
@@ -95,6 +109,50 @@ class CartProvider with ChangeNotifier {
       _items.remove(variantKey);
     }
     notifyListeners();
+  }
+
+  bool updateQuantity(String variantKey, int newQuantity) {
+    if (!_items.containsKey(variantKey)) return false;
+
+    if (newQuantity <= 0) {
+      _items.remove(variantKey);
+      notifyListeners();
+      return true;
+    }
+
+    final item = _items[variantKey]!;
+    final product = item.product;
+    ProductVariant? matchedVariant;
+    if (item.variantName != null) {
+      final matches = product.variants
+          .where((v) => v.name == item.variantName)
+          .toList();
+      if (matches.isNotEmpty) matchedVariant = matches.first;
+    }
+
+    int maxAllowed;
+    if (matchedVariant?.stock != null) {
+      maxAllowed = matchedVariant!.stock!;
+    } else {
+      final otherLinesCount = _items.entries
+          .where((e) => e.key != variantKey && e.value.product.id == product.id)
+          .fold(0, (sum, e) => sum + e.value.quantity);
+      maxAllowed = (product.stock - otherLinesCount).clamp(0, product.stock);
+    }
+
+    final finalQuantity = newQuantity > maxAllowed ? maxAllowed : newQuantity;
+
+    _items.update(
+      variantKey,
+      (existingItem) => CartItem(
+        product: existingItem.product,
+        variantName: existingItem.variantName,
+        price: existingItem.price,
+        quantity: finalQuantity,
+      ),
+    );
+    notifyListeners();
+    return finalQuantity == newQuantity;
   }
 
   void removeItem(String variantKey) {

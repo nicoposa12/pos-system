@@ -145,8 +145,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                         height: 40,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          image: const DecorationImage(
-                            image: AssetImage('assets/images/app_icon.png'),
+                          image: DecorationImage(
+                            image: settings.businessPhotoPath.isNotEmpty &&
+                                    File(settings.businessPhotoPath).existsSync()
+                                ? FileImage(File(settings.businessPhotoPath))
+                                : const AssetImage('assets/images/app_icon.png')
+                                    as ImageProvider,
                             fit: BoxFit.cover,
                           ),
                           border: Border.all(
