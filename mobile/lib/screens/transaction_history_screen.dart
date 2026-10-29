@@ -629,8 +629,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     final items = await context.read<TransactionProvider>().getTransactionItems(
       tx.id!,
     );
+    final debt = await DatabaseHelper.instance.getDebtByTransactionId(tx.id!);
     if (!context.mounted) return;
     final theme = Theme.of(context);
+    final customerName = debt?['customer_name'] as String?;
+    final isPending = tx.paymentMethod.toLowerCase() == 'pending' || tx.paymentMethod.toLowerCase() == 'debt';
+    final remainingBalance = (tx.totalAmount - tx.cashReceived).clamp(0.0, tx.totalAmount);
 
     showModalBottomSheet(
       context: context,
@@ -693,6 +697,26 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
+                            if (customerName != null && customerName.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.person_outline_rounded,
+                                    size: 14,
+                                    color: AppTheme.accentOrange,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Customer: $customerName',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -835,6 +859,70 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                           ),
                           const SizedBox(height: 12),
                         ],
+                        if (isPending) ...[
+                          Container(
+                            margin: const EdgeInsets.symmetric(vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentAmber.withValues(
+                                alpha: 0.12,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppTheme.accentAmber.withValues(
+                                  alpha: 0.35,
+                                ),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.pending_actions_rounded,
+                                  color: AppTheme.accentAmber,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Pending Balance Due',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
+                                          color: AppTheme.accentAmber,
+                                        ),
+                                      ),
+                                      if (tx.cashReceived > 0)
+                                        Text(
+                                          'Deposit Paid: ₱${tx.cashReceived.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.mutedText(sheetCtx),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                Text(
+                                  '₱${remainingBalance.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                    color: AppTheme.accentAmber,
+                                    fontFeatures: AppTheme.tabularFigures,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         const Divider(height: 16),
                         _ReceiptRow(
                           label: 'Total Amount',
@@ -847,32 +935,73 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-                  child: Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            final auth = context.read<AuthProvider>();
-                            showReceiptDialog(
-                              context,
-                              transaction: tx,
-                              items: items,
-                              user: auth.currentUser,
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.receipt_long_rounded,
-                            size: 18,
+                      if (isPending) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              _showCollectPaymentDialog(
+                                context,
+                                tx: tx,
+                                remainingBalance: remainingBalance,
+                                customerName: customerName,
+                                parentSheetContext: sheetCtx,
+                              );
+                            },
+                            icon: const Icon(Icons.payments_rounded, size: 20),
+                            label: Text(
+                              'Collect Payment (₱${remainingBalance.toStringAsFixed(2)})',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF10B981),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.radiusMd,
+                                ),
+                              ),
+                            ),
                           ),
-                          label: const Text('Thermal Receipt'),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.pop(sheetCtx),
-                          child: const Text('Done'),
-                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                final auth = context.read<AuthProvider>();
+                                showReceiptDialog(
+                                  context,
+                                  transaction: tx,
+                                  items: items,
+                                  user: auth.currentUser,
+                                );
+                              },
+                              icon: const Icon(
+                                Icons.receipt_long_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('Thermal Receipt'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () => Navigator.pop(sheetCtx),
+                              child: const Text('Done'),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -881,6 +1010,29 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showCollectPaymentDialog(
+    BuildContext context, {
+    required SaleTransaction tx,
+    required double remainingBalance,
+    required String? customerName,
+    required BuildContext parentSheetContext,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalCtx) => _CollectPaymentSheet(
+        tx: tx,
+        remainingBalance: remainingBalance,
+        customerName: customerName,
+        onPaymentSuccess: () {
+          Navigator.pop(modalCtx);
+          Navigator.pop(parentSheetContext);
+        },
       ),
     );
   }
@@ -1377,6 +1529,553 @@ class _TransactionCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CollectPaymentSheet extends StatefulWidget {
+  final SaleTransaction tx;
+  final double remainingBalance;
+  final String? customerName;
+  final VoidCallback onPaymentSuccess;
+
+  const _CollectPaymentSheet({
+    required this.tx,
+    required this.remainingBalance,
+    required this.customerName,
+    required this.onPaymentSuccess,
+  });
+
+  @override
+  State<_CollectPaymentSheet> createState() => _CollectPaymentSheetState();
+}
+
+class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
+  String _selectedMethod = 'cash'; // 'cash' or 'gcash'
+  late final TextEditingController _cashController;
+  double _cashTendered = 0.0;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cashController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _cashController.dispose();
+    super.dispose();
+  }
+
+  void _setExact() {
+    setState(() {
+      _cashTendered = widget.remainingBalance;
+      _cashController.text = widget.remainingBalance.toStringAsFixed(2);
+    });
+  }
+
+  void _setDenomination(double amount) {
+    setState(() {
+      _cashTendered = amount;
+      _cashController.text = amount.toStringAsFixed(0);
+    });
+  }
+
+  List<double> get _quickDenominations {
+    final baseList = [50.0, 100.0, 200.0, 500.0, 1000.0];
+    final valid = baseList.where((d) => d > widget.remainingBalance).toList();
+    if (valid.isEmpty) {
+      final nextRound = ((widget.remainingBalance / 500).ceil() * 500).toDouble();
+      if (nextRound > widget.remainingBalance) {
+        valid.add(nextRound);
+      }
+      valid.add(nextRound + 500);
+    }
+    return valid;
+  }
+
+  Future<void> _submitPayment() async {
+    if (_isSubmitting) return;
+
+    if (_selectedMethod == 'cash' && _cashTendered < widget.remainingBalance) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cash tendered is less than the unpaid balance.'),
+          backgroundColor: AppTheme.accentRose,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    final change = _selectedMethod == 'cash'
+        ? (_cashTendered - widget.remainingBalance).clamp(0.0, double.infinity)
+        : 0.0;
+
+    final totalCashReceived = _selectedMethod == 'cash'
+        ? (widget.tx.cashReceived + _cashTendered)
+        : widget.tx.totalAmount;
+
+    final success = await context.read<TransactionProvider>().markTransactionPaid(
+      transactionId: widget.tx.id!,
+      newPaymentMethod: _selectedMethod,
+      cashReceived: totalCashReceived,
+      changeAmount: change,
+    );
+
+    if (!mounted) return;
+    setState(() => _isSubmitting = false);
+
+    if (success) {
+      widget.onPaymentSuccess();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Order #${widget.tx.id} marked as Paid (${_selectedMethod.toUpperCase()})',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to update transaction. Please try again.'),
+          backgroundColor: AppTheme.accentRose,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isCash = _selectedMethod == 'cash';
+    final changeDue = (_cashTendered - widget.remainingBalance).clamp(0.0, double.infinity);
+    final isShort = isCash && _cashTendered > 0 && _cashTendered < widget.remainingBalance;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.cardTheme.color,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border.all(color: AppTheme.borderColor(context)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppTheme.borderColor(context),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Collect Payment',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Order #${widget.tx.id}${widget.customerName != null && widget.customerName!.isNotEmpty ? ' • ${widget.customerName}' : ''}',
+                              style: TextStyle(
+                                color: AppTheme.mutedText(context),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Unpaid Balance Card
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.subtleSurface(context),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppTheme.borderColor(context)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'UNPAID BALANCE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.6,
+                                  color: AppTheme.mutedText(context),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '₱${widget.remainingBalance.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppTheme.accentOrange,
+                                  fontFeatures: AppTheme.tabularFigures,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentAmber.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'PENDING',
+                              style: TextStyle(
+                                color: AppTheme.accentAmber,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Payment Method Choice
+                    Text(
+                      'RECEIVE PAYMENT VIA',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.6,
+                        color: AppTheme.mutedText(context),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _MethodChoiceCard(
+                            label: 'Cash',
+                            icon: Icons.payments_rounded,
+                            isSelected: isCash,
+                            onTap: () => setState(() => _selectedMethod = 'cash'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _MethodChoiceCard(
+                            label: 'GCash',
+                            icon: Icons.account_balance_wallet_rounded,
+                            isSelected: !isCash,
+                            onTap: () => setState(() => _selectedMethod = 'gcash'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Cash Controls
+                    if (isCash) ...[
+                      Text(
+                        'CASH TENDERED',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.6,
+                          color: AppTheme.mutedText(context),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _cashController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: AppTheme.tabularFigures,
+                        ),
+                        decoration: InputDecoration(
+                          prefixIcon: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 14),
+                            child: Text(
+                              '₱',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                          hintText: '0.00',
+                          errorText: isShort ? 'Amount is short of balance' : null,
+                        ),
+                        onChanged: (val) {
+                          setState(() {
+                            _cashTendered = double.tryParse(val) ?? 0.0;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Quick Cash Chips
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            ActionChip(
+                              label: Text('Exact ₱${widget.remainingBalance.toStringAsFixed(2)}'),
+                              onPressed: _setExact,
+                              backgroundColor: AppTheme.subtleSurface(context),
+                            ),
+                            const SizedBox(width: 8),
+                            ..._quickDenominations.map((denom) => Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ActionChip(
+                                    label: Text('₱${denom.toStringAsFixed(0)}'),
+                                    onPressed: () => _setDenomination(denom),
+                                    backgroundColor: AppTheme.subtleSurface(context),
+                                  ),
+                                )),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Change Due Banner
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentTeal.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppTheme.accentTeal.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Change Due',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.accentTeal,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              '₱${changeDue.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                                color: AppTheme.accentTeal,
+                                fontFeatures: AppTheme.tabularFigures,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      // GCash Banner
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentIndigo.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppTheme.accentIndigo.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accentIndigo.withValues(alpha: 0.15),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.qr_code_2_rounded,
+                                color: AppTheme.accentIndigo,
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'GCash Mobile Payment',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Collect exact ₱${widget.remainingBalance.toStringAsFixed(2)} from customer via QR or Express Send.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.mutedText(context),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 24),
+
+                    // Confirm Action Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSubmitting ? null : _submitPayment,
+                        icon: _isSubmitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_circle_rounded, size: 20),
+                        label: Text(
+                          _isSubmitting
+                              ? 'Saving Payment...'
+                              : 'Confirm & Mark as Paid',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MethodChoiceCard extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _MethodChoiceCard({
+    required this.label,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final activeColor = AppTheme.accentOrange;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? activeColor.withValues(alpha: 0.1)
+              : AppTheme.subtleSurface(context),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? activeColor : AppTheme.borderColor(context),
+            width: isSelected ? 1.8 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? activeColor : AppTheme.mutedText(context),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                fontSize: 14,
+                color: isSelected
+                    ? activeColor
+                    : Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ],
         ),
       ),
     );

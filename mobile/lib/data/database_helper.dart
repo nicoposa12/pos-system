@@ -367,6 +367,50 @@ class DatabaseHelper {
     ''', [transactionId]);
   }
 
+  Future<Map<String, dynamic>?> getDebtByTransactionId(int transactionId) async {
+    final db = await instance.database;
+    final results = await db.query(
+      'debts',
+      where: 'transaction_id = ?',
+      whereArgs: [transactionId],
+      limit: 1,
+    );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  Future<void> markTransactionPaid({
+    required int transactionId,
+    required String paymentMethod,
+    required double cashReceived,
+    required double changeAmount,
+    bool isSynced = false,
+  }) async {
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      await txn.update(
+        'transactions',
+        {
+          'payment_method': paymentMethod,
+          'cash_received': cashReceived,
+          'change_amount': changeAmount,
+          'is_synced': isSynced ? 1 : 0,
+        },
+        where: 'id = ?',
+        whereArgs: [transactionId],
+      );
+
+      await txn.update(
+        'debts',
+        {
+          'paid_amount': cashReceived,
+          'status': 'paid',
+        },
+        where: 'transaction_id = ?',
+        whereArgs: [transactionId],
+      );
+    });
+  }
+
   Future close() async {
     final db = await instance.database;
     db.close();

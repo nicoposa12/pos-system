@@ -728,12 +728,13 @@ class _PosScreenState extends State<PosScreen> {
       context: context,
       builder: (ctx) => _PaymentSummaryDialog(
         cart: cart,
-        onComplete: (discount, cash, paymentMethod) {
+        onComplete: (discount, cash, paymentMethod, {customerName}) {
           _handleCheckout(
             context,
             discount: discount,
             cashReceived: cash,
             paymentMethod: paymentMethod,
+            customerName: customerName,
           );
         },
       ),
@@ -745,6 +746,7 @@ class _PosScreenState extends State<PosScreen> {
     double discount = 0.0,
     double cashReceived = 0.0,
     String paymentMethod = 'cash',
+    String? customerName,
   }) async {
     final cart = ctx.read<CartProvider>();
     final productProvider = ctx.read<ProductProvider>();
@@ -756,6 +758,7 @@ class _PosScreenState extends State<PosScreen> {
       discount: discount,
       cashReceived: cashReceived,
       paymentMethod: paymentMethod,
+      customerName: customerName,
     );
 
     if (!mounted || !ctx.mounted) return;
@@ -1408,8 +1411,12 @@ class _CartLineTileState extends State<_CartLineTile> {
 
 class _PaymentSummaryDialog extends StatefulWidget {
   final CartProvider cart;
-  final void Function(double discount, double cash, String paymentMethod)
-      onComplete;
+  final void Function(
+    double discount,
+    double cash,
+    String paymentMethod, {
+    String? customerName,
+  }) onComplete;
 
   const _PaymentSummaryDialog({
     required this.cart,
@@ -1423,21 +1430,24 @@ class _PaymentSummaryDialog extends StatefulWidget {
 class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
   late final TextEditingController _cashController;
   late final TextEditingController _discountController;
+  late final TextEditingController _customerNameController;
   double _currentDiscount = 0.0;
   double _currentCash = 0.0;
-  String _paymentMethod = 'cash'; // 'cash', 'gcash'
+  String _paymentMethod = 'cash'; // 'cash', 'gcash', 'pending'
 
   @override
   void initState() {
     super.initState();
     _cashController = TextEditingController();
     _discountController = TextEditingController();
+    _customerNameController = TextEditingController();
   }
 
   @override
   void dispose() {
     _cashController.dispose();
     _discountController.dispose();
+    _customerNameController.dispose();
     super.dispose();
   }
 
@@ -1463,7 +1473,9 @@ class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
 
     final bool isReady = _paymentMethod == 'gcash'
         ? total > 0
-        : (_currentCash >= total && total > 0);
+        : (_paymentMethod == 'pending'
+            ? total > 0
+            : (_currentCash >= total && total > 0));
 
     final quickBills = <double>{
       total,
@@ -1565,7 +1577,7 @@ class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
               ),
               const SizedBox(height: 16),
 
-              // Payment Mode Toggle
+              // Payment Mode Toggle (Radio Buttons)
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
@@ -1579,15 +1591,28 @@ class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
                         label: 'Cash',
                         icon: Icons.payments_rounded,
                         isActive: _paymentMethod == 'cash',
+                        activeColor: AppTheme.accentOrange,
                         onTap: () => setState(() => _paymentMethod = 'cash'),
                       ),
                     ),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: _ModeButton(
                         label: 'GCash',
                         icon: Icons.account_balance_wallet_rounded,
                         isActive: _paymentMethod == 'gcash',
+                        activeColor: const Color(0xFF007DFE),
                         onTap: () => setState(() => _paymentMethod = 'gcash'),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: _ModeButton(
+                        label: 'Pending',
+                        icon: Icons.schedule_rounded,
+                        isActive: _paymentMethod == 'pending',
+                        activeColor: AppTheme.accentAmber,
+                        onTap: () => setState(() => _paymentMethod = 'pending'),
                       ),
                     ),
                   ],
@@ -1808,28 +1833,168 @@ class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
                   },
                 ),
               ],
+
+              if (_paymentMethod == 'pending') ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentAmber.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    border: Border.all(
+                      color: AppTheme.accentAmber.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentAmber.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.schedule_rounded,
+                              color: AppTheme.accentAmber,
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Pending Payment (Utang)',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.accentAmber,
+                                  ),
+                                ),
+                                Text(
+                                  'Order will be saved with an unpaid balance.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: _customerNameController,
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Customer Name (Optional)',
+                          hintText: 'e.g. Juan dela Cruz',
+                          prefixIcon:
+                              Icon(Icons.person_outline_rounded, size: 20),
+                          isDense: true,
+                        ),
+                        textCapitalization: TextCapitalization.words,
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _cashController,
+                        decoration: const InputDecoration(
+                          labelText: 'Partial Downpayment (₱ Optional)',
+                          hintText: '0.00',
+                          prefixIcon: Icon(Icons.payments_outlined, size: 20),
+                          isDense: true,
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        onChanged: (val) {
+                          setState(() {
+                            _currentCash = double.tryParse(val) ?? 0.0;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).cardTheme.color,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.borderColor(context)
+                                .withValues(alpha: 0.5),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Unpaid Balance:',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              '₱${NumberFormat('#,##0.00').format((total - _currentCash).clamp(0.0, total))}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.accentAmber,
+                                fontFeatures: AppTheme.tabularFigures,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
 
               ElevatedButton.icon(
                 onPressed: isReady
                     ? () {
-                        final cash = _paymentMethod == 'cash'
+                        final cash = (_paymentMethod == 'cash' ||
+                                _paymentMethod == 'pending')
                             ? (double.tryParse(_cashController.text) ?? 0.0)
                             : 0.0;
+                        final customer = _customerNameController.text.trim();
                         Navigator.pop(context);
                         widget.onComplete(
                           clampedDiscount,
                           cash,
                           _paymentMethod,
+                          customerName: customer.isNotEmpty ? customer : null,
                         );
                       }
                     : null,
-                icon: const Icon(Icons.check_circle_rounded, size: 20),
+                icon: Icon(
+                  _paymentMethod == 'pending'
+                      ? Icons.schedule_send_rounded
+                      : Icons.check_circle_rounded,
+                  size: 20,
+                ),
                 label: Text(
                   _paymentMethod == 'gcash'
                       ? 'Complete GCash Sale'
-                      : 'Complete Cash Sale',
+                      : (_paymentMethod == 'pending'
+                          ? 'Complete Pending Sale'
+                          : 'Complete Cash Sale'),
                 ),
+                style: _paymentMethod == 'pending'
+                    ? ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accentAmber,
+                        foregroundColor: Colors.white,
+                      )
+                    : null,
               ),
             ],
           ),
@@ -1843,48 +2008,98 @@ class _ModeButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool isActive;
+  final Color? activeColor;
   final VoidCallback onTap;
 
   const _ModeButton({
     required this.label,
     required this.icon,
     required this.isActive,
+    this.activeColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isActive ? AppTheme.accentOrange : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: isActive ? Colors.white : AppTheme.mutedText(context),
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? Colors.white : theme.colorScheme.onSurface,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
+    final effectiveColor = activeColor ?? AppTheme.accentOrange;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(9),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 2),
+          decoration: BoxDecoration(
+            color: isActive ? effectiveColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: effectiveColor.withValues(alpha: 0.35),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Subtle modern radio dot
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isActive
+                        ? Colors.white
+                        : AppTheme.mutedText(context).withValues(alpha: 0.5),
+                    width: 1.5,
+                  ),
+                ),
+                child: isActive
+                    ? Center(
+                        child: Container(
+                          width: 5,
+                          height: 5,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
-            ),
-          ],
+              const SizedBox(width: 5),
+              Icon(
+                icon,
+                color: isActive ? Colors.white : AppTheme.mutedText(context),
+                size: 15,
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isActive
+                        ? Colors.white
+                        : theme.colorScheme.onSurface,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

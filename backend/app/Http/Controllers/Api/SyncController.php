@@ -63,12 +63,12 @@ class SyncController extends Controller
                         ->decrement('stock', $item['quantity']);
                 }
 
-                // If debt
-                if (strtolower($txData['payment_method']) === 'debt' && !empty($txData['customer_name'])) {
+                // If debt or pending
+                if (in_array(strtolower($txData['payment_method']), ['debt', 'pending'])) {
                     Debt::create([
                         'user_id' => $userId,
                         'transaction_id' => $tx->id,
-                        'customer_name' => $txData['customer_name'],
+                        'customer_name' => !empty($txData['customer_name']) ? $txData['customer_name'] : 'Walk-in Customer',
                         'amount' => $txData['total_amount'],
                         'paid_amount' => $txData['cash_received'] ?? 0.0,
                         'status' => (($txData['cash_received'] ?? 0.0) >= $txData['total_amount']) ? 'paid' : 'pending',

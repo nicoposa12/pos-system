@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/database_helper.dart';
 import '../models/transaction.dart';
+import '../services/api_service.dart';
 
 class TransactionProvider with ChangeNotifier {
   List<SaleTransaction> _transactions = [];
@@ -130,6 +131,44 @@ class TransactionProvider with ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint('Error processing return: $e');
+      return false;
+    }
+  }
+
+  Future<bool> markTransactionPaid({
+    required int transactionId,
+    required String newPaymentMethod,
+    required double cashReceived,
+    required double changeAmount,
+  }) async {
+    try {
+      bool synced = false;
+      if (ApiService.instance.isAuthenticated) {
+        try {
+          await ApiService.instance.markTransactionPaid(
+            transactionId,
+            paymentMethod: newPaymentMethod,
+            cashReceived: cashReceived,
+            changeAmount: changeAmount,
+          );
+          synced = true;
+        } catch (e) {
+          debugPrint('Online markPaid sync skipped (will batch sync later): $e');
+        }
+      }
+
+      await DatabaseHelper.instance.markTransactionPaid(
+        transactionId: transactionId,
+        paymentMethod: newPaymentMethod,
+        cashReceived: cashReceived,
+        changeAmount: changeAmount,
+        isSynced: synced,
+      );
+
+      await fetchTransactions();
+      return true;
+    } catch (e) {
+      debugPrint('Error marking transaction paid: $e');
       return false;
     }
   }

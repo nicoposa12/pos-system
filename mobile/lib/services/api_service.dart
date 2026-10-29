@@ -47,13 +47,8 @@ class ApiService {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Default URL based on platform
-    String defaultUrl;
-    if (!kIsWeb && Platform.isAndroid) {
-      defaultUrl = 'http://10.0.2.2:8000/api';
-    } else {
-      defaultUrl = 'http://127.0.0.1:8000/api';
-    }
+    // Default production cloud API URL
+    const String defaultUrl = 'https://pos-system-wdlx.onrender.com/api';
 
     _baseUrl = prefs.getString('api_base_url') ?? defaultUrl;
     _token = prefs.getString('api_auth_token');
@@ -256,6 +251,19 @@ class ApiService {
       return response.data['data'] as List;
     }
     return (response.data as List? ?? []);
+  }
+
+  Future<void> markTransactionPaid(
+    int transactionId, {
+    required String paymentMethod,
+    double? cashReceived,
+    double? changeAmount,
+  }) async {
+    await _dio.post('/transactions/$transactionId/mark-paid', data: {
+      'payment_method': paymentMethod,
+      'cash_received': cashReceived,
+      'change_amount': changeAmount,
+    });
   }
 
   // ==========================================

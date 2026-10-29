@@ -199,6 +199,26 @@ class CartProvider with ChangeNotifier {
     try {
       final transactionId = await DatabaseHelper.instance.createTransaction(transaction, transactionItems);
       
+      // If pending payment or debt, record in local debts table
+      if (paymentMethod == 'pending' || paymentMethod == 'debt') {
+        try {
+          final db = await DatabaseHelper.instance.database;
+          await db.insert('debts', {
+            'user_id': _userId!,
+            'transaction_id': transactionId,
+            'customer_name': (customerName != null && customerName.trim().isNotEmpty)
+                ? customerName.trim()
+                : 'Walk-in Customer',
+            'amount': transaction.totalAmount,
+            'paid_amount': cashReceived,
+            'date': transaction.date.toIso8601String(),
+            'status': (cashReceived >= transaction.totalAmount) ? 'paid' : 'pending',
+          });
+        } catch (e) {
+          debugPrint('Local debt record insert error: $e');
+        }
+      }
+      
       // Attempt immediate online push
       if (ApiService.instance.isAuthenticated) {
         try {

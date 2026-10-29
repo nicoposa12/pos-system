@@ -73,12 +73,12 @@ class TransactionController extends Controller
                     ->decrement('stock', $itemData['quantity']);
             }
 
-            // 3. If payment method is debt, create debt record
-            if (strtolower($validated['payment_method']) === 'debt' && !empty($validated['customer_name'])) {
+            // 3. If payment method is debt or pending, create debt record
+            if (in_array(strtolower($validated['payment_method']), ['debt', 'pending'])) {
                 Debt::create([
                     'user_id' => $userId,
                     'transaction_id' => $transaction->id,
-                    'customer_name' => $validated['customer_name'],
+                    'customer_name' => !empty($validated['customer_name']) ? $validated['customer_name'] : 'Walk-in Customer',
                     'amount' => $validated['total_amount'],
                     'paid_amount' => $validated['cash_received'] ?? 0.0,
                     'status' => (($validated['cash_received'] ?? 0.0) >= $validated['total_amount']) ? 'paid' : 'pending',
@@ -107,5 +107,41 @@ class TransactionController extends Controller
         $transaction->load(['items.product', 'debt']);
 
         return response()->json(['transaction' => $transaction]);
+    }
+
+    /**
+     * Mark a pending transaction as paid.
+     */
+    public function markPaid(Request $request, Transaction $transaction)
+    {
+        if ($transaction->user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'payment_method' => 'required|string',
+            'cash_received' => 'nullable|numeric|min:0',
+            'change_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        $transaction->update([
+            'payment_method' => $validated['payment_method'],
+            'cash_received' => $validated['cash_received'] ?? $transaction->total_amount,
+            'change_amount' => $validated['change_amount'] ?? 0.0,
+        ]);
+
+        if ($transaction->debt) {
+            $transaction->debt->update([
+                'paid_amount' => $validated['cash_received'] ?? $transaction->total_amount,
+                'status' => 'paid',
+            ]);
+        }
+
+        $transaction->load(['items.product', 'debt']);
+
+        return response()->json([
+            'message' => 'Transaction marked as paid successfully',
+            'transaction' => $transaction,
+        ]);
     }
 }

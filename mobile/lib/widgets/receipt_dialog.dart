@@ -102,15 +102,24 @@ class ReceiptDialog extends StatelessWidget {
     buffer.writeln(
       'TOTAL                ${transaction.totalAmount.toStringAsFixed(2).padLeft(8)}',
     );
-    final payMethod = transaction.paymentMethod == 'gcash'
+    final isGcash = transaction.paymentMethod.toLowerCase() == 'gcash';
+    final isPending = transaction.paymentMethod.toLowerCase() == 'pending' ||
+        transaction.paymentMethod.toLowerCase() == 'debt';
+    final payMethod = isGcash
         ? 'GCash Paid'
-        : 'Cash Received';
-    final payAmount = transaction.paymentMethod == 'gcash'
+        : (isPending ? 'Deposit / Paid' : 'Cash Received');
+    final payAmount = isGcash
         ? transaction.totalAmount
         : transaction.cashReceived;
     buffer.writeln(
       '${payMethod.padRight(20)} ${payAmount.toStringAsFixed(2).padLeft(8)}',
     );
+    if (isPending) {
+      final bal = (transaction.totalAmount - transaction.cashReceived).clamp(0.0, transaction.totalAmount);
+      buffer.writeln(
+        '${'Balance Due'.padRight(20)} ${bal.toStringAsFixed(2).padLeft(8)}',
+      );
+    }
     buffer.writeln(
       'Change               ${transaction.change.toStringAsFixed(2).padLeft(8)}',
     );
@@ -145,7 +154,9 @@ class ReceiptDialog extends StatelessWidget {
         ? storePhone.trim()
         : '09XX XXX XXXX';
     final subtotalAmount = transaction.totalAmount + transaction.discount;
-    final isGcash = transaction.paymentMethod == 'gcash';
+    final isGcash = transaction.paymentMethod.toLowerCase() == 'gcash';
+    final isPending = transaction.paymentMethod.toLowerCase() == 'pending' ||
+        transaction.paymentMethod.toLowerCase() == 'debt';
 
     const monoStyle = TextStyle(
       fontFamily: 'monospace',
@@ -312,12 +323,19 @@ class ReceiptDialog extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE2E8F0),
+                                color: isPending
+                                    ? AppTheme.accentAmber.withValues(alpha: 0.18)
+                                    : const Color(0xFFE2E8F0),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                isGcash ? 'GCASH' : 'CASH',
-                                style: monoBold.copyWith(fontSize: 10),
+                                isGcash
+                                    ? 'GCASH'
+                                    : (isPending ? 'PENDING' : 'CASH'),
+                                style: monoBold.copyWith(
+                                  fontSize: 10,
+                                  color: isPending ? AppTheme.accentAmber : null,
+                                ),
                               ),
                             ),
                           ],
@@ -459,7 +477,9 @@ class ReceiptDialog extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              isGcash ? 'GCash Paid' : 'Cash Tendered',
+                              isGcash
+                                  ? 'GCash Paid'
+                                  : (isPending ? 'Deposit / Paid' : 'Cash Tendered'),
                               style: monoStyle,
                             ),
                             Text(
@@ -468,6 +488,21 @@ class ReceiptDialog extends StatelessWidget {
                             ),
                           ],
                         ),
+                        if (isPending) ...[
+                          const SizedBox(height: 3),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Pending Balance', style: monoBold),
+                              Text(
+                                '₱${(transaction.totalAmount - transaction.cashReceived).clamp(0.0, transaction.totalAmount).toStringAsFixed(2)}',
+                                style: monoBold.copyWith(
+                                  color: AppTheme.accentAmber,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 3),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,

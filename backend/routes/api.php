@@ -31,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('products', ProductController::class);
 
     // Transactions (POS Checkout)
+    Route::post('/transactions/{transaction}/mark-paid', [TransactionController::class, 'markPaid']);
     Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'show']);
 
     // Debts

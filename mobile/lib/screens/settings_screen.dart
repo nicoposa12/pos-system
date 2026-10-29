@@ -1156,6 +1156,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _handleManualSync(int userId) async {
     final messenger = ScaffoldMessenger.of(context);
+
+    if (!ApiService.instance.isAuthenticated) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.lock_outline_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Not signed in to Cloud. Sign Out and Log In / Register to sync.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.accentAmber,
+        ),
+      );
+      return;
+    }
+
     final success = await SyncService.instance.syncNow(userId);
     if (!mounted) return;
     messenger.showSnackBar(
@@ -1168,7 +1187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               size: 20,
             ),
             const SizedBox(width: 10),
-            Text(success ? 'Sync completed successfully!' : 'Sync failed or no internet.'),
+            Text(success ? 'Sync completed successfully!' : 'Sync failed. Check connection.'),
           ],
         ),
         backgroundColor: success ? AppTheme.accentTeal : AppTheme.accentAmber,
