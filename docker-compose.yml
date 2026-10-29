@@ -1,0 +1,49 @@
+services:
+  # ── 1. Laravel 11 REST API + Nginx Web Server ──
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tindako_api
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    environment:
+      APP_NAME: "TindaKo-API"
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_KEY: "base64:Wzz5geyl6J72LlocGb4ExVGIie+1coiO6N/V6tojiss="
+      APP_URL: "http://localhost:8000"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: tindako
+      DB_USERNAME: pos_user
+      DB_PASSWORD: pos_password
+      DB_SSLMODE: prefer
+      RUN_MIGRATIONS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── 2. PostgreSQL 16 Database ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: tindako_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tindako
+      POSTGRES_USER: pos_user
+      POSTGRES_PASSWORD: pos_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos_user -d tindako"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
