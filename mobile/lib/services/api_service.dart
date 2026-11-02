@@ -293,4 +293,84 @@ class ApiService {
     });
     return (response.data['synced'] as List? ?? []);
   }
+
+  // ==========================================
+  // ADMIN CLIENT MANAGEMENT
+  // ==========================================
+
+  Future<Map<String, dynamic>> getAdminClients({String? search, String? role, bool? status}) async {
+    final queryParams = <String, dynamic>{};
+    if (search != null && search.isNotEmpty) queryParams['search'] = search;
+    if (role != null && role.isNotEmpty) queryParams['role'] = role;
+    if (status != null) queryParams['status'] = status ? 'true' : 'false';
+
+    final response = await _dio.get('/admin/clients', queryParameters: queryParams);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createAdminClient({
+    required String username,
+    required String fullName,
+    required String password,
+    String? email,
+    String? pin,
+    String role = 'client',
+    bool isActive = true,
+  }) async {
+    final response = await _dio.post('/admin/clients', data: {
+      'username': username,
+      'full_name': fullName,
+      'password': password,
+      'email': email,
+      'pin': pin,
+      'role': role,
+      'is_active': isActive,
+    });
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getAdminClientDetails(int id) async {
+    final response = await _dio.get('/admin/clients/$id');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateAdminClient(
+    int id, {
+    String? fullName,
+    String? email,
+    String? role,
+    bool? isActive,
+  }) async {
+    final data = <String, dynamic>{};
+    if (fullName != null) data['full_name'] = fullName;
+    if (email != null) data['email'] = email;
+    if (role != null) data['role'] = role;
+    if (isActive != null) data['is_active'] = isActive;
+
+    final response = await _dio.put('/admin/clients/$id', data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> toggleClientStatus(int id) async {
+    final response = await _dio.patch('/admin/clients/$id/toggle-status');
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> resetClientCredentials(
+    int id, {
+    String? password,
+    String? pin,
+  }) async {
+    final data = <String, dynamic>{};
+    if (password != null && password.isNotEmpty) data['password'] = password;
+    if (pin != null) data['pin'] = pin;
+
+    final response = await _dio.post('/admin/clients/$id/reset-credentials', data: data);
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> deleteAdminClient(int id) async {
+    final response = await _dio.delete('/admin/clients/$id');
+    return response.data as Map<String, dynamic>;
+  }
 }

@@ -32,11 +32,17 @@ class _StubAuthProvider extends ChangeNotifier implements AuthProvider {
   bool get hasRegisteredUsers => true;
   @override
   bool get preferPinLogin => false;
+  @override
+  String? get errorMessage => null;
+  @override
+  bool get isAdmin => false;
 
   @override
   void setPreferPinLogin(bool value) {}
   @override
   void lock() {}
+  @override
+  Future<void> reloadCurrentUser() async {}
   @override
   Future<bool> login(String username, String password) async => true;
   @override
@@ -50,6 +56,7 @@ class _StubAuthProvider extends ChangeNotifier implements AuthProvider {
     String fullName, {
     String? pin,
     String? email,
+    String role = 'client',
   }) async => true;
   @override
   Future<void> logout() async {}

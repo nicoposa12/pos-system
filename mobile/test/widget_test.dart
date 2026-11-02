@@ -50,6 +50,10 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   bool get hasRegisteredUsers => _hasUsers;
   @override
   bool get preferPinLogin => _preferPin;
+  @override
+  String? get errorMessage => null;
+  @override
+  bool get isAdmin => _user?.isAdmin ?? false;
 
   @override
   void setPreferPinLogin(bool value) {
@@ -64,6 +68,9 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   }
 
   @override
+  Future<void> reloadCurrentUser() async {}
+
+  @override
   Future<bool> login(String username, String password) async => true;
   @override
   Future<bool> loginWithPin(String pin) async => pin == '1234';
@@ -76,6 +83,7 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
     String fullName, {
     String? pin,
     String? email,
+    String role = 'client',
   }) async => true;
   @override
   Future<void> logout() async {
@@ -272,7 +280,7 @@ void main() {
       // Switch to History tab
       await tester.tap(find.text('History'));
       await tester.pumpAndSettle();
-      expect(find.text('Receipt #101'), findsOneWidget);
+      expect(find.text('Order #101'), findsOneWidget);
     },
   );
 

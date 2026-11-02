@@ -11,6 +11,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isLocked = false;
   bool _hasRegisteredUsers = false;
   bool _preferPinLogin = true;
+  String? _errorMessage;
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
@@ -18,6 +19,8 @@ class AuthProvider extends ChangeNotifier {
   bool get isLocked => _isLocked;
   bool get hasRegisteredUsers => _hasRegisteredUsers;
   bool get preferPinLogin => _preferPinLogin;
+  String? get errorMessage => _errorMessage;
+  bool get isAdmin => _currentUser?.isAdmin ?? false;
 
   void setPreferPinLogin(bool value) {
     _preferPinLogin = value;
@@ -40,6 +43,9 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Ensure default local admin account exists
+      await DatabaseHelper.instance.ensureDefaultAdmin();
+
       _hasRegisteredUsers = await DatabaseHelper.instance.hasUsers();
       final prefs = await SharedPreferences.getInstance();
       final username = prefs.getString('logged_in_username');
@@ -47,9 +53,16 @@ class AuthProvider extends ChangeNotifier {
       if (username != null) {
         _currentUser = await DatabaseHelper.instance.getUser(username);
         if (_currentUser != null) {
-          _isLoggedIn = true;
-          if (_currentUser!.pin != null) {
-            _isLocked = true;
+          if (!_currentUser!.isActive) {
+            // Deactivated user logged out automatically
+            await prefs.remove('logged_in_username');
+            _currentUser = null;
+            _isLoggedIn = false;
+          } else {
+            _isLoggedIn = true;
+            if (_currentUser!.pin != null) {
+              _isLocked = true;
+            }
           }
         }
       }
@@ -63,6 +76,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> login(String username, String password) async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     // 1. Try Online Login First
@@ -70,6 +84,15 @@ class AuthProvider extends ChangeNotifier {
       final res = await ApiService.instance.login(username: username, password: password);
       if (res['user'] != null) {
         final userData = res['user'];
+
+        // Check if deactivated
+        if (userData['is_active'] == false) {
+          _errorMessage = 'This account has been deactivated. Please contact an administrator.';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+
         // Cache or sync into SQLite
         var localUser = await DatabaseHelper.instance.getUser(username);
         if (localUser == null) {
@@ -78,11 +101,25 @@ class AuthProvider extends ChangeNotifier {
             username: userData['username'],
             password: password,
             fullName: userData['full_name'] ?? username,
+            email: userData['email'],
+            role: userData['role'] ?? 'client',
+            isActive: userData['is_active'] ?? true,
             pin: null,
             createdAt: DateTime.now(),
           );
           await DatabaseHelper.instance.createUser(newUser);
           localUser = newUser;
+        } else {
+          // Update cached role & status
+          final updated = localUser.copyWith(
+            id: userData['id'] ?? localUser.id,
+            fullName: userData['full_name'] ?? localUser.fullName,
+            email: userData['email'] ?? localUser.email,
+            role: userData['role'] ?? localUser.role,
+            isActive: userData['is_active'] ?? localUser.isActive,
+          );
+          await DatabaseHelper.instance.updateUser(updated);
+          localUser = updated;
         }
 
         _currentUser = localUser;
@@ -101,6 +138,13 @@ class AuthProvider extends ChangeNotifier {
     // 2. Offline Fallback via SQLite
     final user = await DatabaseHelper.instance.loginUser(username, password);
     if (user != null) {
+      if (!user.isActive) {
+        _errorMessage = 'This account has been deactivated. Please contact an administrator.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
       _currentUser = user;
       _isLoggedIn = true;
       _isLocked = false;
@@ -111,6 +155,7 @@ class AuthProvider extends ChangeNotifier {
       return true;
     }
 
+    _errorMessage = 'Invalid username or password.';
     _isLoading = false;
     notifyListeners();
     return false;
@@ -118,11 +163,18 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> loginWithPin(String pin) async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     // If locked locally
     if (_isLoggedIn && _currentUser != null) {
       if (_currentUser!.pin == pin) {
+        if (!_currentUser!.isActive) {
+          _errorMessage = 'This account has been deactivated. Please contact an administrator.';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
         _isLocked = false;
         _isLoading = false;
         notifyListeners();
@@ -135,15 +187,31 @@ class AuthProvider extends ChangeNotifier {
       final res = await ApiService.instance.pinLogin(pin: pin);
       if (res['user'] != null) {
         final userData = res['user'];
+
+        if (userData['is_active'] == false) {
+          _errorMessage = 'This account has been deactivated. Please contact an administrator.';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+
         var localUser = await DatabaseHelper.instance.getUser(userData['username']);
         if (localUser != null) {
-          _currentUser = localUser;
+          final updated = localUser.copyWith(
+            role: userData['role'] ?? localUser.role,
+            isActive: userData['is_active'] ?? localUser.isActive,
+          );
+          await DatabaseHelper.instance.updateUser(updated);
+          _currentUser = updated;
         } else {
           final newUser = User(
             id: userData['id'],
             username: userData['username'],
             password: '',
             fullName: userData['full_name'] ?? userData['username'],
+            email: userData['email'],
+            role: userData['role'] ?? 'client',
+            isActive: userData['is_active'] ?? true,
             pin: pin,
             createdAt: DateTime.now(),
           );
@@ -165,6 +233,13 @@ class AuthProvider extends ChangeNotifier {
     // 2. Offline PIN Login via SQLite
     final user = await DatabaseHelper.instance.loginWithPin(pin);
     if (user != null) {
+      if (!user.isActive) {
+        _errorMessage = 'This account has been deactivated. Please contact an administrator.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
       _currentUser = user;
       _isLoggedIn = true;
       _isLocked = false;
@@ -175,6 +250,7 @@ class AuthProvider extends ChangeNotifier {
       return true;
     }
 
+    _errorMessage = 'Invalid PIN.';
     _isLoading = false;
     notifyListeners();
     return false;
@@ -205,8 +281,16 @@ class AuthProvider extends ChangeNotifier {
     return false;
   }
 
-  Future<bool> register(String username, String password, String fullName, {String? pin, String? email}) async {
+  Future<bool> register(
+    String username,
+    String password,
+    String fullName, {
+    String? pin,
+    String? email,
+    String role = 'client',
+  }) async {
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     int? onlineUserId;
@@ -230,6 +314,7 @@ class AuthProvider extends ChangeNotifier {
     // 2. Save in local SQLite
     final existingUser = await DatabaseHelper.instance.getUser(username);
     if (existingUser != null) {
+      _errorMessage = 'Username already exists.';
       _isLoading = false;
       notifyListeners();
       return false;
@@ -240,7 +325,10 @@ class AuthProvider extends ChangeNotifier {
       username: username,
       password: password,
       fullName: fullName,
+      email: email,
       pin: pin,
+      role: role,
+      isActive: true,
       createdAt: DateTime.now(),
     );
 
@@ -258,8 +346,20 @@ class AuthProvider extends ChangeNotifier {
     return false;
   }
 
+  Future<void> reloadCurrentUser() async {
+    if (_currentUser != null) {
+      final updated = await DatabaseHelper.instance.getUser(_currentUser!.username);
+      if (updated != null) {
+        _currentUser = updated;
+        notifyListeners();
+      }
+    }
+  }
+
   Future<void> logout() async {
-    await ApiService.instance.logout();
+    try {
+      await ApiService.instance.logout();
+    } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('logged_in_username');
     _currentUser = null;

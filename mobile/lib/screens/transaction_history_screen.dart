@@ -1457,11 +1457,14 @@ class _TransactionCard extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            'Order #${transaction.id}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
+                          Flexible(
+                            child: Text(
+                              'Order #${transaction.id}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           if (transaction.discount > 0) ...[

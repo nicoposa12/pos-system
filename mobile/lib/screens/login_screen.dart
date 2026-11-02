@@ -40,9 +40,10 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
       HapticFeedback.vibrate();
+      final errorMsg = context.read<AuthProvider>().errorMessage ?? 'Invalid username or password';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Invalid username or password'),
+        SnackBar(
+          content: Text(errorMsg),
           backgroundColor: AppTheme.accentRose,
         ),
       );
@@ -339,8 +340,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 24),
 
                       // Footer Link
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           const Text(
                             "Don't have an account?",

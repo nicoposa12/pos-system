@@ -9,6 +9,7 @@ class AppTheme {
   static const Color accentOrange = Color(0xFFFF6B3D); // TindaKo Coral
   static const Color accentOrangeDark = Color(0xFFE85A2D);
   static const Color accentIndigo = Color(0xFF6366F1); // Secondary actions
+  static const Color accentPurple = Color(0xFF8B5CF6); // Purple admin
   static const Color accentTeal = Color(0xFF10B981); // Emerald success
   static const Color accentAmber = Color(0xFFF59E0B); // Warning / Low stock
   static const Color accentRose = Color(0xFFF43F5E); // Danger / Out of stock
@@ -59,6 +60,12 @@ class AppTheme {
     end: Alignment.bottomRight,
   );
 
+  static const LinearGradient roseGradient = LinearGradient(
+    colors: [Color(0xFFF43F5E), Color(0xFFFB7185)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   // ── Spacing & Radii (8dp Grid) ──
   static const double paddingXs = 4.0;
   static const double paddingSm = 8.0;
@@ -95,6 +102,10 @@ class AppTheme {
       Theme.of(context).brightness == Brightness.dark
           ? borderDark
           : borderLight;
+
+  static Color cardBackground(BuildContext context) =>
+      Theme.of(context).cardTheme.color ??
+      (Theme.of(context).brightness == Brightness.dark ? cardDark : cardLight);
 
   static Color subtleSurface(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark

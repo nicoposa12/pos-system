@@ -12,6 +12,7 @@ import '../providers/transaction_provider.dart';
 import '../widgets/product_image_view.dart';
 import '../widgets/skeleton.dart';
 import 'add_edit_product_screen.dart';
+import 'client_management_screen.dart';
 import 'product_list_screen.dart';
 import 'settings_screen.dart';
 import 'transaction_history_screen.dart';
@@ -195,6 +196,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                   actions: [
+                    if (user?.isAdmin == true)
+                      IconButton(
+                        icon: Icon(Icons.admin_panel_settings_rounded, size: 22, color: AppTheme.accentPurple),
+                        tooltip: 'Client Management',
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ClientManagementScreen(),
+                          ),
+                        ),
+                      ),
                     if (user?.pin != null)
                       IconButton(
                         icon: const Icon(Icons.lock_outline_rounded, size: 22),

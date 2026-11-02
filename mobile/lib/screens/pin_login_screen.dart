@@ -101,6 +101,15 @@ class _PinLoginScreenState extends State<PinLoginScreen>
     } else {
       HapticFeedback.vibrate();
       _shakeController.forward(from: 0);
+      final errorMsg = context.read<AuthProvider>().errorMessage;
+      if (errorMsg != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: AppTheme.accentRose,
+          ),
+        );
+      }
       setState(() {
         _hasError = true;
         _pin = '';

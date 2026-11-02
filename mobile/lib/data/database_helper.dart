@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 13,
+      version: 14,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -118,6 +118,17 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE transactions ADD COLUMN payment_method TEXT DEFAULT "cash"');
       } catch (_) {}
     }
+    if (oldVersion < 14) {
+      try {
+        await db.execute('ALTER TABLE users ADD COLUMN email TEXT');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE users ADD COLUMN role TEXT DEFAULT "client"');
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1');
+      } catch (_) {}
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -133,6 +144,9 @@ class DatabaseHelper {
         password $textType,
         pin TEXT,
         full_name $textType,
+        email TEXT,
+        role TEXT DEFAULT 'client',
+        is_active INTEGER DEFAULT 1,
         created_at $textType
       )
     ''');
@@ -266,6 +280,150 @@ class DatabaseHelper {
     final result = await db.rawQuery('SELECT COUNT(*) as count FROM users');
     final count = Sqflite.firstIntValue(result) ?? 0;
     return count > 0;
+  }
+
+  Future<List<User>> getAllUsers({String? search, String? role, bool? isActive}) async {
+    final db = await instance.database;
+    List<String> whereClauses = [];
+    List<dynamic> whereArgs = [];
+
+    if (search != null && search.trim().isNotEmpty) {
+      final term = '%${search.trim()}%';
+      whereClauses.add('(username LIKE ? OR full_name LIKE ? OR email LIKE ?)');
+      whereArgs.addAll([term, term, term]);
+    }
+
+    if (role != null && role.isNotEmpty) {
+      whereClauses.add('role = ?');
+      whereArgs.add(role);
+    }
+
+    if (isActive != null) {
+      whereClauses.add('is_active = ?');
+      whereArgs.add(isActive ? 1 : 0);
+    }
+
+    final whereString = whereClauses.isNotEmpty ? whereClauses.join(' AND ') : null;
+
+    final maps = await db.query(
+      'users',
+      where: whereString,
+      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
+      orderBy: 'created_at DESC',
+    );
+
+    return maps.map((m) => User.fromMap(m)).toList();
+  }
+
+  Future<int> updateUser(User user) async {
+    final db = await instance.database;
+    return await db.update(
+      'users',
+      user.toMap(),
+      where: 'id = ?',
+      whereArgs: [user.id],
+    );
+  }
+
+  Future<int> updateUserStatus(int userId, bool isActive) async {
+    final db = await instance.database;
+    return await db.update(
+      'users',
+      {'is_active': isActive ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  Future<int> updateUserCredentials(int userId, {String? password, String? pin}) async {
+    final db = await instance.database;
+    Map<String, dynamic> values = {};
+    if (password != null && password.isNotEmpty) {
+      values['password'] = password;
+    }
+    if (pin != null) {
+      values['pin'] = pin.isNotEmpty ? pin : null;
+    }
+    if (values.isEmpty) return 0;
+
+    return await db.update(
+      'users',
+      values,
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
+  }
+
+  Future<int> deleteUser(int userId) async {
+    final db = await instance.database;
+    return await db.transaction((txn) async {
+      // Delete user's returns
+      await txn.delete('returns', where: 'user_id = ?', whereArgs: [userId]);
+      // Delete user's debts
+      await txn.delete('debts', where: 'user_id = ?', whereArgs: [userId]);
+      // Delete user's transactions and transaction_items
+      final txns = await txn.query('transactions', columns: ['id'], where: 'user_id = ?', whereArgs: [userId]);
+      for (var t in txns) {
+        final txId = t['id'];
+        await txn.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [txId]);
+      }
+      await txn.delete('transactions', where: 'user_id = ?', whereArgs: [userId]);
+      // Delete user's products
+      await txn.delete('products', where: 'user_id = ?', whereArgs: [userId]);
+      // Delete user
+      return await txn.delete('users', where: 'id = ?', whereArgs: [userId]);
+    });
+  }
+
+  Future<Map<String, dynamic>> getUserStats(int userId) async {
+    final db = await instance.database;
+    
+    // Total products
+    final prodRes = await db.rawQuery('SELECT COUNT(*) as count FROM products WHERE user_id = ?', [userId]);
+    final productsCount = Sqflite.firstIntValue(prodRes) ?? 0;
+
+    // Total transactions & revenue
+    final txRes = await db.rawQuery(
+      'SELECT COUNT(*) as count, COALESCE(SUM(total_amount), 0.0) as revenue FROM transactions WHERE user_id = ?',
+      [userId],
+    );
+    final txCount = Sqflite.firstIntValue(txRes) ?? 0;
+    final totalRevenue = txRes.isNotEmpty ? (txRes.first['revenue'] as num).toDouble() : 0.0;
+
+    // Unpaid debts count
+    final debtRes = await db.rawQuery('SELECT COUNT(*) as count FROM debts WHERE user_id = ? AND is_paid = 0', [userId]);
+    final debtsCount = Sqflite.firstIntValue(debtRes) ?? 0;
+
+    return {
+      'products_count': productsCount,
+      'transactions_count': txCount,
+      'total_sales': totalRevenue,
+      'debts_count': debtsCount,
+    };
+  }
+
+  Future<void> ensureDefaultAdmin() async {
+    final db = await instance.database;
+    final existingAdmin = await db.query(
+      'users',
+      where: 'role = ? OR username = ?',
+      whereArgs: ['admin', 'admin'],
+      limit: 1,
+    );
+
+    if (existingAdmin.isEmpty) {
+      final adminUser = User(
+        username: 'admin',
+        password: 'adminpassword',
+        pin: '9999',
+        fullName: 'System Administrator',
+        email: 'admin@tindakopos.local',
+        role: 'admin',
+        isActive: true,
+        createdAt: DateTime.now(),
+      );
+      await db.insert('users', adminUser.toMap());
+    }
   }
 
   // --- Product CRUD (user-scoped) ---

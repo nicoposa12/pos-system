@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DebtController;
 use App\Http\Controllers\Api\ProductController;
@@ -41,4 +42,15 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Offline Batch Sync
     Route::post('/sync', [SyncController::class, 'syncOfflineTransactions']);
+
+    // Admin Client Management
+    Route::middleware('admin')->prefix('admin')->group(function () {
+        Route::get('/clients', [AdminController::class, 'index']);
+        Route::post('/clients', [AdminController::class, 'store']);
+        Route::get('/clients/{id}', [AdminController::class, 'show']);
+        Route::put('/clients/{id}', [AdminController::class, 'update']);
+        Route::patch('/clients/{id}/toggle-status', [AdminController::class, 'toggleStatus']);
+        Route::post('/clients/{id}/reset-credentials', [AdminController::class, 'resetCredentials']);
+        Route::delete('/clients/{id}', [AdminController::class, 'destroy']);
+    });
 });

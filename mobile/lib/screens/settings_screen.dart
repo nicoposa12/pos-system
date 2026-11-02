@@ -12,6 +12,7 @@ import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
 import '../services/sync_service.dart';
+import 'client_management_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -204,13 +205,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               ),
                               const SizedBox(height: 2),
-                              Text(
-                                '@${user.username}',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.65),
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                              Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 8,
+                                children: [
+                                  Text(
+                                    '@${user.username}',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.65),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  if (user.isAdmin)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.accentPurple.withValues(alpha: 0.25),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: AppTheme.accentPurple.withValues(alpha: 0.5)),
+                                      ),
+                                      child: Text(
+                                        'ADMIN',
+                                        style: TextStyle(
+                                          color: AppTheme.accentPurple,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ],
                           ),
@@ -256,6 +281,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
+
+                if (auth.isAdmin) ...[
+                  const SizedBox(height: 24),
+                  const _SettingsSectionLabel('ADMINISTRATION'),
+                  const SizedBox(height: 8),
+                  _SettingsGroupCard(
+                    children: [
+                      _SettingsTile(
+                        icon: Icons.admin_panel_settings_rounded,
+                        iconColor: AppTheme.accentPurple,
+                        title: 'Manage Client Accounts',
+                        subtitle: 'View, edit, activate/deactivate client stores and view sales',
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ClientManagementScreen()),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
 
                 const SizedBox(height: 24),
 

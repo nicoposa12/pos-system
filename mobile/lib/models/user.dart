@@ -4,6 +4,9 @@ class User {
   final String password;
   final String? pin;
   final String fullName;
+  final String? email;
+  final String role;
+  final bool isActive;
   final DateTime createdAt;
 
   User({
@@ -12,8 +15,13 @@ class User {
     required this.password,
     this.pin,
     required this.fullName,
+    this.email,
+    this.role = 'client',
+    this.isActive = true,
     required this.createdAt,
   });
+
+  bool get isAdmin => role.toLowerCase() == 'admin';
 
   Map<String, dynamic> toMap() {
     return {
@@ -22,6 +30,9 @@ class User {
       'password': password,
       'pin': pin,
       'full_name': fullName,
+      'email': email,
+      'role': role,
+      'is_active': isActive ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -29,11 +40,16 @@ class User {
   factory User.fromMap(Map<String, dynamic> map) {
     return User(
       id: map['id'],
-      username: map['username'],
-      password: map['password'],
+      username: map['username'] ?? '',
+      password: map['password'] ?? '',
       pin: map['pin'],
-      fullName: map['full_name'],
-      createdAt: DateTime.parse(map['created_at']),
+      fullName: map['full_name'] ?? '',
+      email: map['email'],
+      role: map['role'] ?? 'client',
+      isActive: (map['is_active'] == null || map['is_active'] == 1 || map['is_active'] == true),
+      createdAt: map['created_at'] != null
+          ? DateTime.tryParse(map['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
     );
   }
 
@@ -43,6 +59,9 @@ class User {
     String? password,
     String? pin,
     String? fullName,
+    String? email,
+    String? role,
+    bool? isActive,
     DateTime? createdAt,
   }) {
     return User(
@@ -51,6 +70,9 @@ class User {
       password: password ?? this.password,
       pin: pin ?? this.pin,
       fullName: fullName ?? this.fullName,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
     );
   }

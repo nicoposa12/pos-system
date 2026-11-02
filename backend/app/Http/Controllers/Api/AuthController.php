@@ -40,6 +40,8 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'username' => $user->username,
                 'full_name' => $user->full_name,
+                'role' => $user->role ?? 'client',
+                'is_active' => (bool) ($user->is_active ?? true),
                 'has_pin' => !empty($user->pin),
             ],
         ], 201);
@@ -63,6 +65,12 @@ class AuthController extends Controller
             ]);
         }
 
+        if (!$user->is_active) {
+            throw ValidationException::withMessages([
+                'username' => ['This account has been deactivated. Please contact an administrator.'],
+            ]);
+        }
+
         // Revoke previous tokens optionally or allow multi-device
         $token = $user->createToken('mobile_pos')->plainTextToken;
 
@@ -73,6 +81,8 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'username' => $user->username,
                 'full_name' => $user->full_name,
+                'role' => $user->role ?? 'client',
+                'is_active' => (bool) $user->is_active,
                 'has_pin' => !empty($user->pin),
             ],
         ]);
@@ -109,6 +119,12 @@ class AuthController extends Controller
             ], 401);
         }
 
+        if (!$matchedUser->is_active) {
+            return response()->json([
+                'message' => 'This account has been deactivated. Please contact an administrator.',
+            ], 403);
+        }
+
         $token = $matchedUser->createToken('mobile_pos')->plainTextToken;
 
         return response()->json([
@@ -118,6 +134,8 @@ class AuthController extends Controller
                 'id' => $matchedUser->id,
                 'username' => $matchedUser->username,
                 'full_name' => $matchedUser->full_name,
+                'role' => $matchedUser->role ?? 'client',
+                'is_active' => (bool) $matchedUser->is_active,
                 'has_pin' => true,
             ],
         ]);
@@ -154,6 +172,8 @@ class AuthController extends Controller
                 'username' => $user->username,
                 'full_name' => $user->full_name,
                 'email' => $user->email,
+                'role' => $user->role ?? 'client',
+                'is_active' => (bool) $user->is_active,
                 'has_pin' => !empty($user->pin),
             ],
         ]);

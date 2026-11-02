@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
+import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/settings_provider.dart';
+import 'client_management_screen.dart';
 import 'dashboard_screen.dart';
 import 'pos_screen.dart';
 import 'product_list_screen.dart';
@@ -181,17 +183,37 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     alignment: Alignment.bottomCenter,
                     child: Padding(
                       padding: const EdgeInsets.only(bottom: 16),
-                      child: IconButton(
-                        tooltip: 'Settings',
-                        icon: const Icon(Icons.tune_rounded),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const SettingsScreen(),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (context.watch<AuthProvider>().isAdmin) ...[
+                            IconButton(
+                              tooltip: 'Client Management',
+                              icon: Icon(Icons.admin_panel_settings_rounded, color: AppTheme.accentPurple),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ClientManagementScreen(),
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
+                            const SizedBox(height: 8),
+                          ],
+                          IconButton(
+                            tooltip: 'Settings',
+                            icon: const Icon(Icons.tune_rounded),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const SettingsScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ),

@@ -17,6 +17,8 @@ class User extends Authenticatable
         'email',
         'password',
         'pin',
+        'role',
+        'is_active',
     ];
 
     protected $hidden = [
@@ -29,7 +31,18 @@ class User extends Authenticatable
     {
         return [
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isClient(): bool
+    {
+        return $this->role !== 'admin';
     }
 
     public function products()
