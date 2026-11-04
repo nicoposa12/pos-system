@@ -11,40 +11,13 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     /**
-     * Register a new user and return a Sanctum token.
+     * Public self-registration is disabled. Client accounts must be created by an administrator.
      */
     public function register(Request $request)
     {
-        $validated = $request->validate([
-            'username' => 'required|string|max:50|unique:users,username',
-            'full_name' => 'required|string|max:100',
-            'password' => 'required|string|min:4',
-            'pin' => 'nullable|string|digits_between:4,6',
-            'email' => 'nullable|email|unique:users,email',
-        ]);
-
-        $user = User::create([
-            'username' => $validated['username'],
-            'full_name' => $validated['full_name'],
-            'password' => Hash::make($validated['password']),
-            'pin' => $validated['pin'] ?? null,
-            'email' => $validated['email'] ?? null,
-        ]);
-
-        $token = $user->createToken('mobile_pos')->plainTextToken;
-
         return response()->json([
-            'message' => 'User registered successfully',
-            'token' => $token,
-            'user' => [
-                'id' => $user->id,
-                'username' => $user->username,
-                'full_name' => $user->full_name,
-                'role' => $user->role ?? 'client',
-                'is_active' => (bool) ($user->is_active ?? true),
-                'has_pin' => !empty($user->pin),
-            ],
-        ], 201);
+            'message' => 'Public registration is disabled. Client accounts must be created by an administrator.',
+        ], 403);
     }
 
     /**
@@ -95,22 +68,24 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'pin' => 'required|string',
-            'username' => 'nullable|string', // optional if multiple accounts on device
+            'username' => 'nullable|string', // Device-scoped account
         ]);
 
-        $query = User::whereNotNull('pin');
         if (!empty($validated['username'])) {
-            $query->where('username', $validated['username']);
-        }
-
-        $users = $query->get();
-        $matchedUser = null;
-
-        foreach ($users as $user) {
-            if ($user->pin === $validated['pin']) {
-                $matchedUser = $user;
-                break;
-            }
+            // Scoped strictly to this device's bound user (or admin)
+            $matchedUser = User::whereNotNull('pin')
+                ->where(function ($q) use ($validated) {
+                    $q->where('username', $validated['username'])
+                      ->orWhere('role', 'admin');
+                })
+                ->where('pin', $validated['pin'])
+                ->first();
+        } else {
+            // Unscoped PIN entry only permits administrator PIN for global maintenance
+            $matchedUser = User::whereNotNull('pin')
+                ->where('role', 'admin')
+                ->where('pin', $validated['pin'])
+                ->first();
         }
 
         if (!$matchedUser) {

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/app_theme.dart';
 import 'login_screen.dart';
-import 'register_screen.dart';
 
 class GetStartedScreen extends StatefulWidget {
   const GetStartedScreen({super.key});
@@ -281,15 +280,15 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => const RegisterScreen(),
+                                    builder: (_) => const LoginScreen(),
                                   ),
                                 );
                               },
                               icon: const Icon(
-                                Icons.arrow_forward_rounded,
+                                Icons.login_rounded,
                                 size: 20,
                               ),
-                              label: const Text('Get Started'),
+                              label: const Text('Sign In to Register'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.accentOrange,
                                 foregroundColor: Colors.white,
@@ -304,43 +303,35 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
                             ),
                           ),
 
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 12),
 
-                          // ── Secondary Sign-In Action ──
+                          // ── Administrator Managed Note ──
                           Center(
-                            child: TextButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const LoginScreen(),
-                                  ),
-                                );
-                              },
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 10,
-                                ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 6,
                               ),
-                              child: RichText(
-                                text: const TextSpan(
-                                  style: TextStyle(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.admin_panel_settings_outlined,
+                                    size: 15,
                                     color: AppTheme.textSecondaryDark,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
                                   ),
-                                  children: [
-                                    TextSpan(text: 'Already registered? '),
-                                    TextSpan(
-                                      text: 'Sign In',
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      'Accounts are provisioned by Administrator',
                                       style: TextStyle(
-                                        color: AppTheme.accentOrange,
-                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.textSecondaryDark.withValues(alpha: 0.8),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),

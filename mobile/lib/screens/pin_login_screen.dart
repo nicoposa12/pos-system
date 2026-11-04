@@ -117,17 +117,18 @@ class _PinLoginScreenState extends State<PinLoginScreen>
     }
   }
 
-  void _handleFooterAction() {
-    if (widget.isLockMode) {
-      context.read<AuthProvider>().logout();
-    } else if (Navigator.canPop(context)) {
+  void _usePasswordLogin() {
+    context.read<AuthProvider>().setPreferPinLogin(false);
+    if (Navigator.canPop(context)) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
-    } else {
-      context.read<AuthProvider>().setPreferPinLogin(false);
     }
+  }
+
+  void _signOut() {
+    context.read<AuthProvider>().logout();
   }
 
   @override
@@ -259,10 +260,12 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                               const SizedBox(height: 4),
                               Text(
                                 _hasError
-                                    ? 'Incorrect PIN. Please try again.'
+                                    ? 'Incorrect PIN for this register.'
                                     : (widget.isLockMode
                                           ? 'Unlock to resume your session'
-                                          : 'Fast cashier sign-in'),
+                                          : (auth.isDeviceConfigured
+                                              ? 'Terminal linked to @${auth.deviceAccountUsername}'
+                                              : 'Fast cashier sign-in')),
                                 style: TextStyle(
                                   color: _hasError
                                       ? AppTheme.accentRose
@@ -374,27 +377,66 @@ class _PinLoginScreenState extends State<PinLoginScreen>
 
                               SizedBox(height: compact ? 14 : 22),
 
-                              // Footer Action
-                              TextButton.icon(
-                                onPressed: _handleFooterAction,
-                                icon: Icon(
-                                  widget.isLockMode
-                                      ? Icons.logout_rounded
-                                      : Icons.password_rounded,
-                                  size: 18,
-                                  color: AppTheme.textSecondaryDark,
+                              // Footer Actions
+                              if (widget.isLockMode) ...[
+                                Wrap(
+                                  alignment: WrapAlignment.center,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    TextButton.icon(
+                                      onPressed: _usePasswordLogin,
+                                      icon: const Icon(
+                                        Icons.password_rounded,
+                                        size: 18,
+                                        color: AppTheme.textSecondaryDark,
+                                      ),
+                                      label: const Text(
+                                        'Use Password Login',
+                                        style: TextStyle(
+                                          color: AppTheme.textPrimaryDark,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                    TextButton.icon(
+                                      onPressed: _signOut,
+                                      icon: const Icon(
+                                        Icons.logout_rounded,
+                                        size: 18,
+                                        color: AppTheme.accentRose,
+                                      ),
+                                      label: const Text(
+                                        'Sign Out',
+                                        style: TextStyle(
+                                          color: AppTheme.accentRose,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                label: Text(
-                                  widget.isLockMode
-                                      ? 'Sign Out of Register'
-                                      : 'Use Password Login',
-                                  style: const TextStyle(
-                                    color: AppTheme.textPrimaryDark,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
+                              ] else ...[
+                                TextButton.icon(
+                                  onPressed: _usePasswordLogin,
+                                  icon: const Icon(
+                                    Icons.password_rounded,
+                                    size: 18,
+                                    color: AppTheme.textSecondaryDark,
+                                  ),
+                                  label: const Text(
+                                    'Use Password Login',
+                                    style: TextStyle(
+                                      color: AppTheme.textPrimaryDark,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ),

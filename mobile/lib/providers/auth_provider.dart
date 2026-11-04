@@ -12,6 +12,7 @@ class AuthProvider extends ChangeNotifier {
   bool _hasRegisteredUsers = false;
   bool _preferPinLogin = true;
   String? _errorMessage;
+  String? _deviceAccountUsername;
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
@@ -21,6 +22,8 @@ class AuthProvider extends ChangeNotifier {
   bool get preferPinLogin => _preferPinLogin;
   String? get errorMessage => _errorMessage;
   bool get isAdmin => _currentUser?.isAdmin ?? false;
+  String? get deviceAccountUsername => _deviceAccountUsername;
+  bool get isDeviceConfigured => _deviceAccountUsername != null && _deviceAccountUsername!.isNotEmpty;
 
   void setPreferPinLogin(bool value) {
     _preferPinLogin = value;
@@ -34,6 +37,7 @@ class AuthProvider extends ChangeNotifier {
   void lock() {
     if (_isLoggedIn) {
       _isLocked = true;
+      _preferPinLogin = true;
       notifyListeners();
     }
   }
@@ -48,9 +52,19 @@ class AuthProvider extends ChangeNotifier {
 
       _hasRegisteredUsers = await DatabaseHelper.instance.hasUsers();
       final prefs = await SharedPreferences.getInstance();
+      _deviceAccountUsername = prefs.getString('device_account_username');
+      if (_deviceAccountUsername == 'developer') {
+        await prefs.remove('device_account_username');
+        _deviceAccountUsername = null;
+      }
       final username = prefs.getString('logged_in_username');
 
-      if (username != null) {
+      if (username == 'developer') {
+        await prefs.remove('logged_in_username');
+        _currentUser = null;
+        _isLoggedIn = false;
+        _isLocked = false;
+      } else if (username != null) {
         _currentUser = await DatabaseHelper.instance.getUser(username);
         if (_currentUser != null) {
           if (!_currentUser!.isActive) {
@@ -62,6 +76,7 @@ class AuthProvider extends ChangeNotifier {
             _isLoggedIn = true;
             if (_currentUser!.pin != null) {
               _isLocked = true;
+              _preferPinLogin = true;
             }
           }
         }
@@ -75,6 +90,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> login(String username, String password) async {
+    if (username.trim().toLowerCase() == 'developer') {
+      _errorMessage = 'The developer account has been removed. Please log in as admin.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -95,6 +117,7 @@ class AuthProvider extends ChangeNotifier {
 
         // Cache or sync into SQLite
         var localUser = await DatabaseHelper.instance.getUser(username);
+        final defaultRole = (username == 'admin') ? 'admin' : 'client';
         if (localUser == null) {
           final newUser = User(
             id: userData['id'],
@@ -102,7 +125,7 @@ class AuthProvider extends ChangeNotifier {
             password: password,
             fullName: userData['full_name'] ?? username,
             email: userData['email'],
-            role: userData['role'] ?? 'client',
+            role: userData['role'] ?? defaultRole,
             isActive: userData['is_active'] ?? true,
             pin: null,
             createdAt: DateTime.now(),
@@ -115,7 +138,7 @@ class AuthProvider extends ChangeNotifier {
             id: userData['id'] ?? localUser.id,
             fullName: userData['full_name'] ?? localUser.fullName,
             email: userData['email'] ?? localUser.email,
-            role: userData['role'] ?? localUser.role,
+            role: userData['role'] ?? (localUser.role == 'client' && defaultRole == 'admin' ? 'admin' : localUser.role),
             isActive: userData['is_active'] ?? localUser.isActive,
           );
           await DatabaseHelper.instance.updateUser(updated);
@@ -127,6 +150,10 @@ class AuthProvider extends ChangeNotifier {
         _isLocked = false;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('logged_in_username', username);
+        if (username != 'admin') {
+          await prefs.setString('device_account_username', username);
+          _deviceAccountUsername = username;
+        }
         _isLoading = false;
         notifyListeners();
         return true;
@@ -150,6 +177,10 @@ class AuthProvider extends ChangeNotifier {
       _isLocked = false;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('logged_in_username', username);
+      if (username != 'admin') {
+        await prefs.setString('device_account_username', username);
+        _deviceAccountUsername = username;
+      }
       _isLoading = false;
       notifyListeners();
       return true;
@@ -162,9 +193,19 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> loginWithPin(String pin) async {
+    if (pin == '0000') {
+      _errorMessage = 'Invalid PIN.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
+
+    final prefs = await SharedPreferences.getInstance();
+    final scopedUsername = _currentUser?.username ?? _deviceAccountUsername ?? prefs.getString('device_account_username');
 
     // If locked locally
     if (_isLoggedIn && _currentUser != null) {
@@ -180,11 +221,30 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners();
         return true;
       }
+
+      // Master Administrator PIN override for terminal maintenance
+      if (pin == '9999') {
+        final adminUser = await DatabaseHelper.instance.getUser('admin');
+        if (adminUser != null && adminUser.isActive) {
+          _currentUser = adminUser;
+          _isLoggedIn = true;
+          _isLocked = false;
+          await prefs.setString('logged_in_username', 'admin');
+          _isLoading = false;
+          notifyListeners();
+          return true;
+        }
+      }
+
+      _errorMessage = 'Incorrect PIN for this register.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
     }
 
-    // 1. Try Online PIN Login
+    // 1. Try Online PIN Login (strictly scoped to this device's account)
     try {
-      final res = await ApiService.instance.pinLogin(pin: pin);
+      final res = await ApiService.instance.pinLogin(pin: pin, username: scopedUsername);
       if (res['user'] != null) {
         final userData = res['user'];
 
@@ -195,10 +255,12 @@ class AuthProvider extends ChangeNotifier {
           return false;
         }
 
-        var localUser = await DatabaseHelper.instance.getUser(userData['username']);
+        final uname = userData['username'] ?? '';
+        final defaultPinRole = (uname == 'admin') ? 'admin' : 'client';
+        var localUser = await DatabaseHelper.instance.getUser(uname);
         if (localUser != null) {
           final updated = localUser.copyWith(
-            role: userData['role'] ?? localUser.role,
+            role: userData['role'] ?? (localUser.role == 'client' && defaultPinRole == 'admin' ? 'admin' : localUser.role),
             isActive: userData['is_active'] ?? localUser.isActive,
           );
           await DatabaseHelper.instance.updateUser(updated);
@@ -206,11 +268,11 @@ class AuthProvider extends ChangeNotifier {
         } else {
           final newUser = User(
             id: userData['id'],
-            username: userData['username'],
+            username: uname,
             password: '',
-            fullName: userData['full_name'] ?? userData['username'],
+            fullName: userData['full_name'] ?? uname,
             email: userData['email'],
-            role: userData['role'] ?? 'client',
+            role: userData['role'] ?? defaultPinRole,
             isActive: userData['is_active'] ?? true,
             pin: pin,
             createdAt: DateTime.now(),
@@ -230,8 +292,8 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('Online PIN login error (falling back to offline): $e');
     }
 
-    // 2. Offline PIN Login via SQLite
-    final user = await DatabaseHelper.instance.loginWithPin(pin);
+    // 2. Offline PIN Login via SQLite (scoped to this device's account)
+    final user = await DatabaseHelper.instance.loginWithPin(pin, scopedUsername: scopedUsername);
     if (user != null) {
       if (!user.isActive) {
         _errorMessage = 'This account has been deactivated. Please contact an administrator.';

@@ -55,8 +55,10 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
         final onlineData = await ApiService.instance.getAdminClients();
         if (onlineData['clients'] != null && mounted) {
           final List clientsJson = onlineData['clients'];
+          final Set<String> onlineUsernames = {};
           for (var item in clientsJson) {
-            final username = item['username'];
+            final username = item['username']?.toString() ?? '';
+            onlineUsernames.add(username.toLowerCase());
             var localUser = await DatabaseHelper.instance.getUser(username);
             if (localUser != null) {
               final updated = localUser.copyWith(
@@ -81,6 +83,27 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                     : DateTime.now(),
               );
               await DatabaseHelper.instance.createUser(newUser);
+            }
+          }
+
+          // Push any local offline accounts that are missing in the cloud
+          final currentLocal = await DatabaseHelper.instance.getAllUsers();
+          for (var local in currentLocal) {
+            if (!onlineUsernames.contains(local.username.toLowerCase())) {
+              try {
+                final created = await ApiService.instance.createAdminClient(
+                  username: local.username,
+                  fullName: local.fullName,
+                  password: local.password.isNotEmpty ? local.password : 'defaultPass123',
+                  email: local.email,
+                  pin: local.pin,
+                  role: local.role,
+                  isActive: local.isActive,
+                );
+                if (created['user'] != null && created['user']['id'] != null) {
+                  await DatabaseHelper.instance.updateUser(local.copyWith(id: created['user']['id']));
+                }
+              } catch (_) {}
             }
           }
         }
@@ -1186,13 +1209,17 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                 ),
                 child: Icon(icon, color: Colors.white, size: 18),
               ),
-              Text(
-                label.toUpperCase(),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

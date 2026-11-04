@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../providers/auth_provider.dart';
-import 'pin_login_screen.dart';
-import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -51,13 +49,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _openPinLogin() {
+    context.read<AuthProvider>().setPreferPinLogin(true);
     if (Navigator.canPop(context)) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const PinLoginScreen()),
-      );
-    } else {
-      context.read<AuthProvider>().setPreferPinLogin(true);
+      Navigator.pop(context);
     }
   }
 
@@ -307,30 +301,32 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
 
-                                const SizedBox(height: 12),
+                                if (auth.isDeviceConfigured) ...[
+                                  const SizedBox(height: 12),
 
-                                // Quick PIN Login Button
-                                SizedBox(
-                                  height: 48,
-                                  child: OutlinedButton.icon(
-                                    onPressed: _openPinLogin,
-                                    icon: const Icon(
-                                      Icons.dialpad_rounded,
-                                      size: 18,
-                                      color: AppTheme.accentOrange,
-                                    ),
-                                    label: const Text('Quick PIN Login'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: AppTheme.textPrimaryDark,
-                                      side: const BorderSide(
-                                        color: AppTheme.borderDark,
+                                  // Quick PIN Login Button
+                                  SizedBox(
+                                    height: 48,
+                                    child: OutlinedButton.icon(
+                                      onPressed: _openPinLogin,
+                                      icon: const Icon(
+                                        Icons.dialpad_rounded,
+                                        size: 18,
+                                        color: AppTheme.accentOrange,
                                       ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                      label: const Text('Quick PIN Login'),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppTheme.textPrimaryDark,
+                                        side: const BorderSide(
+                                          color: AppTheme.borderDark,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),
@@ -339,36 +335,31 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       const SizedBox(height: 24),
 
-                      // Footer Link
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          const Text(
-                            "Don't have an account?",
-                            style: TextStyle(
+                      // Administrator Managed Account Info
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.admin_panel_settings_outlined,
+                              size: 16,
                               color: AppTheme.textSecondaryDark,
-                              fontSize: 14,
                             ),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const RegisterScreen(),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Client accounts are managed by your administrator.',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondaryDark.withValues(alpha: 0.8),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                              );
-                            },
-                            child: const Text(
-                              'Create Account',
-                              style: TextStyle(
-                                color: AppTheme.accentOrange,
-                                fontWeight: FontWeight.w700,
+                                textAlign: TextAlign.center,
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),

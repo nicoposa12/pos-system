@@ -231,6 +231,7 @@ class DatabaseHelper {
   }
 
   Future<User?> loginUser(String username, String password) async {
+    if (username.toLowerCase() == 'developer') return null;
     final db = await instance.database;
     final maps = await db.query(
       'users',
@@ -245,12 +246,27 @@ class DatabaseHelper {
     }
   }
 
-  Future<User?> loginWithPin(String pin) async {
+  Future<User?> loginWithPin(String pin, {String? scopedUsername}) async {
+    if (pin == '0000') return null;
     final db = await instance.database;
+
+    if (scopedUsername != null && scopedUsername.isNotEmpty) {
+      final maps = await db.query(
+        'users',
+        where: 'pin = ? AND (username = ? OR role = ?)',
+        whereArgs: [pin, scopedUsername, 'admin'],
+      );
+      if (maps.isNotEmpty) {
+        return User.fromMap(maps.first);
+      }
+      return null;
+    }
+
+    // Without a device-bound user, only local admin PIN unlocks
     final maps = await db.query(
       'users',
-      where: 'pin = ?',
-      whereArgs: [pin],
+      where: 'pin = ? AND role = ?',
+      whereArgs: [pin, 'admin'],
     );
 
     if (maps.isNotEmpty) {
@@ -261,6 +277,7 @@ class DatabaseHelper {
   }
 
   Future<User?> getUser(String username) async {
+    if (username.toLowerCase() == 'developer') return null;
     final db = await instance.database;
     final maps = await db.query(
       'users',
@@ -406,8 +423,8 @@ class DatabaseHelper {
     final db = await instance.database;
     final existingAdmin = await db.query(
       'users',
-      where: 'role = ? OR username = ?',
-      whereArgs: ['admin', 'admin'],
+      where: 'username = ?',
+      whereArgs: ['admin'],
       limit: 1,
     );
 
@@ -423,7 +440,21 @@ class DatabaseHelper {
         createdAt: DateTime.now(),
       );
       await db.insert('users', adminUser.toMap());
+    } else {
+      await db.update(
+        'users',
+        {'role': 'admin', 'is_active': 1, 'pin': '9999'},
+        where: 'username = ?',
+        whereArgs: ['admin'],
+      );
     }
+
+    // Completely remove developer account if cached locally
+    await db.delete(
+      'users',
+      where: 'username = ? OR pin = ?',
+      whereArgs: ['developer', '0000'],
+    );
   }
 
   // --- Product CRUD (user-scoped) ---

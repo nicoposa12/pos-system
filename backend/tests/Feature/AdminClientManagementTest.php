@@ -82,4 +82,66 @@ class AdminClientManagementTest extends TestCase
         ]);
         $loginRes->assertStatus(422);
     }
+
+    public function test_public_registration_is_blocked()
+    {
+        $response = $this->postJson('/api/auth/register', [
+            'username' => 'self_registered',
+            'full_name' => 'Self Registered',
+            'password' => 'password123',
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_pin_login_is_strictly_device_scoped()
+    {
+        // Store A and Store B both use PIN 5678
+        User::create([
+            'username' => 'store_a',
+            'full_name' => 'Store A',
+            'password' => 'pass123',
+            'pin' => '5678',
+            'role' => 'client',
+            'is_active' => true,
+        ]);
+
+        User::create([
+            'username' => 'store_b',
+            'full_name' => 'Store B',
+            'password' => 'pass123',
+            'pin' => '5678',
+            'role' => 'client',
+            'is_active' => true,
+        ]);
+
+        // Device A (scoped to store_a) using PIN 5678 must log into Store A
+        $resA = $this->postJson('/api/auth/pin-login', [
+            'pin' => '5678',
+            'username' => 'store_a',
+        ]);
+        $resA->assertStatus(200);
+        $this->assertEquals('store_a', $resA->json('user.username'));
+
+        // Device B (scoped to store_b) using PIN 5678 must log into Store B, NOT Store A
+        $resB = $this->postJson('/api/auth/pin-login', [
+            'pin' => '5678',
+            'username' => 'store_b',
+        ]);
+        $resB->assertStatus(200);
+        $this->assertEquals('store_b', $resB->json('user.username'));
+
+        // If Device A enters a random PIN (e.g. 9991), it fails
+        $resFail = $this->postJson('/api/auth/pin-login', [
+            'pin' => '9991',
+            'username' => 'store_a',
+        ]);
+        $resFail->assertStatus(401);
+
+        // An unscoped client PIN request fails
+        $resUnscoped = $this->postJson('/api/auth/pin-login', [
+            'pin' => '5678',
+        ]);
+        $resUnscoped->assertStatus(401);
+    }
 }

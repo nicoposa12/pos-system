@@ -200,19 +200,24 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
 
   Widget _buildCurrentScreen(AuthProvider auth) {
     if (!auth.isLoggedIn) {
-      if (auth.hasRegisteredUsers) {
+      if (auth.hasRegisteredUsers && auth.isDeviceConfigured) {
         if (auth.preferPinLogin) {
           return const PinLoginScreen();
         } else {
           return const LoginScreen();
         }
+      } else if (auth.hasRegisteredUsers && !auth.isDeviceConfigured) {
+        return const LoginScreen();
       } else {
         return const GetStartedScreen();
       }
     }
 
     if (auth.isLocked) {
-      return const PinLoginScreen();
+      if (!auth.preferPinLogin) {
+        return const LoginScreen();
+      }
+      return const PinLoginScreen(isLockMode: true);
     }
 
     return const MainNavigationScreen();

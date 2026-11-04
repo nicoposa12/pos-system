@@ -15,7 +15,6 @@ import 'package:tindako/screens/get_started_screen.dart';
 import 'package:tindako/screens/login_screen.dart';
 import 'package:tindako/screens/main_navigation_screen.dart';
 import 'package:tindako/screens/pin_login_screen.dart';
-import 'package:tindako/screens/register_screen.dart';
 import 'package:tindako/screens/settings_screen.dart';
 import 'package:tindako/widgets/receipt_dialog.dart';
 
@@ -54,6 +53,10 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   String? get errorMessage => null;
   @override
   bool get isAdmin => _user?.isAdmin ?? false;
+  @override
+  String? get deviceAccountUsername => _user?.username ?? 'testuser';
+  @override
+  bool get isDeviceConfigured => true;
 
   @override
   void setPreferPinLogin(bool value) {
@@ -174,6 +177,7 @@ class _TestTransactionProvider extends TransactionProvider {
 Widget _buildTestHarness({
   required Widget child,
   ThemeMode themeMode = ThemeMode.light,
+  AuthProvider? authProvider,
 }) {
   final now = DateTime.now();
   final testUser = User(
@@ -221,8 +225,8 @@ Widget _buildTestHarness({
 
   return MultiProvider(
     providers: [
-      ChangeNotifierProvider<AuthProvider>(
-        create: (_) => _TestAuthProvider(user: testUser),
+      ChangeNotifierProvider<AuthProvider>.value(
+        value: authProvider ?? _TestAuthProvider(user: testUser),
       ),
       ChangeNotifierProvider<ProductProvider>(
         create: (_) => _TestProductProvider(sampleProducts),
@@ -319,7 +323,6 @@ void main() {
       for (final screen in const <Widget>[
         GetStartedScreen(),
         LoginScreen(),
-        RegisterScreen(),
         PinLoginScreen(isLockMode: true),
         SettingsScreen(),
         AddEditProductScreen(),
@@ -371,5 +374,68 @@ void main() {
     expect(find.text('Discount'), findsOneWidget);
     expect(find.text('TOTAL'), findsOneWidget);
     expect(find.text('Done'), findsOneWidget);
+  });
+
+  testWidgets('PinLoginScreen toggles preferPinLogin when tapping Use Password Login', (
+    tester,
+  ) async {
+    final auth = _TestAuthProvider(
+      loggedIn: false,
+      hasUsers: true,
+      preferPin: true,
+    );
+
+    await tester.pumpWidget(
+      _buildTestHarness(
+        child: const PinLoginScreen(isLockMode: false),
+        authProvider: auth,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Use Password Login'), findsOneWidget);
+    expect(auth.preferPinLogin, isTrue);
+
+    await tester.tap(find.text('Use Password Login'));
+    await tester.pumpAndSettle();
+
+    expect(auth.preferPinLogin, isFalse);
+  });
+
+  testWidgets('PinLoginScreen in lock mode displays registered lock UI and sign out option', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final testUser = User(
+      id: 1,
+      username: 'admin',
+      password: 'password',
+      pin: '1234',
+      fullName: 'Super Admin',
+      createdAt: now,
+    );
+    final auth = _TestAuthProvider(
+      user: testUser,
+      loggedIn: true,
+      locked: true,
+      preferPin: true,
+    );
+
+    await tester.pumpWidget(
+      _buildTestHarness(
+        child: const PinLoginScreen(isLockMode: true),
+        authProvider: auth,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('REGISTER LOCKED'), findsOneWidget);
+    expect(find.text('Super Admin'), findsOneWidget);
+    expect(find.text('Use Password Login'), findsOneWidget);
+    expect(find.text('Sign Out'), findsOneWidget);
+
+    await tester.tap(find.text('Use Password Login'));
+    await tester.pumpAndSettle();
+    expect(auth.preferPinLogin, isFalse);
   });
 }
