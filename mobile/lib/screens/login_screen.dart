@@ -25,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+    if (context.read<AuthProvider>().isLoading) return;
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
 
@@ -278,24 +279,51 @@ class _LoginScreenState extends State<LoginScreen> {
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: AppTheme.accentOrange,
                                       foregroundColor: Colors.white,
+                                      disabledBackgroundColor:
+                                          AppTheme.accentOrange.withValues(
+                                            alpha: 0.85,
+                                          ),
+                                      disabledForegroundColor: Colors.white,
+                                      elevation: 0,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
                                     child: auth.isLoading
-                                        ? const SizedBox(
-                                            height: 22,
-                                            width: 22,
-                                            child: CircularProgressIndicator(
-                                              color: Colors.white,
-                                              strokeWidth: 2.5,
-                                            ),
+                                        ? const Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              SizedBox(
+                                                height: 20,
+                                                width: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2.4,
+                                                  valueColor:
+                                                      AlwaysStoppedAnimation<
+                                                          Color>(Colors.white),
+                                                ),
+                                              ),
+                                              SizedBox(width: 12),
+                                              Text(
+                                                'Signing in...',
+                                                style: TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Colors.white,
+                                                  letterSpacing: 0.2,
+                                                ),
+                                              ),
+                                            ],
                                           )
                                         : const Text(
                                             'Sign In',
                                             style: TextStyle(
                                               fontSize: 15,
                                               fontWeight: FontWeight.w700,
+                                              letterSpacing: 0.2,
                                             ),
                                           ),
                                   ),
@@ -308,7 +336,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   SizedBox(
                                     height: 48,
                                     child: OutlinedButton.icon(
-                                      onPressed: _openPinLogin,
+                                      onPressed: auth.isLoading
+                                          ? null
+                                          : _openPinLogin,
                                       icon: const Icon(
                                         Icons.dialpad_rounded,
                                         size: 18,
@@ -316,7 +346,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                       label: const Text('Quick PIN Login'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: AppTheme.textPrimaryDark,
+                                        foregroundColor:
+                                            AppTheme.textPrimaryDark,
                                         side: const BorderSide(
                                           color: AppTheme.borderDark,
                                         ),

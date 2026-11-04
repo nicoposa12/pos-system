@@ -7,6 +7,7 @@ import 'providers/cart_provider.dart';
 import 'providers/product_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/transaction_provider.dart';
+import 'screens/admin_navigation_screen.dart';
 import 'screens/get_started_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_navigation_screen.dart';
@@ -94,17 +95,24 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
     final auth = context.read<AuthProvider>();
 
     if (auth.isLoggedIn && auth.currentUser != null) {
-      final userId = auth.currentUser!.id!;
-      if (_lastSyncedUserId != userId) {
+      final userId = auth.currentUser!.id;
+      if (userId != null && _lastSyncedUserId != userId) {
         _lastSyncedUserId = userId;
-        SyncService.instance.init(userId);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          context.read<ProductProvider>().setUserId(userId);
-          context.read<CartProvider>().setUserId(userId);
-          context.read<TransactionProvider>().setUserId(userId);
-          context.read<SettingsProvider>().setUserId(userId);
-        });
+        if (!auth.isAdmin) {
+          SyncService.instance.init(userId);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            context.read<ProductProvider>().setUserId(userId);
+            context.read<CartProvider>().setUserId(userId);
+            context.read<TransactionProvider>().setUserId(userId);
+            context.read<SettingsProvider>().setUserId(userId);
+          });
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            context.read<SettingsProvider>().setUserId(userId);
+          });
+        }
       }
     } else if (_lastSyncedUserId != null) {
       _lastSyncedUserId = null;
@@ -122,7 +130,7 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
-    if (auth.isLoading) {
+    if (auth.isInitializing) {
       return Scaffold(
         backgroundColor: AppTheme.surfaceDark,
         body: Center(
@@ -218,6 +226,10 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
         return const LoginScreen();
       }
       return const PinLoginScreen(isLockMode: true);
+    }
+
+    if (auth.isAdmin) {
+      return const AdminNavigationScreen();
     }
 
     return const MainNavigationScreen();

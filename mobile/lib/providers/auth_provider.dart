@@ -8,6 +8,7 @@ class AuthProvider extends ChangeNotifier {
   User? _currentUser;
   bool _isLoggedIn = false;
   bool _isLoading = false;
+  bool _isInitializing = true;
   bool _isLocked = false;
   bool _hasRegisteredUsers = false;
   bool _preferPinLogin = true;
@@ -17,6 +18,7 @@ class AuthProvider extends ChangeNotifier {
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
   bool get isLoading => _isLoading;
+  bool get isInitializing => _isInitializing;
   bool get isLocked => _isLocked;
   bool get hasRegisteredUsers => _hasRegisteredUsers;
   bool get preferPinLogin => _preferPinLogin;
@@ -44,6 +46,7 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _checkLoginStatus() async {
     _isLoading = true;
+    _isInitializing = true;
     notifyListeners();
 
     try {
@@ -86,6 +89,7 @@ class AuthProvider extends ChangeNotifier {
     }
 
     _isLoading = false;
+    _isInitializing = false;
     notifyListeners();
   }
 

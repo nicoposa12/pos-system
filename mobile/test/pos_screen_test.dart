@@ -27,6 +27,8 @@ class _StubAuthProvider extends ChangeNotifier implements AuthProvider {
   @override
   bool get isLoading => false;
   @override
+  bool get isInitializing => false;
+  @override
   bool get isLocked => false;
   @override
   bool get hasRegisteredUsers => true;

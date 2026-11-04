@@ -44,6 +44,8 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   @override
   bool get isLoading => false;
   @override
+  bool get isInitializing => false;
+  @override
   bool get isLocked => _locked;
   @override
   bool get hasRegisteredUsers => _hasUsers;
@@ -73,8 +75,10 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   @override
   Future<void> reloadCurrentUser() async {}
 
+  bool loginSuccessResult = true;
+
   @override
-  Future<bool> login(String username, String password) async => true;
+  Future<bool> login(String username, String password) async => loginSuccessResult;
   @override
   Future<bool> loginWithPin(String pin) async => pin == '1234';
   @override
@@ -438,4 +442,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(auth.preferPinLogin, isFalse);
   });
+
+  testWidgets(
+    'LoginScreen retains entered username and password without clearing on failed login',
+    (tester) async {
+      final auth = _TestAuthProvider(
+        loggedIn: false,
+        hasUsers: true,
+        preferPin: false,
+      )..loginSuccessResult = false;
+
+      await tester.pumpWidget(
+        _buildTestHarness(
+          child: const LoginScreen(),
+          authProvider: auth,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).first, 'my_store_user');
+      await tester.enterText(find.byType(TextFormField).last, 'my_secret_pass');
+      await tester.tap(find.text('Sign In'));
+      await tester.pumpAndSettle();
+
+      // Entered credentials must remain intact in the fields
+      expect(find.text('my_store_user'), findsOneWidget);
+      expect(find.text('my_secret_pass'), findsOneWidget);
+      // Full-screen splash loading is NOT shown
+      expect(find.text('Your Smart Store Partner'), findsNothing);
+    },
+  );
 }

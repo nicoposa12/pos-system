@@ -10,6 +10,7 @@ class AppTheme {
   static const Color accentOrangeDark = Color(0xFFE85A2D);
   static const Color accentIndigo = Color(0xFF6366F1); // Secondary actions
   static const Color accentPurple = Color(0xFF8B5CF6); // Purple admin
+  static const Color accentViolet = Color(0xFF7C3AED); // Executive admin primary
   static const Color accentTeal = Color(0xFF10B981); // Emerald success
   static const Color accentAmber = Color(0xFFF59E0B); // Warning / Low stock
   static const Color accentRose = Color(0xFFF43F5E); // Danger / Out of stock
@@ -44,6 +45,18 @@ class AppTheme {
 
   static const LinearGradient indigoGradient = LinearGradient(
     colors: [Color(0xFF6366F1), Color(0xFF818CF8)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient violetGradient = LinearGradient(
+    colors: [Color(0xFF7C3AED), Color(0xFF6366F1)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient adminHeroGradient = LinearGradient(
+    colors: [Color(0xFF1E1B4B), Color(0xFF0F172A)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );

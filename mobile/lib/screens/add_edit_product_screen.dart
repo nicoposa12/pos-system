@@ -733,24 +733,27 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 12),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: const [
-                                      Icon(
-                                        Icons.add_circle_outline_rounded,
-                                        size: 16,
-                                        color: AppTheme.accentOrange,
-                                      ),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        'Add First Option',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w700,
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(
+                                          Icons.add_circle_outline_rounded,
+                                          size: 16,
                                           color: AppTheme.accentOrange,
                                         ),
-                                      ),
-                                    ],
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'Add First Option',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppTheme.accentOrange,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),

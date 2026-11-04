@@ -144,7 +144,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
     final lowCount = allProducts.where((p) => p.stock > 0 && p.stock <= 5).length;
     final outCount = allProducts.where((p) => p.stock <= 0).length;
     final inStockCount = allProducts.where((p) => p.stock > 5).length;
-    final isWide = MediaQuery.sizeOf(context).width >= 760;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isCompact = screenWidth < 360;
+    final horizontalPadding = isCompact ? 12.0 : 20.0;
+    final isWide = screenWidth >= 760;
 
     return Scaffold(
       body: RefreshIndicator(
@@ -161,21 +164,26 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   pinned: true,
                   toolbarHeight: 68,
                   backgroundColor: theme.scaffoldBackgroundColor,
-                  titleSpacing: 20,
+                  titleSpacing: isCompact ? 14 : 20,
                   title: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        'Inventory',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.4,
+                      const Flexible(
+                        child: Text(
+                          'Inventory',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
+                          horizontal: 8,
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
@@ -186,7 +194,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         child: Text(
                           '${allProducts.length}',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.w700,
                             color: AppTheme.mutedText(context),
                             fontFeatures: AppTheme.tabularFigures,
@@ -292,7 +300,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 // ── Search & Barcode Bar ──
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                     child: Row(
                       children: [
                         Expanded(
@@ -368,7 +376,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                       height: 52,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+                        padding: EdgeInsets.fromLTRB(horizontalPadding, 10, horizontalPadding, 4),
                         itemCount: categories.length,
                         separatorBuilder: (_, _) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
@@ -406,7 +414,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 // ── Product List / Grid ──
                 if (provider.isLoading)
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 96),
+                    padding: EdgeInsets.fromLTRB(horizontalPadding, 16, horizontalPadding, 96),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (_, _) => const Padding(
@@ -443,7 +451,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   )
                 else if (isWide)
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 96),
+                    padding: EdgeInsets.fromLTRB(horizontalPadding, 14, horizontalPadding, 96),
                     sliver: SliverGrid(
                       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                         maxCrossAxisExtent:
@@ -467,7 +475,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   )
                 else
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 96),
+                    padding: EdgeInsets.fromLTRB(horizontalPadding, 14, horizontalPadding, 96),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -656,6 +664,10 @@ class _InventoryProductCard extends StatelessWidget {
         ? 'Out of stock'
         : (isLow ? '${product.stock} low' : '${product.stock} in stock');
 
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isCompactCard = screenWidth < 360;
+    final thumbSize = isCompactCard ? 48.0 : 62.0;
+
     return Container(
       decoration: BoxDecoration(
         color: theme.cardTheme.color,
@@ -669,13 +681,13 @@ class _InventoryProductCard extends StatelessWidget {
           onTap: onEdit,
           borderRadius: BorderRadius.circular(AppTheme.radiusLg),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
+            padding: EdgeInsets.fromLTRB(isCompactCard ? 8 : 12, 10, isCompactCard ? 2 : 6, 10),
             child: Row(
               children: [
                 // Product Thumbnail
                 Container(
-                  width: 62,
-                  height: 62,
+                  width: thumbSize,
+                  height: thumbSize,
                   clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: AppTheme.subtleSurface(context),
@@ -694,7 +706,7 @@ class _InventoryProductCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                SizedBox(width: isCompactCard ? 8 : 14),
 
                 // Product Identity & Metadata
                 Expanded(
@@ -704,9 +716,9 @@ class _InventoryProductCard extends StatelessWidget {
                     children: [
                       Text(
                         product.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
-                          fontSize: 15,
+                          fontSize: isCompactCard ? 13.5 : 15,
                           letterSpacing: -0.2,
                         ),
                         maxLines: 1,
@@ -723,7 +735,7 @@ class _InventoryProductCard extends StatelessWidget {
                                 ? product.category!
                                 : 'Uncategorized',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: isCompactCard ? 11 : 12,
                               fontWeight: FontWeight.w500,
                               color: AppTheme.mutedText(context),
                             ),
@@ -758,7 +770,7 @@ class _InventoryProductCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: isCompactCard ? 6 : 8),
 
                 // Price & Stock Status
                 Column(
@@ -770,26 +782,30 @@ class _InventoryProductCard extends StatelessWidget {
                       style: TextStyle(
                         color: theme.colorScheme.onSurface,
                         fontWeight: FontWeight.w800,
-                        fontSize: 15,
+                        fontSize: isCompactCard ? 13.5 : 15,
                         fontFeatures: AppTheme.tabularFigures,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 5),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isCompactCard ? 6 : 8,
+                        vertical: isCompactCard ? 2 : 4,
                       ),
                       decoration: BoxDecoration(
                         color: statusColor.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        statusLabel,
+                        isCompactCard
+                            ? (isOut
+                                ? 'Out'
+                                : (isLow ? '${product.stock} low' : '${product.stock} left'))
+                            : statusLabel,
                         style: TextStyle(
                           color: statusColor,
                           fontWeight: FontWeight.w700,
-                          fontSize: 11,
+                          fontSize: isCompactCard ? 10 : 11,
                           fontFeatures: AppTheme.tabularFigures,
                         ),
                       ),

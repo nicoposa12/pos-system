@@ -1011,23 +1011,25 @@ class _HeroRevenueCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    Row(
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 12,
+                      runSpacing: 10,
                       children: [
-                        Expanded(
-                          child: Wrap(
-                            spacing: 16,
-                            runSpacing: 6,
-                            children: [
-                              _HeroStatPill(
-                                label: 'Orders',
-                                value: '$dailyOrders',
-                              ),
-                              _HeroStatPill(
-                                label: 'Avg',
-                                value: '₱${avgTicket.toStringAsFixed(0)}',
-                              ),
-                            ],
-                          ),
+                        Wrap(
+                          spacing: 14,
+                          runSpacing: 6,
+                          children: [
+                            _HeroStatPill(
+                              label: 'Orders',
+                              value: '$dailyOrders',
+                            ),
+                            _HeroStatPill(
+                              label: 'Avg',
+                              value: '₱${avgTicket.toStringAsFixed(0)}',
+                            ),
+                          ],
                         ),
                         if (onNewSale != null)
                           ElevatedButton.icon(
@@ -1038,10 +1040,10 @@ class _HeroRevenueCard extends StatelessWidget {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.accentOrange,
                               foregroundColor: Colors.white,
-                              minimumSize: const Size(0, 42),
+                              minimumSize: const Size(0, 40),
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
+                                horizontal: 14,
+                                vertical: 8,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -1049,12 +1051,12 @@ class _HeroRevenueCard extends StatelessWidget {
                             ),
                             icon: const Icon(
                               Icons.point_of_sale_rounded,
-                              size: 18,
+                              size: 16,
                             ),
                             label: const Text(
                               'Open POS',
                               style: TextStyle(
-                                fontSize: 13,
+                                fontSize: 12.5,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -1080,27 +1082,28 @@ class _HeroStatPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '$label: ',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.55),
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
+    return Text.rich(
+      TextSpan(
+        text: '$label: ',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.65),
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
         ),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            fontFeatures: AppTheme.tabularFigures,
+        children: [
+          TextSpan(
+            text: value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              fontFeatures: AppTheme.tabularFigures,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

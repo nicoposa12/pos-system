@@ -378,6 +378,9 @@ class _PosScreenState extends State<PosScreen> {
 
     final filteredProducts = _filterProducts(productProvider.allProducts);
 
+    final isCompact = MediaQuery.sizeOf(context).width < 360;
+    final horizontalPadding = isCompact ? 12.0 : 20.0;
+
     final catalogColumn = Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -386,7 +389,7 @@ class _PosScreenState extends State<PosScreen> {
           children: [
             // ── Search + Barcode Scanner Bar ──
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+              padding: EdgeInsets.fromLTRB(horizontalPadding, 6, horizontalPadding, 8),
               child: Row(
                 children: [
                   Expanded(
@@ -455,7 +458,7 @@ class _PosScreenState extends State<PosScreen> {
                 height: 46,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                   itemCount: categories.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
@@ -563,9 +566,9 @@ class _PosScreenState extends State<PosScreen> {
                     child: ListView.separated(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: EdgeInsets.fromLTRB(
-                        20,
+                        horizontalPadding,
                         6,
-                        20,
+                        horizontalPadding,
                         hasFloatingBar ? 104 : 24,
                       ),
                       itemCount: filteredProducts.length,
@@ -2164,6 +2167,10 @@ class _PosProductCardState extends State<_PosProductCard>
           .where((item) => item.product.id == widget.product.id)
           .fold<int>(0, (sum, item) => sum + item.quantity),
     );
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isCompactCard = screenWidth < 360;
+    final thumbSize = isCompactCard ? 48.0 : 62.0;
+
     return Semantics(
       button: !isOutOfStock,
       enabled: !isOutOfStock,
@@ -2193,15 +2200,15 @@ class _PosProductCardState extends State<_PosProductCard>
               onTapCancel: isOutOfStock ? null : () => _controller.reverse(),
               onTap: isOutOfStock ? null : () => _handleProductTap(context),
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: EdgeInsets.all(isCompactCard ? 8 : 12),
                 child: Row(
                   children: [
                     // Product Thumbnail (matches Inventory card)
                     Opacity(
                       opacity: isOutOfStock ? 0.5 : 1.0,
                       child: Container(
-                        width: 62,
-                        height: 62,
+                        width: thumbSize,
+                        height: thumbSize,
                         clipBehavior: Clip.antiAlias,
                         decoration: BoxDecoration(
                           color: AppTheme.subtleSurface(context),
@@ -2223,7 +2230,7 @@ class _PosProductCardState extends State<_PosProductCard>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    SizedBox(width: isCompactCard ? 8 : 14),
 
                     // Product Identity & Metadata
                     Expanded(
@@ -2238,7 +2245,7 @@ class _PosProductCardState extends State<_PosProductCard>
                               style: TextStyle(
                                 color: theme.colorScheme.onSurface,
                                 fontWeight: FontWeight.w700,
-                                fontSize: 15,
+                                fontSize: isCompactCard ? 13.5 : 15,
                                 letterSpacing: -0.2,
                               ),
                               maxLines: 1,
@@ -2255,7 +2262,7 @@ class _PosProductCardState extends State<_PosProductCard>
                                       ? widget.product.category!
                                       : 'Uncategorized',
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: isCompactCard ? 11 : 12,
                                     fontWeight: FontWeight.w500,
                                     color: AppTheme.mutedText(context),
                                   ),
@@ -2291,7 +2298,7 @@ class _PosProductCardState extends State<_PosProductCard>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: isCompactCard ? 6 : 8),
 
                     // Price & Stock Status (matches Inventory card)
                     Column(
@@ -2305,44 +2312,50 @@ class _PosProductCardState extends State<_PosProductCard>
                                 ? AppTheme.mutedText(context)
                                 : theme.colorScheme.onSurface,
                             fontWeight: FontWeight.w800,
-                            fontSize: 15,
+                            fontSize: isCompactCard ? 13.5 : 15,
                             fontFeatures: AppTheme.tabularFigures,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 5),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isCompactCard ? 6 : 8,
+                            vertical: isCompactCard ? 2 : 4,
                           ),
                           decoration: BoxDecoration(
                             color: statusColor.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            statusLabel,
+                            isCompactCard
+                                ? (isOutOfStock
+                                    ? 'Out'
+                                    : (isLowStock
+                                        ? '${widget.product.stock} low'
+                                        : '${widget.product.stock} left'))
+                                : statusLabel,
                             style: TextStyle(
                               color: statusColor,
                               fontWeight: FontWeight.w700,
-                              fontSize: 11,
+                              fontSize: isCompactCard ? 10 : 11,
                               fontFeatures: AppTheme.tabularFigures,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(width: 10),
+                    SizedBox(width: isCompactCard ? 6 : 10),
 
                     // Add / In-Cart Quantity Badge
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
-                      constraints: const BoxConstraints(
-                        minWidth: 34,
-                        minHeight: 34,
+                      constraints: BoxConstraints(
+                        minWidth: isCompactCard ? 30 : 34,
+                        minHeight: isCompactCard ? 30 : 34,
                       ),
                       padding: EdgeInsets.symmetric(
-                        horizontal: inCartQty > 0 ? 9 : 7,
-                        vertical: 7,
+                        horizontal: inCartQty > 0 ? (isCompactCard ? 7 : 9) : (isCompactCard ? 5 : 7),
+                        vertical: isCompactCard ? 5 : 7,
                       ),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
