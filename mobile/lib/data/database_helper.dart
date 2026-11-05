@@ -461,7 +461,11 @@ class DatabaseHelper {
 
   Future<int> createProduct(Product product) async {
     final db = await instance.database;
-    return await db.insert('products', product.toMap());
+    return await db.insert(
+      'products',
+      product.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<Product?> readProduct(int id) async {

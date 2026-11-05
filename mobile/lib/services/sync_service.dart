@@ -74,8 +74,10 @@ class SyncService {
       // 2. Fetch latest product catalog from cloud and cache in local SQLite
       final remoteProducts = await ApiService.instance.getProducts();
       if (remoteProducts.isNotEmpty) {
+        final Set<int> remoteIds = {};
         for (var p in remoteProducts) {
           final remoteId = p['id'] as int;
+          remoteIds.add(remoteId);
           final existing = await DatabaseHelper.instance.readProduct(remoteId);
           final remoteImagePath = p['image_path'] as String?;
           final String? finalImagePath = (remoteImagePath != null && remoteImagePath.trim().isNotEmpty)
@@ -98,6 +100,14 @@ class SyncService {
             await DatabaseHelper.instance.createProduct(prod);
           } else {
             await DatabaseHelper.instance.updateProduct(prod);
+          }
+        }
+
+        // Clean up any stale local orphan duplicates in SQLite
+        final localProducts = await DatabaseHelper.instance.readAllProducts(userId: userId);
+        for (var lp in localProducts) {
+          if (lp.id != null && !remoteIds.contains(lp.id)) {
+            await DatabaseHelper.instance.deleteProduct(lp.id!);
           }
         }
       }

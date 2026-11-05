@@ -69,8 +69,10 @@ class ProductProvider with ChangeNotifier {
       try {
         final remote = await ApiService.instance.getProducts();
         if (remote.isNotEmpty) {
+          final Set<int> remoteIds = {};
           for (var item in remote) {
             final remoteId = item['id'] as int;
+            remoteIds.add(remoteId);
             final local = await DatabaseHelper.instance.readProduct(remoteId);
 
             final remoteImagePath = item['image_path'] as String?;
@@ -100,6 +102,14 @@ class ProductProvider with ChangeNotifier {
               await DatabaseHelper.instance.updateProduct(p);
             }
           }
+
+          // Clean up any stale local orphan duplicates in SQLite that don't exist on server
+          final localProducts = await DatabaseHelper.instance.readAllProducts(userId: _userId!);
+          for (var lp in localProducts) {
+            if (lp.id != null && !remoteIds.contains(lp.id)) {
+              await DatabaseHelper.instance.deleteProduct(lp.id!);
+            }
+          }
         }
       } catch (e) {
         debugPrint('Online product fetch error: $e');
@@ -124,8 +134,7 @@ class ProductProvider with ChangeNotifier {
   }
 
   Future<void> addProduct(Product product) async {
-    await DatabaseHelper.instance.createProduct(product);
-
+    // 1. If online, create on server first to get authoritative server ID and prevent local duplicates
     if (ApiService.instance.isAuthenticated) {
       try {
         final res = await ApiService.instance.createProduct(
@@ -140,22 +149,23 @@ class ProductProvider with ChangeNotifier {
           final serverProd = res['product'];
           final serverId = serverProd['id'] as int?;
           final serverImagePath = serverProd['image_path']?.toString().trim();
-          if (serverId != null) {
-            await DatabaseHelper.instance.updateProduct(
-              product.copyWith(
-                id: serverId,
-                imagePath: (serverImagePath != null && serverImagePath.isNotEmpty)
-                    ? serverImagePath
-                    : product.imagePath,
-              ),
-            );
-          }
+          final serverProduct = product.copyWith(
+            id: serverId,
+            imagePath: (serverImagePath != null && serverImagePath.isNotEmpty)
+                ? serverImagePath
+                : product.imagePath,
+          );
+          await DatabaseHelper.instance.createProduct(serverProduct);
+          await fetchProducts();
+          return;
         }
       } catch (e) {
         debugPrint('Online add product error: $e');
       }
     }
 
+    // 2. Offline fallback: save locally if disconnected or server request failed
+    await DatabaseHelper.instance.createProduct(product);
     await fetchProducts();
   }
 

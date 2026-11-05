@@ -28,6 +28,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   late final TextEditingController _barcodeController;
   String? _selectedImagePath;
   final List<_VariantField> _variantFields = [];
+  bool _isSaving = false;
 
   bool get isEditing => widget.product != null;
 
@@ -1036,11 +1037,24 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: _saveProduct,
-                    icon: Icon(
-                      isEditing ? Icons.check_rounded : Icons.add_rounded,
+                    onPressed: _isSaving ? null : _saveProduct,
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            isEditing ? Icons.check_rounded : Icons.add_rounded,
+                          ),
+                    label: Text(
+                      _isSaving
+                          ? (isEditing ? 'Saving...' : 'Creating...')
+                          : (isEditing ? 'Save Changes' : 'Create Product'),
                     ),
-                    label: Text(isEditing ? 'Save Changes' : 'Create Product'),
                   ),
                 ),
               ),
@@ -1052,67 +1066,86 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   }
 
   void _saveProduct() async {
+    if (_isSaving) return;
+
     if (_formKey.currentState!.validate()) {
-      final name = _nameController.text.trim();
-      final category = _categoryController.text.trim();
-      final price = double.parse(_priceController.text.trim());
-      final stock = int.parse(_stockController.text.trim());
-      final barcode = _barcodeController.text.trim();
+      setState(() => _isSaving = true);
 
-      final auth = context.read<AuthProvider>();
-      final userId = auth.currentUser?.id ?? 0;
-      final provider = context.read<ProductProvider>();
+      try {
+        final name = _nameController.text.trim();
+        final category = _categoryController.text.trim();
+        final price = double.parse(_priceController.text.trim());
+        final stock = int.parse(_stockController.text.trim());
+        final barcode = _barcodeController.text.trim();
 
-      final variants = _variantFields
-          .map(
-            (f) => ProductVariant(
-              name: f.nameController.text.trim(),
-              price: double.tryParse(f.priceController.text.trim()) ?? 0.0,
-              stock: int.tryParse(f.stockController.text.trim()),
-              imagePath: f.imagePath,
-            ),
-          )
-          .where((v) => v.name.isNotEmpty)
-          .toList();
+        final auth = context.read<AuthProvider>();
+        final userId = auth.currentUser?.id ?? 0;
+        final provider = context.read<ProductProvider>();
 
-      final product = Product(
-        id: widget.product?.id,
-        userId: userId,
-        name: name,
-        category: category.isEmpty ? null : category,
-        price: price,
-        stock: stock,
-        barcode: barcode.isEmpty ? null : barcode,
-        imagePath: _selectedImagePath,
-        variants: variants,
-        createdAt: widget.product?.createdAt ?? DateTime.now(),
-      );
+        final variants = _variantFields
+            .map(
+              (f) => ProductVariant(
+                name: f.nameController.text.trim(),
+                price: double.tryParse(f.priceController.text.trim()) ?? 0.0,
+                stock: int.tryParse(f.stockController.text.trim()),
+                imagePath: f.imagePath,
+              ),
+            )
+            .where((v) => v.name.isNotEmpty)
+            .toList();
 
-      if (isEditing) {
-        await provider.updateProduct(product);
-      } else {
-        await provider.addProduct(product);
-      }
-
-      if (mounted) {
-        HapticFeedback.mediumImpact();
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.white),
-                const SizedBox(width: 10),
-                Text(
-                  isEditing
-                      ? 'Product updated successfully'
-                      : 'Product added to inventory',
-                ),
-              ],
-            ),
-            backgroundColor: AppTheme.accentTeal,
-          ),
+        final product = Product(
+          id: widget.product?.id,
+          userId: userId,
+          name: name,
+          category: category.isEmpty ? null : category,
+          price: price,
+          stock: stock,
+          barcode: barcode.isEmpty ? null : barcode,
+          imagePath: _selectedImagePath,
+          variants: variants,
+          createdAt: widget.product?.createdAt ?? DateTime.now(),
         );
+
+        if (isEditing) {
+          await provider.updateProduct(product);
+        } else {
+          await provider.addProduct(product);
+        }
+
+        if (mounted) {
+          HapticFeedback.mediumImpact();
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Text(
+                    isEditing
+                        ? 'Product updated successfully'
+                        : 'Product added to inventory',
+                  ),
+                ],
+              ),
+              backgroundColor: AppTheme.accentTeal,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to save product: $e'),
+              backgroundColor: AppTheme.accentRose,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isSaving = false);
+        }
       }
     }
   }

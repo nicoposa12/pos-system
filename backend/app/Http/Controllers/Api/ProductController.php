@@ -52,6 +52,20 @@ class ProductController extends Controller
             'image' => 'nullable|image|max:4096', // 4MB max
         ]);
 
+        // Idempotency: Prevent accidental duplicate submissions from spam clicks within 3 seconds
+        $existingRecent = $request->user()->products()
+            ->where('name', $validated['name'])
+            ->where('price', $validated['price'])
+            ->where('created_at', '>=', now()->subSeconds(3))
+            ->first();
+
+        if ($existingRecent) {
+            return response()->json([
+                'message' => 'Product was already created',
+                'product' => $existingRecent,
+            ], 200);
+        }
+
         $imagePath = $this->handleImageUpload($request);
 
         $product = $request->user()->products()->create([
