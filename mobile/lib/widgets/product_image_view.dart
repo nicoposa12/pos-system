@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../services/api_service.dart';
 
 /// Reusable widget for rendering product images supporting:
-/// 1. Cloud Network URLs (Cloudflare R2 / S3 / CDN)
+/// 1. Cloud Network URLs (API Image Proxy / Cloudflare R2 / S3 / CDN)
 /// 2. Local device files (picked from gallery/camera or offline cache)
 /// 3. Graceful fallback placeholder when missing or failed
 class ProductImageView extends StatelessWidget {
@@ -27,6 +28,19 @@ class ProductImageView extends StatelessWidget {
     if (imagePath == null || imagePath!.isEmpty) return false;
     final trimmed = imagePath!.trim().toLowerCase();
     return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+  }
+
+  /// Automatically redirect blocked *.r2.dev or /storage/ URLs through API proxy
+  String? get _resolvedNetworkUrl {
+    if (!_isNetworkUrl) return null;
+    final trimmed = imagePath!.trim();
+
+    if (trimmed.contains('.r2.dev/products/') || trimmed.contains('/storage/products/')) {
+      final filename = trimmed.split('/products/').last;
+      return '${ApiService.instance.baseUrl}/media/products/$filename';
+    }
+
+    return trimmed;
   }
 
   String? get _resolvedLocalFilePath {
@@ -55,9 +69,10 @@ class ProductImageView extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget content;
 
-    if (_isNetworkUrl) {
+    final networkUrl = _resolvedNetworkUrl;
+    if (networkUrl != null) {
       content = Image.network(
-        imagePath!.trim(),
+        networkUrl,
         width: width,
         height: height,
         fit: fit,

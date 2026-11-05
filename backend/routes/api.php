@@ -18,6 +18,9 @@ Route::prefix('auth')->group(function () {
     Route::post('/pin-login', [AuthController::class, 'pinLogin']);
 });
 
+// Public image proxy route (allows mobile and web apps to stream product images directly through API)
+Route::get('/media/products/{filename}', [ProductController::class, 'serveImage']);
+
 // Protected routes (Sanctum)
 Route::middleware('auth:sanctum')->group(function () {
     // Auth & Profile
