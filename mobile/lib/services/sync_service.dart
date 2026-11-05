@@ -33,6 +33,9 @@ class SyncService {
 
     if (currentUserId != null) {
       updatePendingCount(currentUserId);
+      if (ApiService.instance.isAuthenticated) {
+        syncNow(currentUserId);
+      }
     }
   }
 
@@ -63,12 +66,14 @@ class SyncService {
       final pending = await DatabaseHelper.instance.getUnsyncedTransactions(userId: userId);
       if (pending.isNotEmpty) {
         final syncedResults = await ApiService.instance.syncOfflineTransactions(pending);
-        final syncedClientIds = syncedResults
-            .map<int>((s) => int.parse(s['client_id'].toString()))
-            .toList();
-
-        await DatabaseHelper.instance.markTransactionsSynced(syncedClientIds);
-        debugPrint('[SyncService] Synced ${syncedClientIds.length} offline transactions to cloud.');
+        for (var s in syncedResults) {
+          final clientId = int.tryParse(s['client_id']?.toString() ?? '');
+          final serverId = int.tryParse(s['server_id']?.toString() ?? '');
+          if (clientId != null && serverId != null) {
+            await DatabaseHelper.instance.replaceTransactionId(clientId, serverId);
+          }
+        }
+        debugPrint('[SyncService] Synced ${syncedResults.length} offline transactions to cloud.');
       }
 
       // 2. Fetch latest product catalog from cloud and cache in local SQLite
@@ -112,6 +117,13 @@ class SyncService {
         }
       }
 
+      // 3. Fetch latest transactions and sales history from cloud and cache in local SQLite
+      final remoteTransactions = await ApiService.instance.getTransactions(all: true);
+      if (remoteTransactions.isNotEmpty) {
+        await DatabaseHelper.instance.syncTransactionsFromRemote(userId, remoteTransactions);
+        debugPrint('[SyncService] Synced ${remoteTransactions.length} remote transactions into local cache.');
+      }
+
       await updatePendingCount(userId);
       lastSyncedAt.value = DateTime.now();
       isSyncing.value = false;
@@ -119,6 +131,23 @@ class SyncService {
     } catch (e) {
       debugPrint('[SyncService] Sync error: $e');
       isSyncing.value = false;
+      return false;
+    }
+  }
+
+  /// Dedicated fast sync for transactions & sales history
+  Future<bool> syncTransactions(int userId) async {
+    if (!ApiService.instance.isAuthenticated) return false;
+    try {
+      final remoteTransactions = await ApiService.instance.getTransactions(all: true);
+      if (remoteTransactions.isNotEmpty) {
+        await DatabaseHelper.instance.syncTransactionsFromRemote(userId, remoteTransactions);
+        lastSyncedAt.value = DateTime.now();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[SyncService] syncTransactions error: $e');
       return false;
     }
   }

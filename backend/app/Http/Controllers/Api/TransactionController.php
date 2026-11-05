@@ -17,10 +17,18 @@ class TransactionController extends Controller
      */
     public function index(Request $request)
     {
-        $transactions = $request->user()->transactions()
+        $query = $request->user()->transactions()
             ->with(['items.product', 'debt'])
-            ->latest('date')
-            ->paginate($request->input('per_page', 30));
+            ->latest('date');
+
+        if ($request->boolean('all')) {
+            return response()->json([
+                'data' => $query->get(),
+            ]);
+        }
+
+        $perPage = (int) $request->input('per_page', 50);
+        $transactions = $query->paginate($perPage);
 
         return response()->json($transactions);
     }
@@ -124,23 +132,26 @@ class TransactionController extends Controller
             'change_amount' => 'nullable|numeric|min:0',
         ]);
 
+        $cashReceived = $validated['cash_received'] ?? $transaction->total_amount;
+        $isFullyPaid = $cashReceived >= $transaction->total_amount;
+
         $transaction->update([
-            'payment_method' => $validated['payment_method'],
-            'cash_received' => $validated['cash_received'] ?? $transaction->total_amount,
+            'payment_method' => $isFullyPaid ? $validated['payment_method'] : 'pending',
+            'cash_received' => $cashReceived,
             'change_amount' => $validated['change_amount'] ?? 0.0,
         ]);
 
         if ($transaction->debt) {
             $transaction->debt->update([
-                'paid_amount' => $validated['cash_received'] ?? $transaction->total_amount,
-                'status' => 'paid',
+                'paid_amount' => $cashReceived,
+                'status' => $isFullyPaid ? 'paid' : 'pending',
             ]);
         }
 
         $transaction->load(['items.product', 'debt']);
 
         return response()->json([
-            'message' => 'Transaction marked as paid successfully',
+            'message' => $isFullyPaid ? 'Transaction marked as paid successfully' : 'Payment recorded successfully',
             'transaction' => $transaction,
         ]);
     }

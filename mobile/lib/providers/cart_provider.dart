@@ -219,10 +219,11 @@ class CartProvider with ChangeNotifier {
         }
       }
       
+      int? serverTxId;
       // Attempt immediate online push
       if (ApiService.instance.isAuthenticated) {
         try {
-          await ApiService.instance.createTransaction({
+          final res = await ApiService.instance.createTransaction({
             'total_amount': transaction.totalAmount,
             'discount': transaction.discount,
             'cash_received': transaction.cashReceived,
@@ -236,14 +237,24 @@ class CartProvider with ChangeNotifier {
               'subtotal': ti.subtotal,
             }).toList(),
           });
-          await DatabaseHelper.instance.markTransactionsSynced([transactionId]);
+
+          if (res['transaction'] is Map && res['transaction']['id'] != null) {
+            serverTxId = int.tryParse(res['transaction']['id'].toString());
+          }
+
+          if (serverTxId != null && serverTxId != transactionId) {
+            await DatabaseHelper.instance.replaceTransactionId(transactionId, serverTxId);
+          } else {
+            await DatabaseHelper.instance.markTransactionsSynced([transactionId]);
+          }
         } catch (e) {
           debugPrint('Online checkout push skipped (will sync later via SyncService): $e');
         }
       }
 
+      final finalTxId = (serverTxId != null && serverTxId > 0) ? serverTxId : transactionId;
       final completedTransaction = SaleTransaction(
-        id: transactionId,
+        id: finalTxId,
         userId: transaction.userId,
         totalAmount: transaction.totalAmount,
         discount: transaction.discount,
@@ -251,6 +262,7 @@ class CartProvider with ChangeNotifier {
         change: transaction.change,
         paymentMethod: transaction.paymentMethod,
         date: transaction.date,
+        isSynced: serverTxId != null,
       );
 
       final itemsForPdf = cartItemsList.map((item) => {

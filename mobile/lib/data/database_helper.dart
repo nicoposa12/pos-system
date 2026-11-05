@@ -553,9 +553,9 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> readTransactionItems(int transactionId) async {
     final db = await instance.database;
     return await db.rawQuery('''
-      SELECT ti.*, p.name as product_name
+      SELECT ti.*, COALESCE(p.name, 'Item #' || ti.product_id) as product_name
       FROM transaction_items ti
-      JOIN products p ON ti.product_id = p.id
+      LEFT JOIN products p ON ti.product_id = p.id
       WHERE ti.transaction_id = ?
     ''', [transactionId]);
   }
@@ -592,11 +592,23 @@ class DatabaseHelper {
         whereArgs: [transactionId],
       );
 
+      // Determine if debt is fully paid or partially pending
+      final txRow = await txn.query(
+        'transactions',
+        columns: ['total_amount'],
+        where: 'id = ?',
+        whereArgs: [transactionId],
+      );
+      final totalAmount = txRow.isNotEmpty
+          ? (txRow.first['total_amount'] as num).toDouble()
+          : cashReceived;
+      final status = (cashReceived >= totalAmount) ? 'paid' : 'pending';
+
       await txn.update(
         'debts',
         {
           'paid_amount': cashReceived,
-          'status': 'paid',
+          'status': status,
         },
         where: 'transaction_id = ?',
         whereArgs: [transactionId],
@@ -624,9 +636,9 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getTopSellingProducts(int userId, {int limit = 5}) async {
     final db = await instance.database;
     return await db.rawQuery('''
-      SELECT p.name, SUM(ti.quantity) as total_sold, SUM(ti.subtotal) as total_revenue
+      SELECT COALESCE(p.name, 'Item #' || ti.product_id) as name, SUM(ti.quantity) as total_sold, SUM(ti.subtotal) as total_revenue
       FROM transaction_items ti
-      JOIN products p ON ti.product_id = p.id
+      LEFT JOIN products p ON ti.product_id = p.id
       JOIN transactions t ON ti.transaction_id = t.id
       WHERE t.user_id = ?
       GROUP BY ti.product_id
@@ -638,9 +650,9 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getCategorySales(int userId) async {
     final db = await instance.database;
     return await db.rawQuery('''
-      SELECT p.category, SUM(ti.subtotal) as total_revenue
+      SELECT COALESCE(p.category, 'Uncategorized') as category, SUM(ti.subtotal) as total_revenue
       FROM transaction_items ti
-      JOIN products p ON ti.product_id = p.id
+      LEFT JOIN products p ON ti.product_id = p.id
       JOIN transactions t ON ti.transaction_id = t.id
       WHERE t.user_id = ?
       GROUP BY p.category
@@ -769,5 +781,183 @@ class DatabaseHelper {
       );
     }
     await batch.commit(noResult: true);
+  }
+
+  Future<void> replaceTransactionId(int oldLocalId, int serverId) async {
+    if (oldLocalId == serverId) return;
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      final existing = await txn.query('transactions', where: 'id = ?', whereArgs: [serverId]);
+      if (existing.isNotEmpty) {
+        await txn.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [oldLocalId]);
+        await txn.delete('debts', where: 'transaction_id = ?', whereArgs: [oldLocalId]);
+        await txn.delete('transactions', where: 'id = ?', whereArgs: [oldLocalId]);
+      } else {
+        await txn.update('transactions', {'id': serverId, 'is_synced': 1}, where: 'id = ?', whereArgs: [oldLocalId]);
+        await txn.update('transaction_items', {'transaction_id': serverId}, where: 'transaction_id = ?', whereArgs: [oldLocalId]);
+        await txn.update('debts', {'transaction_id': serverId}, where: 'transaction_id = ?', whereArgs: [oldLocalId]);
+      }
+    });
+  }
+
+  Future<void> syncTransactionsFromRemote(int userId, List<dynamic> remoteTransactions) async {
+    if (remoteTransactions.isEmpty) return;
+    final db = await instance.database;
+
+    await db.transaction((txn) async {
+      final Set<int> remoteIds = {};
+
+      for (var rawTx in remoteTransactions) {
+        if (rawTx is! Map) continue;
+        final tx = rawTx as Map<String, dynamic>;
+        final txId = int.tryParse(tx['id']?.toString() ?? '');
+        if (txId == null) continue;
+        remoteIds.add(txId);
+
+        final totalAmount = (tx['total_amount'] is num)
+            ? (tx['total_amount'] as num).toDouble()
+            : (double.tryParse(tx['total_amount']?.toString() ?? '0') ?? 0.0);
+
+        final discount = (tx['discount'] is num)
+            ? (tx['discount'] as num).toDouble()
+            : (double.tryParse(tx['discount']?.toString() ?? '0') ?? 0.0);
+
+        final cashReceived = (tx['cash_received'] is num)
+            ? (tx['cash_received'] as num).toDouble()
+            : (double.tryParse(tx['cash_received']?.toString() ?? '0') ?? 0.0);
+
+        final changeAmount = (tx['change_amount'] is num)
+            ? (tx['change_amount'] as num).toDouble()
+            : (double.tryParse(tx['change_amount']?.toString() ?? '0') ?? 0.0);
+
+        final paymentMethod = tx['payment_method']?.toString() ?? 'cash';
+        final dateStr = tx['date']?.toString() ?? DateTime.now().toIso8601String();
+
+        // 1. Upsert transaction record
+        final existing = await txn.query(
+          'transactions',
+          where: 'id = ?',
+          whereArgs: [txId],
+        );
+
+        if (existing.isEmpty) {
+          await txn.insert('transactions', {
+            'id': txId,
+            'user_id': userId,
+            'total_amount': totalAmount,
+            'discount': discount,
+            'cash_received': cashReceived,
+            'change_amount': changeAmount,
+            'payment_method': paymentMethod,
+            'is_synced': 1,
+            'date': dateStr,
+          });
+        } else {
+          await txn.update(
+            'transactions',
+            {
+              'total_amount': totalAmount,
+              'discount': discount,
+              'cash_received': cashReceived,
+              'change_amount': changeAmount,
+              'payment_method': paymentMethod,
+              'is_synced': 1,
+              'date': dateStr,
+            },
+            where: 'id = ?',
+            whereArgs: [txId],
+          );
+        }
+
+        // 2. Upsert transaction items
+        final items = tx['items'];
+        if (items is List && items.isNotEmpty) {
+          await txn.delete(
+            'transaction_items',
+            where: 'transaction_id = ?',
+            whereArgs: [txId],
+          );
+
+          for (var item in items) {
+            if (item is! Map) continue;
+            final prodId = int.tryParse(item['product_id']?.toString() ?? '') ?? 0;
+            final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
+            final subtotal = (item['subtotal'] is num)
+                ? (item['subtotal'] as num).toDouble()
+                : (double.tryParse(item['subtotal']?.toString() ?? '0') ?? 0.0);
+
+            await txn.insert('transaction_items', {
+              'transaction_id': txId,
+              'product_id': prodId,
+              'quantity': qty,
+              'subtotal': subtotal,
+            });
+          }
+        }
+
+        // 3. Upsert debt record if present
+        final debtData = tx['debt'];
+        if (debtData is Map) {
+          final custName = debtData['customer_name']?.toString() ?? 'Walk-in Customer';
+          final debtAmount = (debtData['amount'] is num)
+              ? (debtData['amount'] as num).toDouble()
+              : (double.tryParse(debtData['amount']?.toString() ?? '0') ?? totalAmount);
+          final paidAmount = (debtData['paid_amount'] is num)
+              ? (debtData['paid_amount'] as num).toDouble()
+              : (double.tryParse(debtData['paid_amount']?.toString() ?? '0') ?? cashReceived);
+          final debtStatus = debtData['status']?.toString() ??
+              ((paidAmount >= debtAmount) ? 'paid' : 'pending');
+
+          final existingDebt = await txn.query(
+            'debts',
+            where: 'transaction_id = ?',
+            whereArgs: [txId],
+          );
+
+          if (existingDebt.isEmpty) {
+            await txn.insert('debts', {
+              'user_id': userId,
+              'transaction_id': txId,
+              'customer_name': custName,
+              'amount': debtAmount,
+              'paid_amount': paidAmount,
+              'date': debtData['date']?.toString() ?? dateStr,
+              'status': debtStatus,
+            });
+          } else {
+            await txn.update(
+              'debts',
+              {
+                'customer_name': custName,
+                'amount': debtAmount,
+                'paid_amount': paidAmount,
+                'status': debtStatus,
+              },
+              where: 'transaction_id = ?',
+              whereArgs: [txId],
+            );
+          }
+        }
+      }
+
+      // 4. Clean up any obsolete local synced transactions that no longer exist on server
+      // (NEVER delete unsynced offline transactions: where is_synced = 0)
+      if (remoteIds.isNotEmpty) {
+        final localTxs = await txn.query(
+          'transactions',
+          columns: ['id'],
+          where: 'user_id = ? AND is_synced = 1',
+          whereArgs: [userId],
+        );
+        for (var ltx in localTxs) {
+          final lid = ltx['id'] as int;
+          if (!remoteIds.contains(lid)) {
+            await txn.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [lid]);
+            await txn.delete('debts', where: 'transaction_id = ?', whereArgs: [lid]);
+            await txn.delete('transactions', where: 'id = ?', whereArgs: [lid]);
+          }
+        }
+      }
+    });
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../data/database_helper.dart';
 import '../models/transaction.dart';
 import '../services/api_service.dart';
+import '../services/sync_service.dart';
 
 class TransactionProvider with ChangeNotifier {
   List<SaleTransaction> _transactions = [];
@@ -31,12 +32,27 @@ class TransactionProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
+    // 1. Immediately read local SQLite cache for instant UI rendering
     _transactions = await DatabaseHelper.instance.readAllTransactions(userId: _userId!);
     _topProducts = await DatabaseHelper.instance.getTopSellingProducts(_userId!);
     _categorySales = await DatabaseHelper.instance.getCategorySales(_userId!);
-    
     _isLoading = false;
     notifyListeners();
+
+    // 2. Fetch latest authoritative transactions from cloud if online
+    if (ApiService.instance.isAuthenticated) {
+      try {
+        final synced = await SyncService.instance.syncTransactions(_userId!);
+        if (synced) {
+          _transactions = await DatabaseHelper.instance.readAllTransactions(userId: _userId!);
+          _topProducts = await DatabaseHelper.instance.getTopSellingProducts(_userId!);
+          _categorySales = await DatabaseHelper.instance.getCategorySales(_userId!);
+          notifyListeners();
+        }
+      } catch (e) {
+        debugPrint('[TransactionProvider] Online fetchTransactions sync skipped: $e');
+      }
+    }
   }
 
   double get dailyTotal {

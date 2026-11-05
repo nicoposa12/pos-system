@@ -251,8 +251,11 @@ class ApiService {
     return response.data as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> getTransactions() async {
-    final response = await _dio.get('/transactions');
+  Future<List<dynamic>> getTransactions({bool all = true, int perPage = 100}) async {
+    final response = await _dio.get('/transactions', queryParameters: {
+      'all': all ? 1 : 0,
+      'per_page': perPage,
+    });
     if (response.data is Map && response.data['data'] != null) {
       return response.data['data'] as List;
     }

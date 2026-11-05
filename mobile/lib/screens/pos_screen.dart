@@ -1615,7 +1615,11 @@ class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
                         icon: Icons.schedule_rounded,
                         isActive: _paymentMethod == 'pending',
                         activeColor: AppTheme.accentAmber,
-                        onTap: () => setState(() => _paymentMethod = 'pending'),
+                        onTap: () => setState(() {
+                          _paymentMethod = 'pending';
+                          _cashController.clear();
+                          _currentCash = 0.0;
+                        }),
                       ),
                     ),
                   ],
@@ -1906,8 +1910,8 @@ class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
                       TextField(
                         controller: _cashController,
                         decoration: const InputDecoration(
-                          labelText: 'Partial Downpayment (₱ Optional)',
-                          hintText: '0.00',
+                          labelText: 'Initial Downpayment (₱ Optional)',
+                          hintText: '0.00 (Leave blank for full utang)',
                           prefixIcon: Icon(Icons.payments_outlined, size: 20),
                           isDense: true,
                         ),
@@ -1938,7 +1942,7 @@ class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text(
-                              'Unpaid Balance:',
+                              'Unpaid Balance (Utang):',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -1989,7 +1993,9 @@ class _PaymentSummaryDialogState extends State<_PaymentSummaryDialog> {
                   _paymentMethod == 'gcash'
                       ? 'Complete GCash Sale'
                       : (_paymentMethod == 'pending'
-                          ? 'Complete Pending Sale'
+                          ? (_currentCash > 0
+                              ? 'Complete with ₱${_currentCash.toStringAsFixed(2)} Downpayment'
+                              : 'Complete Pending Sale')
                           : 'Complete Cash Sale'),
                 ),
                 style: _paymentMethod == 'pending'
