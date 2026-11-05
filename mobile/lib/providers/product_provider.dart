@@ -70,18 +70,30 @@ class ProductProvider with ChangeNotifier {
         final remote = await ApiService.instance.getProducts();
         if (remote.isNotEmpty) {
           for (var item in remote) {
+            final remoteId = item['id'] as int;
+            final local = await DatabaseHelper.instance.readProduct(remoteId);
+
+            final remoteImagePath = item['image_path'] as String?;
+            final String? finalImagePath = (remoteImagePath != null && remoteImagePath.trim().isNotEmpty)
+                ? remoteImagePath.trim()
+                : local?.imagePath;
+
             final p = Product(
-              id: item['id'],
+              id: remoteId,
               userId: _userId!,
               name: item['name'] ?? '',
               category: item['category'],
               price: (item['price'] as num?)?.toDouble() ?? 0.0,
               stock: item['stock'] ?? 0,
               barcode: item['barcode'],
-              imagePath: item['image_path'],
+              imagePath: finalImagePath,
+              variants: item['variants'] != null
+                  ? (item['variants'] as List)
+                      .map((v) => ProductVariant.fromMap(v))
+                      .toList()
+                  : (local?.variants ?? const []),
               createdAt: item['created_at'] != null ? DateTime.parse(item['created_at']) : DateTime.now(),
             );
-            final local = await DatabaseHelper.instance.readProduct(p.id!);
             if (local == null) {
               await DatabaseHelper.instance.createProduct(p);
             } else {
@@ -116,7 +128,7 @@ class ProductProvider with ChangeNotifier {
 
     if (ApiService.instance.isAuthenticated) {
       try {
-        await ApiService.instance.createProduct(
+        final res = await ApiService.instance.createProduct(
           name: product.name,
           price: product.price,
           stock: product.stock,
@@ -124,6 +136,21 @@ class ProductProvider with ChangeNotifier {
           barcode: product.barcode,
           imageFilePath: product.imagePath,
         );
+        if (res['product'] != null) {
+          final serverProd = res['product'];
+          final serverId = serverProd['id'] as int?;
+          final serverImagePath = serverProd['image_path']?.toString().trim();
+          if (serverId != null) {
+            await DatabaseHelper.instance.updateProduct(
+              product.copyWith(
+                id: serverId,
+                imagePath: (serverImagePath != null && serverImagePath.isNotEmpty)
+                    ? serverImagePath
+                    : product.imagePath,
+              ),
+            );
+          }
+        }
       } catch (e) {
         debugPrint('Online add product error: $e');
       }
@@ -137,7 +164,7 @@ class ProductProvider with ChangeNotifier {
 
     if (product.id != null && ApiService.instance.isAuthenticated) {
       try {
-        await ApiService.instance.updateProduct(
+        final res = await ApiService.instance.updateProduct(
           product.id!,
           name: product.name,
           price: product.price,
@@ -146,6 +173,14 @@ class ProductProvider with ChangeNotifier {
           barcode: product.barcode,
           imageFilePath: product.imagePath,
         );
+        if (res['product'] != null && res['product']['image_path'] != null) {
+          final serverImagePath = res['product']['image_path'].toString().trim();
+          if (serverImagePath.isNotEmpty) {
+            await DatabaseHelper.instance.updateProduct(
+              product.copyWith(imagePath: serverImagePath),
+            );
+          }
+        }
       } catch (e) {
         debugPrint('Online update product error: $e');
       }

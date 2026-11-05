@@ -75,19 +75,25 @@ class SyncService {
       final remoteProducts = await ApiService.instance.getProducts();
       if (remoteProducts.isNotEmpty) {
         for (var p in remoteProducts) {
+          final remoteId = p['id'] as int;
+          final existing = await DatabaseHelper.instance.readProduct(remoteId);
+          final remoteImagePath = p['image_path'] as String?;
+          final String? finalImagePath = (remoteImagePath != null && remoteImagePath.trim().isNotEmpty)
+              ? remoteImagePath.trim()
+              : existing?.imagePath;
+
           final prod = Product(
-            id: p['id'],
+            id: remoteId,
             userId: userId,
             name: p['name'] ?? '',
             category: p['category'],
             price: (p['price'] as num?)?.toDouble() ?? 0.0,
             stock: p['stock'] ?? 0,
             barcode: p['barcode'],
-            imagePath: p['image_path'],
+            imagePath: finalImagePath,
             createdAt: p['created_at'] != null ? DateTime.parse(p['created_at']) : DateTime.now(),
           );
 
-          final existing = await DatabaseHelper.instance.readProduct(prod.id!);
           if (existing == null) {
             await DatabaseHelper.instance.createProduct(prod);
           } else {

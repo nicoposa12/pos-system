@@ -29,11 +29,23 @@ class ProductImageView extends StatelessWidget {
     return trimmed.startsWith('http://') || trimmed.startsWith('https://');
   }
 
+  String? get _resolvedLocalFilePath {
+    if (imagePath == null || imagePath!.isEmpty || _isNetworkUrl) return null;
+    if (imagePath!.startsWith('file://')) {
+      try {
+        return Uri.parse(imagePath!).toFilePath();
+      } catch (_) {
+        return imagePath!.replaceFirst('file://', '');
+      }
+    }
+    return imagePath;
+  }
+
   bool get _isLocalFile {
-    if (imagePath == null || imagePath!.isEmpty) return false;
-    if (_isNetworkUrl) return false;
+    final path = _resolvedLocalFilePath;
+    if (path == null) return false;
     try {
-      return File(imagePath!).existsSync();
+      return File(path).existsSync();
     } catch (_) {
       return false;
     }
@@ -74,7 +86,7 @@ class ProductImageView extends StatelessWidget {
       );
     } else if (_isLocalFile) {
       content = Image.file(
-        File(imagePath!),
+        File(_resolvedLocalFilePath!),
         width: width,
         height: height,
         fit: fit,

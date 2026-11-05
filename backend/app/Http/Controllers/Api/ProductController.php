@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
@@ -50,12 +52,7 @@ class ProductController extends Controller
             'image' => 'nullable|image|max:4096', // 4MB max
         ]);
 
-        $imagePath = null;
-        if ($request->hasFile('image')) {
-            $disk = env('FILESYSTEM_DISK', 'public');
-            $path = $request->file('image')->store('products', $disk);
-            $imagePath = Storage::disk($disk)->url($path);
-        }
+        $imagePath = $this->handleImageUpload($request);
 
         $product = $request->user()->products()->create([
             'name' => $validated['name'],
@@ -107,10 +104,10 @@ class ProductController extends Controller
         ]);
 
         if ($request->hasFile('image')) {
-            $disk = env('FILESYSTEM_DISK', 'public');
-            $this->deleteImageIfExists($product->image_path);
-            $path = $request->file('image')->store('products', $disk);
-            $validated['image_path'] = Storage::disk($disk)->url($path);
+            $newImagePath = $this->handleImageUpload($request, $product->image_path);
+            if ($newImagePath) {
+                $validated['image_path'] = $newImagePath;
+            }
         }
 
         if (isset($validated['variants']) && is_string($validated['variants'])) {
@@ -144,15 +141,91 @@ class ProductController extends Controller
     }
 
     /**
+     * Determine the active upload disk.
+     * Prefers 'r2' if credentials exist, then 's3', then falls back to 'public'.
+     */
+    private function getUploadDisk(): string
+    {
+        $defaultDisk = config('filesystems.default', 'r2');
+        if (config("filesystems.disks.{$defaultDisk}.key")) {
+            return $defaultDisk;
+        }
+
+        if (config('filesystems.disks.r2.key')) {
+            return 'r2';
+        }
+
+        if (config('filesystems.disks.s3.key')) {
+            return 's3';
+        }
+
+        return 'public';
+    }
+
+    /**
+     * Safely upload product image to Cloudflare R2 / S3 / Local storage.
+     */
+    private function handleImageUpload(Request $request, ?string $oldImagePath = null): ?string
+    {
+        if (!$request->hasFile('image')) {
+            return null;
+        }
+
+        $disk = $this->getUploadDisk();
+        $file = $request->file('image');
+
+        try {
+            if ($oldImagePath) {
+                $this->deleteImageIfExists($oldImagePath, $disk);
+            }
+
+            // Generate clean random filename
+            $extension = $file->getClientOriginalExtension() ?: 'jpg';
+            $filename = Str::random(32) . '.' . strtolower($extension);
+
+            $path = $file->storeAs('products', $filename, [
+                'disk' => $disk,
+                'visibility' => 'public',
+            ]);
+
+            // Construct public URL
+            $r2PublicUrl = config('filesystems.disks.r2.url') ?? config('filesystems.disks.s3.url');
+            if ($r2PublicUrl && ($disk === 'r2' || $disk === 's3')) {
+                return rtrim($r2PublicUrl, '/') . '/' . ltrim($path, '/');
+            }
+
+            return Storage::disk($disk)->url($path);
+        } catch (\Throwable $e) {
+            Log::error("Product image upload to disk [{$disk}] failed: " . $e->getMessage(), [
+                'exception' => $e,
+            ]);
+
+            // Fallback to local public disk so customer never loses photo
+            if ($disk !== 'public') {
+                try {
+                    $fallbackFilename = Str::random(32) . '.' . strtolower($file->getClientOriginalExtension() ?: 'jpg');
+                    $fallbackPath = $file->storeAs('products', $fallbackFilename, 'public');
+                    Log::info("Fallback product image upload to [public] succeeded: {$fallbackPath}");
+                    return Storage::disk('public')->url($fallbackPath);
+                } catch (\Throwable $fallbackErr) {
+                    Log::error('Local fallback upload also failed: ' . $fallbackErr->getMessage());
+                }
+            }
+
+            return null;
+        }
+    }
+
+    /**
      * Delete stored image file from local or cloud storage if it exists.
      */
-    private function deleteImageIfExists(?string $imagePath): void
+    private function deleteImageIfExists(?string $imagePath, ?string $disk = null): void
     {
         if (!$imagePath) {
             return;
         }
 
-        $disk = env('FILESYSTEM_DISK', 'public');
+        $disk = $disk ?? $this->getUploadDisk();
         try {
             $parsedPath = parse_url($imagePath, PHP_URL_PATH);
             $cleanPath = ltrim($parsedPath ?? $imagePath, '/');
