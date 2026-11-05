@@ -48,9 +48,15 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     
     // Default production cloud API URL
-    const String defaultUrl = 'https://pos-system-wdlx.onrender.com/api';
+    const String defaultUrl = 'https://pos-system-1-y58u.onrender.com/api';
 
-    _baseUrl = prefs.getString('api_base_url') ?? defaultUrl;
+    final savedUrl = prefs.getString('api_base_url');
+    if (savedUrl == null || savedUrl.contains('pos-system-wdlx.onrender.com')) {
+      _baseUrl = defaultUrl;
+      await prefs.setString('api_base_url', _baseUrl);
+    } else {
+      _baseUrl = savedUrl;
+    }
     _token = prefs.getString('api_auth_token');
     _dio.options.baseUrl = _baseUrl;
   }
