@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Debt;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 
 class DebtController extends Controller
@@ -71,6 +72,14 @@ class DebtController extends Controller
 
         $debt->update([
             'paid_amount' => $newPaidAmount,
+            'status' => $status,
+        ]);
+
+        AuditLogger::log('debt.payment_recorded', $request, [
+            'debt_id' => $debt->id,
+            'customer_name' => $debt->customer_name,
+            'payment_amount' => (float) $validated['amount'],
+            'total_paid' => (float) $newPaidAmount,
             'status' => $status,
         ]);
 

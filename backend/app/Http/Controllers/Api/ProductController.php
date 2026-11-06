@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -49,7 +50,7 @@ class ProductController extends Controller
             'stock' => 'required|integer|min:0',
             'barcode' => 'nullable|string|max:100',
             'variants' => 'nullable',
-            'image' => 'nullable|image|max:4096', // 4MB max
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:4096', // 4MB max
         ]);
 
         // Idempotency: Prevent accidental duplicate submissions from spam clicks within 3 seconds
@@ -114,7 +115,7 @@ class ProductController extends Controller
             'stock' => 'sometimes|required|integer|min:0',
             'barcode' => 'nullable|string|max:100',
             'variants' => 'nullable',
-            'image' => 'nullable|image|max:4096',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:4096',
         ]);
 
         if ($request->hasFile('image')) {
@@ -144,6 +145,13 @@ class ProductController extends Controller
         if ($product->user_id !== $request->user()->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
+
+        AuditLogger::log('product.deleted', $request, [
+            'product_id' => $product->id,
+            'name' => $product->name,
+            'price' => (float) $product->price,
+            'stock' => (int) $product->stock,
+        ]);
 
         $this->deleteImageIfExists($product->image_path);
 
@@ -193,9 +201,11 @@ class ProductController extends Controller
                 $this->deleteImageIfExists($oldImagePath, $disk);
             }
 
-            // Generate clean random filename
-            $extension = $file->getClientOriginalExtension() ?: 'jpg';
-            $filename = Str::random(32) . '.' . strtolower($extension);
+            // Generate clean random filename with verified MIME extension
+            $guessedExt = strtolower($file->extension() ?: ($file->guessExtension() ?: 'jpg'));
+            $allowedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+            $extension = in_array($guessedExt, $allowedExtensions, true) ? $guessedExt : 'jpg';
+            $filename = Str::random(32) . '.' . $extension;
 
             $path = $file->storeAs('products', $filename, [
                 'disk' => $disk,
@@ -211,7 +221,7 @@ class ProductController extends Controller
             // Fallback to local public disk so customer never loses photo
             if ($disk !== 'public') {
                 try {
-                    $fallbackFilename = Str::random(32) . '.' . strtolower($file->getClientOriginalExtension() ?: 'jpg');
+                    $fallbackFilename = Str::random(32) . '.' . $extension;
                     $fallbackPath = $file->storeAs('products', $fallbackFilename, 'public');
                     Log::info("Fallback product image upload to [public] succeeded: {$fallbackPath}");
                     return url('/api/media/' . ltrim($fallbackPath, '/'));

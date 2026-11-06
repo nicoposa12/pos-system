@@ -47,6 +47,12 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   String? get deviceAccountUsername => _user?.username ?? 'teststore';
   @override
   bool get isDeviceConfigured => true;
+  @override
+  int get failedPinAttempts => 0;
+  @override
+  bool get isPinLockedOut => false;
+  @override
+  int get pinLockoutSecondsRemaining => 0;
 
   @override
   void setPreferPinLogin(bool value) {}
@@ -88,7 +94,7 @@ class _TestProductProvider extends ProductProvider {
   @override
   List<String> get categories => const ['All', 'Beverages', 'Noodles'];
   @override
-  Future<void> fetchProducts() async {}
+  Future<void> fetchProducts({bool silent = false}) async {}
 }
 
 class _TestTransactionProvider extends TransactionProvider {
@@ -127,7 +133,7 @@ class _TestTransactionProvider extends TransactionProvider {
     };
   }
   @override
-  Future<void> fetchTransactions() async {}
+  Future<void> fetchTransactions({bool silent = false}) async {}
 }
 
 Widget _wrap(Widget child, {bool isAdmin = false}) {

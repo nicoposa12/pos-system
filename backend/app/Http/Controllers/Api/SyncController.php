@@ -13,6 +13,35 @@ use Illuminate\Support\Facades\DB;
 class SyncController extends Controller
 {
     /**
+     * Fast lightweight sync status & change-detection hashes.
+     * Allows mobile clients to detect changes in real-time with near-zero latency and bandwidth.
+     */
+    public function status(Request $request)
+    {
+        $userId = $request->user()->id;
+
+        $latestProduct = Product::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
+        $productCount = Product::where('user_id', $userId)->count();
+
+        $latestTx = Transaction::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
+        $txCount = Transaction::where('user_id', $userId)->count();
+
+        $latestDebt = Debt::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
+        $debtCount = Debt::where('user_id', $userId)->count();
+
+        $productsVersion = md5(($latestProduct?->updated_at?->toIso8601String() ?? '') . '|' . $productCount);
+        $transactionsVersion = md5(($latestTx?->updated_at?->toIso8601String() ?? '') . '|' . $txCount);
+        $debtsVersion = md5(($latestDebt?->updated_at?->toIso8601String() ?? '') . '|' . $debtCount);
+
+        return response()->json([
+            'products_version' => $productsVersion,
+            'transactions_version' => $transactionsVersion,
+            'debts_version' => $debtsVersion,
+            'timestamp' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
      * Batch sync offline transactions from Flutter SQLite to PostgreSQL.
      */
     public function syncOfflineTransactions(Request $request)
@@ -36,8 +65,28 @@ class SyncController extends Controller
         $userId = $request->user()->id;
         $syncedMapping = [];
 
-        DB::transaction(function () use ($validated, $userId, &$syncedMapping) {
+        // Secure multi-tenant scoping: ensure products belong strictly to this user
+        $allProductIds = [];
+        foreach ($validated['transactions'] as $tx) {
+            foreach ($tx['items'] as $it) {
+                $allProductIds[] = $it['product_id'];
+            }
+        }
+        $validProductIds = Product::whereIn('id', array_unique($allProductIds))
+            ->where('user_id', $userId)
+            ->pluck('id')
+            ->flip();
+
+        DB::transaction(function () use ($validated, $userId, $validProductIds, &$syncedMapping) {
             foreach ($validated['transactions'] as $txData) {
+                $validItems = array_filter($txData['items'], function ($item) use ($validProductIds) {
+                    return isset($validProductIds[$item['product_id']]);
+                });
+
+                if (empty($validItems)) {
+                    continue;
+                }
+
                 // Create transaction
                 $tx = Transaction::create([
                     'user_id' => $userId,
@@ -50,7 +99,7 @@ class SyncController extends Controller
                 ]);
 
                 // Create items & deduct stock
-                foreach ($txData['items'] as $item) {
+                foreach ($validItems as $item) {
                     TransactionItem::create([
                         'transaction_id' => $tx->id,
                         'product_id' => $item['product_id'],

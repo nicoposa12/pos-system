@@ -441,9 +441,10 @@ class DatabaseHelper {
       );
       await db.insert('users', adminUser.toMap());
     } else {
+      // Preserve existing admin password and PIN; only ensure role & active state
       await db.update(
         'users',
-        {'role': 'admin', 'is_active': 1, 'pin': '9999'},
+        {'role': 'admin', 'is_active': 1},
         where: 'username = ?',
         whereArgs: ['admin'],
       );

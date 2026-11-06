@@ -14,6 +14,8 @@ class AuthProvider extends ChangeNotifier {
   bool _preferPinLogin = true;
   String? _errorMessage;
   String? _deviceAccountUsername;
+  int _failedPinAttempts = 0;
+  DateTime? _pinLockoutUntil;
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
@@ -26,6 +28,11 @@ class AuthProvider extends ChangeNotifier {
   bool get isAdmin => _currentUser?.isAdmin ?? false;
   String? get deviceAccountUsername => _deviceAccountUsername;
   bool get isDeviceConfigured => _deviceAccountUsername != null && _deviceAccountUsername!.isNotEmpty;
+  int get failedPinAttempts => _failedPinAttempts;
+  bool get isPinLockedOut =>
+      _pinLockoutUntil != null && DateTime.now().isBefore(_pinLockoutUntil!);
+  int get pinLockoutSecondsRemaining =>
+      isPinLockedOut ? _pinLockoutUntil!.difference(DateTime.now()).inSeconds + 1 : 0;
 
   void setPreferPinLogin(bool value) {
     _preferPinLogin = value;
@@ -197,10 +204,15 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> loginWithPin(String pin) async {
-    if (pin == '0000') {
-      _errorMessage = 'Invalid PIN.';
+    if (isPinLockedOut) {
+      _errorMessage = 'Too many failed attempts. Device locked for $pinLockoutSecondsRemaining seconds.';
       _isLoading = false;
       notifyListeners();
+      return false;
+    }
+
+    if (pin == '0000') {
+      _recordFailedPinAttempt();
       return false;
     }
 
@@ -220,29 +232,15 @@ class AuthProvider extends ChangeNotifier {
           notifyListeners();
           return false;
         }
+        _failedPinAttempts = 0;
+        _pinLockoutUntil = null;
         _isLocked = false;
         _isLoading = false;
         notifyListeners();
         return true;
       }
 
-      // Master Administrator PIN override for terminal maintenance
-      if (pin == '9999') {
-        final adminUser = await DatabaseHelper.instance.getUser('admin');
-        if (adminUser != null && adminUser.isActive) {
-          _currentUser = adminUser;
-          _isLoggedIn = true;
-          _isLocked = false;
-          await prefs.setString('logged_in_username', 'admin');
-          _isLoading = false;
-          notifyListeners();
-          return true;
-        }
-      }
-
-      _errorMessage = 'Incorrect PIN for this register.';
-      _isLoading = false;
-      notifyListeners();
+      _recordFailedPinAttempt('Incorrect PIN for this register.');
       return false;
     }
 
@@ -284,6 +282,8 @@ class AuthProvider extends ChangeNotifier {
           await DatabaseHelper.instance.createUser(newUser);
           _currentUser = newUser;
         }
+        _failedPinAttempts = 0;
+        _pinLockoutUntil = null;
         _isLoggedIn = true;
         _isLocked = false;
         final prefs = await SharedPreferences.getInstance();
@@ -306,6 +306,8 @@ class AuthProvider extends ChangeNotifier {
         return false;
       }
 
+      _failedPinAttempts = 0;
+      _pinLockoutUntil = null;
       _currentUser = user;
       _isLoggedIn = true;
       _isLocked = false;
@@ -316,10 +318,21 @@ class AuthProvider extends ChangeNotifier {
       return true;
     }
 
-    _errorMessage = 'Invalid PIN.';
+    _recordFailedPinAttempt('Invalid PIN.');
+    return false;
+  }
+
+  void _recordFailedPinAttempt([String? customMessage]) {
+    _failedPinAttempts++;
+    if (_failedPinAttempts >= 5) {
+      _pinLockoutUntil = DateTime.now().add(const Duration(seconds: 30));
+      _errorMessage = 'Too many failed attempts. Device locked for 30 seconds.';
+    } else {
+      final remaining = 5 - _failedPinAttempts;
+      _errorMessage = '${customMessage ?? "Invalid PIN."} ($remaining attempts remaining)';
+    }
     _isLoading = false;
     notifyListeners();
-    return false;
   }
 
   Future<bool> updatePin(String newPin) async {

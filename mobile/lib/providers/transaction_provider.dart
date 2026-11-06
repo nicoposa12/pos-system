@@ -11,6 +11,30 @@ class TransactionProvider with ChangeNotifier {
   bool _isLoading = false;
   int? _userId;
 
+  TransactionProvider() {
+    SyncService.instance.addTransactionUpdateListener(_onRealtimeTxUpdate);
+  }
+
+  @override
+  void dispose() {
+    SyncService.instance.removeTransactionUpdateListener(_onRealtimeTxUpdate);
+    super.dispose();
+  }
+
+  void _onRealtimeTxUpdate() {
+    if (_userId != null) {
+      _reloadFromLocalCache();
+    }
+  }
+
+  Future<void> _reloadFromLocalCache() async {
+    if (_userId == null) return;
+    _transactions = await DatabaseHelper.instance.readAllTransactions(userId: _userId!);
+    _topProducts = await DatabaseHelper.instance.getTopSellingProducts(_userId!);
+    _categorySales = await DatabaseHelper.instance.getCategorySales(_userId!);
+    notifyListeners();
+  }
+
   List<SaleTransaction> get transactions => _transactions;
   bool get isLoading => _isLoading;
   List<Map<String, dynamic>> get topProducts => _topProducts;
@@ -26,17 +50,21 @@ class TransactionProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchTransactions() async {
+  Future<void> fetchTransactions({bool silent = false}) async {
     if (_userId == null) return;
 
-    _isLoading = true;
-    notifyListeners();
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     // 1. Immediately read local SQLite cache for instant UI rendering
     _transactions = await DatabaseHelper.instance.readAllTransactions(userId: _userId!);
     _topProducts = await DatabaseHelper.instance.getTopSellingProducts(_userId!);
     _categorySales = await DatabaseHelper.instance.getCategorySales(_userId!);
-    _isLoading = false;
+    if (!silent) {
+      _isLoading = false;
+    }
     notifyListeners();
 
     // 2. Fetch latest authoritative transactions from cloud if online

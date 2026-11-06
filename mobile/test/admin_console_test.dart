@@ -44,6 +44,12 @@ class _StubAdminAuthProvider extends ChangeNotifier implements AuthProvider {
   String? get deviceAccountUsername => 'admin';
   @override
   bool get isDeviceConfigured => true;
+  @override
+  int get failedPinAttempts => 0;
+  @override
+  bool get isPinLockedOut => false;
+  @override
+  int get pinLockoutSecondsRemaining => 0;
 
   @override
   void setPreferPinLogin(bool value) {}

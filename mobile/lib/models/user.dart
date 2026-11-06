@@ -22,6 +22,7 @@ class User {
   });
 
   bool get isAdmin => role.toLowerCase() == 'admin';
+  bool get hasPin => pin != null && pin!.isNotEmpty;
 
   Map<String, dynamic> toMap() {
     return {

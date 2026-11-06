@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../models/product.dart';
+import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
 import '../widgets/product_image_view.dart';
 import '../widgets/skeleton.dart';
@@ -530,36 +531,81 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   void _confirmDelete(BuildContext context, Product product) {
+    final auth = context.read<AuthProvider>();
+    final TextEditingController pinController = TextEditingController();
+    String? pinError;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Delete Product?',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          'Remove "${product.name}" from your inventory? Past sales records will be preserved.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text(
+            'Delete Product?',
+            style: TextStyle(fontWeight: FontWeight.w700),
           ),
-          ElevatedButton(
-            onPressed: () {
-              context.read<ProductProvider>().deleteProduct(product.id!);
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Removed "${product.name}"')),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.accentRose,
-              minimumSize: const Size(96, 44),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Remove "${product.name}" from your inventory? Past sales records will be preserved.',
+              ),
+              if (auth.currentUser?.hasPin == true) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Enter account PIN to authorize deletion:',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: pinController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: InputDecoration(
+                    hintText: '••••',
+                    errorText: pinError,
+                    counterText: '',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
             ),
-            child: const Text('Delete'),
-          ),
-        ],
+            ElevatedButton(
+              onPressed: () {
+                if (auth.currentUser?.hasPin == true) {
+                  final entered = pinController.text.trim();
+                  if (entered.isEmpty) {
+                    setDialogState(() => pinError = 'PIN required');
+                    return;
+                  }
+                  if (auth.currentUser!.pin != entered) {
+                    setDialogState(() => pinError = 'Incorrect PIN');
+                    return;
+                  }
+                }
+                context.read<ProductProvider>().deleteProduct(product.id!);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Removed "${product.name}"')),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentRose,
+                minimumSize: const Size(96, 44),
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
       ),
     );
   }

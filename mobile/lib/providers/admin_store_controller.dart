@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../data/database_helper.dart';
@@ -46,6 +47,7 @@ class AdminStoreController extends ChangeNotifier {
   // Network-level summary overrides from backend summary payload
   double _networkSales = 0.0;
   int _networkProducts = 0;
+  Timer? _realtimeTimer;
 
   AdminStoreController({
     List<User>? seedUsers,
@@ -62,7 +64,29 @@ class AdminStoreController extends ChangeNotifier {
     }
     if (!skipInitialRefresh) {
       refresh();
+      startRealtimePolling();
     }
+  }
+
+  void startRealtimePolling() {
+    _realtimeTimer?.cancel();
+    // Silently fetch store metrics every 8 seconds for real-time executive dashboard
+    _realtimeTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (ApiService.instance.isAuthenticated) {
+        refresh(silent: true);
+      }
+    });
+  }
+
+  void stopRealtimePolling() {
+    _realtimeTimer?.cancel();
+    _realtimeTimer = null;
+  }
+
+  @override
+  void dispose() {
+    stopRealtimePolling();
+    super.dispose();
   }
 
   List<User> get users => List.unmodifiable(_users);

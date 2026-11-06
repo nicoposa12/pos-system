@@ -7,6 +7,7 @@ use App\Models\Debt;
 use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -105,7 +106,7 @@ class AdminController extends Controller
             'full_name' => $validated['full_name'],
             'email' => $validated['email'] ?? null,
             'password' => Hash::make($validated['password']),
-            'pin' => $validated['pin'] ?? null,
+            'pin' => !empty($validated['pin']) ? Hash::make($validated['pin']) : null,
             'role' => $validated['role'] ?? 'client',
             'is_active' => $validated['is_active'] ?? true,
         ]);
@@ -225,6 +226,12 @@ class AdminController extends Controller
         $user->is_active = !$user->is_active;
         $user->save();
 
+        AuditLogger::log('admin.client.toggle_status', $request, [
+            'target_user_id' => $user->id,
+            'target_username' => $user->username,
+            'is_active' => (bool) $user->is_active,
+        ]);
+
         return response()->json([
             'message' => $user->is_active ? 'Client account activated' : 'Client account deactivated',
             'is_active' => (bool) $user->is_active,
@@ -254,10 +261,17 @@ class AdminController extends Controller
             $updates['password'] = Hash::make($validated['password']);
         }
         if (array_key_exists('pin', $validated)) {
-            $updates['pin'] = $validated['pin'];
+            $updates['pin'] = !empty($validated['pin']) ? Hash::make($validated['pin']) : null;
         }
 
         $user->update($updates);
+
+        AuditLogger::log('admin.client.reset_credentials', $request, [
+            'target_user_id' => $user->id,
+            'target_username' => $user->username,
+            'updated_password' => !empty($validated['password']),
+            'updated_pin' => array_key_exists('pin', $validated),
+        ]);
 
         return response()->json([
             'message' => 'Credentials updated successfully',
@@ -296,6 +310,11 @@ class AdminController extends Controller
             // Delete the user
             $user->delete();
         });
+
+        AuditLogger::log('admin.client.deleted', $request, [
+            'deleted_user_id' => $user->id,
+            'deleted_username' => $user->username,
+        ]);
 
         return response()->json([
             'message' => 'Client account and associated records deleted successfully',

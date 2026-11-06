@@ -42,6 +42,12 @@ class _StubAuthProvider extends ChangeNotifier implements AuthProvider {
   String? get deviceAccountUsername => _user.username;
   @override
   bool get isDeviceConfigured => true;
+  @override
+  int get failedPinAttempts => 0;
+  @override
+  bool get isPinLockedOut => false;
+  @override
+  int get pinLockoutSecondsRemaining => 0;
 
   @override
   void setPreferPinLogin(bool value) {}
@@ -87,12 +93,12 @@ class _StubProductProvider extends ProductProvider {
   List<String> get categories => const ['All', 'Canned', 'Drinks', 'Snacks'];
 
   @override
-  Future<void> fetchProducts() async {}
+  Future<void> fetchProducts({bool silent = false}) async {}
 }
 
 class _StubTransactionProvider extends TransactionProvider {
   @override
-  Future<void> fetchTransactions() async {}
+  Future<void> fetchTransactions({bool silent = false}) async {}
 }
 
 Widget _wrapPosScreen(List<Product> products) {

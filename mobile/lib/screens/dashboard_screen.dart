@@ -1007,14 +1007,20 @@ class _HeroRevenueCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      NumberFormat('#,##0.00').format(dailyTotal),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.6,
-                        fontFeatures: AppTheme.tabularFigures,
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          NumberFormat('#,##0.00').format(dailyTotal),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 34,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.6,
+                            fontFeatures: AppTheme.tabularFigures,
+                          ),
+                        ),
                       ),
                     ),
                   ],

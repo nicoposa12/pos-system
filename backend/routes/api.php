@@ -14,8 +14,8 @@ Route::prefix('auth')->group(function () {
         return response()->json(['status' => 'online', 'timestamp' => now()->toIso8601String()]);
     });
     Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/pin-login', [AuthController::class, 'pinLogin']);
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-limiter');
+    Route::post('/pin-login', [AuthController::class, 'pinLogin'])->middleware('throttle:auth-limiter');
 });
 
 // Public image proxy route (allows mobile and web apps to stream product images directly through API)
@@ -43,7 +43,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/debts', [DebtController::class, 'store']);
     Route::post('/debts/{debt}/pay', [DebtController::class, 'pay']);
 
-    // Offline Batch Sync
+    // Offline Batch Sync & Real-Time Sync Status
+    Route::get('/sync/status', [SyncController::class, 'status']);
     Route::post('/sync', [SyncController::class, 'syncOfflineTransactions']);
 
     // Admin Client Management

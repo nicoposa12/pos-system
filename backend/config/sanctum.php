@@ -50,7 +50,7 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => env('SANCTUM_EXPIRATION', 43200), // 30 days in minutes (30 * 24 * 60)
 
     /*
     |--------------------------------------------------------------------------

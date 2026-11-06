@@ -116,6 +116,7 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
       }
     } else if (_lastSyncedUserId != null) {
       _lastSyncedUserId = null;
+      SyncService.instance.init(null);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         context.read<ProductProvider>().clearData();

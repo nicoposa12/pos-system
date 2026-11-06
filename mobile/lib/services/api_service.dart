@@ -1,10 +1,14 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static final ApiService instance = ApiService._init();
+  static const _secureStorageKey = 'api_auth_token_secure';
+
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   late Dio _dio;
   String _baseUrl = '';
@@ -57,7 +61,27 @@ class ApiService {
     } else {
       _baseUrl = savedUrl;
     }
-    _token = prefs.getString('api_auth_token');
+
+    // 1. Try reading token from hardware-backed secure storage
+    try {
+      _token = await _secureStorage.read(key: _secureStorageKey);
+    } catch (e) {
+      debugPrint('[ApiService] Secure storage read error: $e');
+    }
+
+    // 2. Migration fallback: migrate legacy unencrypted SharedPreferences token if present
+    if (_token == null || _token!.isEmpty) {
+      final legacyToken = prefs.getString('api_auth_token');
+      if (legacyToken != null && legacyToken.isNotEmpty) {
+        _token = legacyToken;
+        try {
+          await _secureStorage.write(key: _secureStorageKey, value: legacyToken);
+          await prefs.remove('api_auth_token');
+          debugPrint('[ApiService] Transparently upgraded auth token to secure Keystore/Keychain.');
+        } catch (_) {}
+      }
+    }
+
     _dio.options.baseUrl = _baseUrl;
   }
 
@@ -76,14 +100,23 @@ class ApiService {
     await prefs.setString('api_base_url', _baseUrl);
   }
 
-  /// Store or clear auth token
+  /// Store or clear auth token securely
   Future<void> setToken(String? token) async {
     _token = token;
     final prefs = await SharedPreferences.getInstance();
-    if (token != null) {
-      await prefs.setString('api_auth_token', token);
-    } else {
-      await prefs.remove('api_auth_token');
+    await prefs.remove('api_auth_token'); // Always purge legacy unencrypted key
+
+    try {
+      if (token != null && token.isNotEmpty) {
+        await _secureStorage.write(key: _secureStorageKey, value: token);
+      } else {
+        await _secureStorage.delete(key: _secureStorageKey);
+      }
+    } catch (e) {
+      debugPrint('[ApiService] Secure storage write error: $e');
+      if (token != null) {
+        await prefs.setString('api_auth_token', token);
+      }
     }
   }
 
@@ -292,8 +325,20 @@ class ApiService {
   }
 
   // ==========================================
-  // OFFLINE SYNC
+  // OFFLINE SYNC & REALTIME STATUS
   // ==========================================
+
+  Future<Map<String, dynamic>?> getSyncStatus() async {
+    try {
+      final response = await _dio.get('/sync/status');
+      if (response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<List<dynamic>> syncOfflineTransactions(List<Map<String, dynamic>> transactions) async {
     if (transactions.isEmpty) return [];

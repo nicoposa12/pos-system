@@ -7,8 +7,10 @@ use App\Models\Debt;
 use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\TransactionItem;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class TransactionController extends Controller
 {
@@ -38,6 +40,8 @@ class TransactionController extends Controller
      */
     public function store(Request $request)
     {
+        $userId = $request->user()->id;
+
         $validated = $request->validate([
             'total_amount' => 'required|numeric|min:0',
             'discount' => 'nullable|numeric|min:0',
@@ -47,14 +51,71 @@ class TransactionController extends Controller
             'date' => 'nullable|date',
             'customer_name' => 'nullable|string', // required if debt
             'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.product_id' => [
+                'required',
+                'integer',
+                Rule::exists('products', 'id')->where('user_id', $userId),
+            ],
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.subtotal' => 'required|numeric|min:0',
         ]);
 
-        $userId = $request->user()->id;
-
         return DB::transaction(function () use ($validated, $userId) {
+            // Price integrity & tampering verification
+            $productIds = collect($validated['items'])->pluck('product_id')->all();
+            $products = Product::whereIn('id', $productIds)
+                ->where('user_id', $userId)
+                ->get()
+                ->keyBy('id');
+
+            $calculatedItemsTotal = 0.0;
+            foreach ($validated['items'] as $itemData) {
+                $product = $products->get($itemData['product_id']);
+                if (!$product) {
+                    abort(422, 'Product not found or unauthorized.');
+                }
+
+                $validPrices = [(float) $product->price];
+                if (!empty($product->variants) && is_array($product->variants)) {
+                    foreach ($product->variants as $variant) {
+                        if (isset($variant['price'])) {
+                            $validPrices[] = (float) $variant['price'];
+                        }
+                    }
+                }
+
+                $quantity = (int) $itemData['quantity'];
+                $unitPrice = (float) $itemData['subtotal'] / $quantity;
+
+                // Check if unitPrice matches base price or any variant price within 5 cents tolerance
+                $matchedPrice = false;
+                foreach ($validPrices as $vp) {
+                    if (abs($vp - $unitPrice) < 0.05) {
+                        $matchedPrice = true;
+                        break;
+                    }
+                }
+
+                if (!$matchedPrice) {
+                    return response()->json([
+                        'message' => "Price manipulation detected for product: {$product->name}.",
+                    ], 422);
+                }
+
+                $calculatedItemsTotal += (float) $itemData['subtotal'];
+            }
+
+            $discount = (float) ($validated['discount'] ?? 0.0);
+            $expectedTotal = max(0.0, round($calculatedItemsTotal - $discount, 2));
+
+            if (abs($expectedTotal - (float) $validated['total_amount']) > 0.05) {
+                return response()->json([
+                    'message' => 'Price integrity check failed. The submitted total does not match store items and discount.',
+                    'calculated_total' => $expectedTotal,
+                    'submitted_total' => (float) $validated['total_amount'],
+                ], 422);
+            }
+
             // 1. Create Transaction
             $transaction = Transaction::create([
                 'user_id' => $userId,
@@ -147,6 +208,14 @@ class TransactionController extends Controller
                 'status' => $isFullyPaid ? 'paid' : 'pending',
             ]);
         }
+
+        AuditLogger::log('transaction.mark_paid', $request, [
+            'transaction_id' => $transaction->id,
+            'total_amount' => (float) $transaction->total_amount,
+            'cash_received' => (float) $cashReceived,
+            'payment_method' => $validated['payment_method'],
+            'is_fully_paid' => $isFullyPaid,
+        ]);
 
         $transaction->load(['items.product', 'debt']);
 

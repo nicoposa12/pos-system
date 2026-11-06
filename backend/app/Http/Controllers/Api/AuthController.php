@@ -73,19 +73,31 @@ class AuthController extends Controller
 
         if (!empty($validated['username'])) {
             // Scoped strictly to this device's bound user (or admin)
-            $matchedUser = User::whereNotNull('pin')
+            $candidates = User::whereNotNull('pin')
                 ->where(function ($q) use ($validated) {
                     $q->where('username', $validated['username'])
                       ->orWhere('role', 'admin');
                 })
-                ->where('pin', $validated['pin'])
-                ->first();
+                ->get();
         } else {
             // Unscoped PIN entry only permits administrator PIN for global maintenance
-            $matchedUser = User::whereNotNull('pin')
+            $candidates = User::whereNotNull('pin')
                 ->where('role', 'admin')
-                ->where('pin', $validated['pin'])
-                ->first();
+                ->get();
+        }
+
+        $matchedUser = null;
+        foreach ($candidates as $user) {
+            // Verify either hashed PIN (Bcrypt/Argon2) or legacy plaintext PIN
+            if (Hash::check($validated['pin'], $user->pin) || $user->pin === $validated['pin']) {
+                $matchedUser = $user;
+                // Seamlessly upgrade legacy plaintext PIN to bcrypt hash in database
+                if ($user->pin === $validated['pin']) {
+                    $user->pin = Hash::make($validated['pin']);
+                    $user->save();
+                }
+                break;
+            }
         }
 
         if (!$matchedUser) {
@@ -126,7 +138,7 @@ class AuthController extends Controller
         ]);
 
         $request->user()->update([
-            'pin' => $validated['pin'],
+            'pin' => Hash::make($validated['pin']),
         ]);
 
         return response()->json([

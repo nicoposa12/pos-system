@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../data/database_helper.dart';
 import '../models/product.dart';
 import '../services/api_service.dart';
+import '../services/sync_service.dart';
 
 class ProductProvider with ChangeNotifier {
   List<Product> _products = [];
@@ -9,6 +10,28 @@ class ProductProvider with ChangeNotifier {
   String _searchQuery = '';
   String _selectedCategory = 'All';
   int? _userId;
+
+  ProductProvider() {
+    SyncService.instance.addProductUpdateListener(_onRealtimeProductUpdate);
+  }
+
+  @override
+  void dispose() {
+    SyncService.instance.removeProductUpdateListener(_onRealtimeProductUpdate);
+    super.dispose();
+  }
+
+  void _onRealtimeProductUpdate() {
+    if (_userId != null) {
+      _reloadFromLocalCache();
+    }
+  }
+
+  Future<void> _reloadFromLocalCache() async {
+    if (_userId == null) return;
+    _products = await DatabaseHelper.instance.readAllProducts(userId: _userId!);
+    notifyListeners();
+  }
 
   List<Product> get allProducts => List.unmodifiable(_products);
 
@@ -58,11 +81,13 @@ class ProductProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchProducts() async {
+  Future<void> fetchProducts({bool silent = false}) async {
     if (_userId == null) return;
 
-    _isLoading = true;
-    notifyListeners();
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     // 1. Try fetching from Cloud API if authenticated
     if (ApiService.instance.isAuthenticated) {
@@ -119,7 +144,9 @@ class ProductProvider with ChangeNotifier {
     // 2. Read from SQLite (reliable local cache)
     _products = await DatabaseHelper.instance.readAllProducts(userId: _userId!);
 
-    _isLoading = false;
+    if (!silent) {
+      _isLoading = false;
+    }
     notifyListeners();
   }
 

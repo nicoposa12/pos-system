@@ -13,6 +13,7 @@ import 'pos_screen.dart';
 import 'product_list_screen.dart';
 import 'settings_screen.dart';
 import 'transaction_history_screen.dart';
+import '../services/sync_service.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -56,6 +57,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (_selectedIndex == index) return;
     HapticFeedback.selectionClick();
     setState(() => _selectedIndex = index);
+    // Instant silent real-time refresh when switching tabs
+    SyncService.instance.checkRealtimeUpdates();
   }
 
   Widget _posBadgeIcon(Widget icon, int cartCount) {
