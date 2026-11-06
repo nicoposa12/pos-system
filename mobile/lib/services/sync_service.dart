@@ -20,6 +20,8 @@ class SyncService with WidgetsBindingObserver {
   String? _lastTxVersion;
   String? _lastDebtVersion;
   bool _isCheckingRealtime = false;
+  DateTime _lastUserActivity = DateTime.now();
+  int _idleTickCounter = 0;
 
   final Set<VoidCallback> _productUpdateListeners = {};
   final Set<VoidCallback> _transactionUpdateListeners = {};
@@ -57,10 +59,20 @@ class SyncService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      recordUserActivity();
       checkRealtimeUpdates();
       startRealtimePolling();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       stopRealtimePolling();
+    }
+  }
+
+  /// Marks user interaction (screen tap, navigation, sale) to maintain active polling.
+  void recordUserActivity() {
+    _lastUserActivity = DateTime.now();
+    _idleTickCounter = 0;
+    if (_realtimeTimer == null && _currentUserId != null) {
+      startRealtimePolling();
     }
   }
 
@@ -75,6 +87,7 @@ class SyncService with WidgetsBindingObserver {
       debugPrint('[SyncService] Connectivity changed: online=$online');
 
       if (online && _currentUserId != null) {
+        recordUserActivity();
         syncNow(_currentUserId!);
       }
     });
@@ -84,6 +97,7 @@ class SyncService with WidgetsBindingObserver {
       if (ApiService.instance.isAuthenticated) {
         syncNow(currentUserId);
       }
+      recordUserActivity();
       startRealtimePolling();
     } else {
       stopRealtimePolling();
@@ -93,8 +107,28 @@ class SyncService with WidgetsBindingObserver {
   void startRealtimePolling() {
     _realtimeTimer?.cancel();
     if (_currentUserId == null) return;
-    // Poll fast status hashes every 5 seconds for sub-second reactive updates
-    _realtimeTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+
+    // Adaptive free-tier polling:
+    // - Active: 15s interval (< 120 bytes hash check)
+    // - Idle 3+ mins: throttles to 60s
+    // - Idle 15+ mins: shuts off completely so Render & Neon scale down to sleep
+    _realtimeTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      final idleMinutes = DateTime.now().difference(_lastUserActivity).inMinutes;
+
+      if (idleMinutes >= 15) {
+        // App unattended on counter; stop polling to allow Render & Neon auto-sleep
+        stopRealtimePolling();
+        return;
+      }
+
+      if (idleMinutes >= 3) {
+        // Slow down to once every 60s (every 4th 15s tick)
+        _idleTickCounter = (_idleTickCounter + 1) % 4;
+        if (_idleTickCounter != 0) return;
+      } else {
+        _idleTickCounter = 0;
+      }
+
       checkRealtimeUpdates();
     });
   }
@@ -154,9 +188,11 @@ class SyncService with WidgetsBindingObserver {
       // 2. Remote Transactions or Debts changed
       if ((txVersion != null && txVersion != _lastTxVersion) ||
           (debtVersion != null && debtVersion != _lastDebtVersion)) {
+        final previousSyncTime = lastSyncedAt.value;
         _lastTxVersion = txVersion;
         _lastDebtVersion = debtVersion;
-        await _pullRemoteTransactions(_currentUserId!);
+        // Use incremental delta cursor to only pull transactions modified since last check
+        await _pullRemoteTransactions(_currentUserId!, since: previousSyncTime?.toIso8601String());
         didTxChange = true;
       }
 
@@ -186,6 +222,7 @@ class SyncService with WidgetsBindingObserver {
 
   /// Manually or automatically trigger full bidirectional synchronization
   Future<bool> syncNow(int userId) async {
+    recordUserActivity();
     if (isSyncing.value) return false;
     if (!ApiService.instance.isAuthenticated) return false;
 
@@ -271,8 +308,8 @@ class SyncService with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _pullRemoteTransactions(int userId) async {
-    final remoteTransactions = await ApiService.instance.getTransactions(all: true);
+  Future<void> _pullRemoteTransactions(int userId, {String? since}) async {
+    final remoteTransactions = await ApiService.instance.getTransactions(all: true, since: since);
     if (remoteTransactions.isNotEmpty) {
       await DatabaseHelper.instance.syncTransactionsFromRemote(userId, remoteTransactions);
       debugPrint('[SyncService] Synced ${remoteTransactions.length} remote transactions into local cache.');

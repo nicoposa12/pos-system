@@ -300,4 +300,24 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'Admin Console dynamically reflects Cloud Synced vs Offline Cache badges',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 820);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final ctrl = _buildSeededController();
+      await tester.pumpWidget(_wrapAdminConsole(controller: ctrl));
+      await tester.pumpAndSettle();
+
+      // In seeded state, controller is cloud synced
+      expect(find.text('Neon Cloud Connected'), findsOneWidget);
+
+      await tester.tap(find.text('Stores'));
+      await tester.pumpAndSettle();
+      expect(find.text('NEON LIVE'), findsOneWidget);
+    },
+  );
 }

@@ -438,16 +438,24 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              gradient: AppTheme.violetGradient,
-              borderRadius: BorderRadius.circular(12),
+              color: AppTheme.accentViolet.withValues(
+                alpha: Theme.of(context).brightness == Brightness.dark ? 0.22 : 0.12,
+              ),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: AppTheme.accentViolet.withValues(
+                  alpha: Theme.of(context).brightness == Brightness.dark ? 0.35 : 0.20,
+                ),
+                width: 0.8,
+              ),
             ),
             child: const Icon(
               Icons.storefront_rounded,
-              color: Colors.white,
-              size: 22,
+              color: AppTheme.accentViolet,
+              size: 20,
             ),
           ),
           const SizedBox(width: 12),
@@ -459,7 +467,7 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                 const Text(
                   'Stores & Businesses',
                   style: TextStyle(
-                    fontSize: 20,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.4,
                   ),
@@ -480,32 +488,34 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
             ),
           ),
           _CloudSyncBadge(isCloudSynced: _ctrl.isCloudSynced),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           IconButton(
             tooltip: 'Refresh Directory',
             onPressed: _ctrl.isLoading ? null : () => _ctrl.refresh(),
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(Icons.refresh_rounded, size: 20),
           ),
           if (!isCompactMobile) ...[
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.accentViolet,
                 foregroundColor: Colors.white,
-                minimumSize: const Size(48, 44),
+                minimumSize: const Size(44, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
+                elevation: 0,
               ),
               onPressed: () => ClientManagementScreen.showProvisionModal(
                 context,
                 controller: _ctrl,
                 initialRole: _filter == 'admins' ? 'admin' : 'client',
               ),
-              icon: const Icon(Icons.add_business_rounded, size: 18),
+              icon: const Icon(Icons.add_rounded, size: 18),
               label: const Text(
                 'Provision Store',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               ),
             ),
           ],
@@ -543,6 +553,7 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
   }
 
   Widget _buildControlsHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
       child: Column(
@@ -551,37 +562,55 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (v) => setState(() => _searchQuery = v.trim()),
-                  decoration: InputDecoration(
-                    hintText: 'Search store name, @username, or email...',
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                      borderSide: const BorderSide(
-                        color: AppTheme.accentViolet,
-                        width: 1.8,
+                child: SizedBox(
+                  height: 40,
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Search store name, @username, or email...',
+                      hintStyle: TextStyle(
+                        fontSize: 12.5,
+                        color: AppTheme.mutedText(context),
                       ),
+                      prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                      filled: true,
+                      fillColor: isDark ? AppTheme.cardDark : const Color(0xFFF8FAFC),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 0,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: AppTheme.borderColor(context)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: AppTheme.borderColor(context)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(
+                          color: AppTheme.accentViolet,
+                          width: 1.5,
+                        ),
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              tooltip: 'Clear search',
+                              icon: const Icon(Icons.close_rounded, size: 16),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
                     ),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            tooltip: 'Clear search',
-                            icon: const Icon(Icons.close_rounded, size: 18),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                          )
-                        : null,
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               PopupMenuButton<StoreSortOption>(
                 tooltip: 'Sort stores',
                 initialValue: _sort,
@@ -609,19 +638,19 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                     )
                     .toList(),
                 child: Container(
-                  height: 48,
+                  height: 40,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color: AppTheme.cardBackground(context),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    color: isDark ? AppTheme.cardDark : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppTheme.borderColor(context)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
-                        Icons.sort_rounded,
-                        size: 18,
+                        Icons.swap_vert_rounded,
+                        size: 17,
                         color: AppTheme.accentViolet,
                       ),
                       if (MediaQuery.sizeOf(context).width >= 520) ...[
@@ -630,7 +659,7 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                           _sortLabel(_sort),
                           style: const TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -641,40 +670,51 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildSegmentChip(
-                  'stores',
-                  'Client Stores (${_ctrl.totalStoresCount})',
-                  Icons.storefront_rounded,
-                ),
-                const SizedBox(width: 8),
-                _buildSegmentChip(
-                  'active',
-                  'Active (${_ctrl.activeStoresCount})',
-                  Icons.check_circle_outline_rounded,
-                ),
-                const SizedBox(width: 8),
-                _buildSegmentChip(
-                  'suspended',
-                  'Suspended (${_ctrl.suspendedStoresCount})',
-                  Icons.pause_circle_outline_rounded,
-                ),
-                const SizedBox(width: 8),
-                _buildSegmentChip(
-                  'admins',
-                  'Admins (${_ctrl.adminsCount})',
-                  Icons.shield_outlined,
-                ),
-                const SizedBox(width: 8),
-                _buildSegmentChip(
-                  'all',
-                  'All (${_ctrl.users.length})',
-                  Icons.layers_outlined,
-                ),
-              ],
+          Container(
+            padding: const EdgeInsets.all(3.5),
+            decoration: BoxDecoration(
+              color: isDark ? AppTheme.subtleDark : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(
+                color: AppTheme.borderColor(context).withValues(alpha: 0.6),
+                width: 0.8,
+              ),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildSegmentChip(
+                    'stores',
+                    'Client Stores (${_ctrl.totalStoresCount})',
+                    Icons.storefront_rounded,
+                  ),
+                  const SizedBox(width: 3),
+                  _buildSegmentChip(
+                    'active',
+                    'Active (${_ctrl.activeStoresCount})',
+                    Icons.check_circle_outline_rounded,
+                  ),
+                  const SizedBox(width: 3),
+                  _buildSegmentChip(
+                    'suspended',
+                    'Suspended (${_ctrl.suspendedStoresCount})',
+                    Icons.pause_circle_outline_rounded,
+                  ),
+                  const SizedBox(width: 3),
+                  _buildSegmentChip(
+                    'admins',
+                    'Admins (${_ctrl.adminsCount})',
+                    Icons.shield_outlined,
+                  ),
+                  const SizedBox(width: 3),
+                  _buildSegmentChip(
+                    'all',
+                    'All (${_ctrl.users.length})',
+                    Icons.layers_outlined,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -684,24 +724,57 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
 
   Widget _buildSegmentChip(String key, String label, IconData icon) {
     final selected = _filter == key;
-    return ChoiceChip(
-      avatar: Icon(
-        icon,
-        size: 16,
-        color: selected ? Colors.white : AppTheme.mutedText(context),
-      ),
-      label: Text(label),
-      selected: selected,
-      showCheckmark: false,
-      selectedColor: AppTheme.accentViolet,
-      onSelected: (_) {
-        HapticFeedback.selectionClick();
-        setState(() => _filter = key);
-      },
-      labelStyle: TextStyle(
-        fontSize: 12,
-        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-        color: selected ? Colors.white : AppTheme.mutedText(context),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() => _filter = key);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected
+                ? (isDark ? AppTheme.cardDark : Colors.white)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: selected
+                    ? AppTheme.accentViolet
+                    : AppTheme.mutedText(context),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected
+                      ? AppTheme.textPrimary(context)
+                      : AppTheme.mutedText(context),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -841,37 +914,52 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final metrics = _ctrl.metricsFor(user);
     final authUser = context.read<AuthProvider>().currentUser;
     final isSelf = (user.id != null && user.id == authUser?.id) ||
         user.username == authUser?.username;
 
-    final Color borderColor = isSelected
-        ? AppTheme.accentViolet
-        : (!user.isActive
-            ? AppTheme.accentRose.withValues(alpha: 0.38)
-            : AppTheme.borderColor(context));
-
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isSelected
-            ? AppTheme.accentViolet.withValues(alpha: 0.06)
+            ? (isDark
+                ? AppTheme.accentViolet.withValues(alpha: 0.12)
+                : AppTheme.accentViolet.withValues(alpha: 0.04))
             : AppTheme.cardBackground(context),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: borderColor,
-          width: isSelected ? 1.8 : 1.0,
+          color: isSelected
+              ? AppTheme.accentViolet
+              : (!user.isActive
+                  ? AppTheme.accentRose.withValues(alpha: 0.5)
+                  : AppTheme.borderColor(context)),
+          width: isSelected ? 1.5 : 1.0,
         ),
-        boxShadow: AppTheme.cardShadow(context),
+        boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: AppTheme.accentViolet.withValues(alpha: isDark ? 0.22 : 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.02),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(15),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -880,15 +968,23 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 46,
-                      height: 46,
+                      width: 42,
+                      height: 42,
                       decoration: BoxDecoration(
-                        gradient: user.isAdmin
-                            ? AppTheme.violetGradient
+                        color: user.isAdmin
+                            ? AppTheme.accentViolet.withValues(alpha: isDark ? 0.22 : 0.12)
                             : (user.isActive
-                                ? AppTheme.tealGradient
-                                : AppTheme.roseGradient),
-                        borderRadius: BorderRadius.circular(14),
+                                ? const Color(0xFF059669).withValues(alpha: isDark ? 0.22 : 0.12)
+                                : AppTheme.accentRose.withValues(alpha: isDark ? 0.22 : 0.12)),
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(
+                          color: user.isAdmin
+                              ? AppTheme.accentViolet.withValues(alpha: isDark ? 0.35 : 0.20)
+                              : (user.isActive
+                                  ? const Color(0xFF059669).withValues(alpha: isDark ? 0.35 : 0.20)
+                                  : AppTheme.accentRose.withValues(alpha: isDark ? 0.35 : 0.20)),
+                          width: 0.8,
+                        ),
                       ),
                       child: Icon(
                         user.isAdmin
@@ -896,8 +992,12 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                             : (user.isActive
                                 ? Icons.storefront_rounded
                                 : Icons.store_mall_directory_outlined),
-                        color: Colors.white,
-                        size: 23,
+                        color: user.isAdmin
+                            ? AppTheme.accentViolet
+                            : (user.isActive
+                                ? const Color(0xFF059669)
+                                : const Color(0xFFDC2626)),
+                        size: 20,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -911,8 +1011,8 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                                 child: Text(
                                   user.fullName,
                                   style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15.5,
+                                    fontWeight: FontWeight.w700,
                                     letterSpacing: -0.2,
                                   ),
                                   maxLines: 1,
@@ -923,7 +1023,7 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                               _StatusBadge(user: user),
                               if (isSelf) ...[
                                 const SizedBox(width: 6),
-                                _MicroPill(
+                                const _MicroPill(
                                   label: 'YOU',
                                   color: AppTheme.accentViolet,
                                 ),
@@ -940,7 +1040,7 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                                 '@${user.username}',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w600,
                                   color: AppTheme.mutedText(context),
                                 ),
                               ),
@@ -968,15 +1068,19 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
 
                 // Store KPI Strip (shown for client businesses or any account with activity)
                 if (!user.isAdmin || metrics.totalSales > 0 || metrics.productsCount > 0) ...[
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
-                      vertical: 10,
+                      vertical: 9,
                     ),
                     decoration: BoxDecoration(
-                      color: AppTheme.subtleSurface(context).withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(12),
+                      color: AppTheme.subtleSurface(context),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: AppTheme.borderColor(context).withValues(alpha: 0.6),
+                        width: 0.8,
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -985,12 +1089,12 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                           child: _InlineKpi(
                             label: 'GROSS SALES',
                             value: _currency.format(metrics.totalSales),
-                            valueColor: AppTheme.accentTeal,
+                            valueColor: const Color(0xFF059669),
                           ),
                         ),
                         Container(
                           width: 1,
-                          height: 26,
+                          height: 24,
                           color: AppTheme.borderColor(context),
                         ),
                         const SizedBox(width: 10),
@@ -1003,7 +1107,7 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                         ),
                         Container(
                           width: 1,
-                          height: 26,
+                          height: 24,
                           color: AppTheme.borderColor(context),
                         ),
                         const SizedBox(width: 10),
@@ -1015,7 +1119,7 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                                 ? '${metrics.debtsCount} open'
                                 : '${metrics.transactionsCount} sales',
                             valueColor: metrics.debtsCount > 0
-                                ? AppTheme.accentRose
+                                ? const Color(0xFFDC2626)
                                 : null,
                           ),
                         ),
@@ -1030,35 +1134,38 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                 Wrap(
                   alignment: WrapAlignment.spaceBetween,
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 6,
+                  spacing: 4,
                   runSpacing: 4,
                   children: [
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.accentViolet,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                      ),
+                      onPressed: onTap,
+                      icon: Icon(
+                        isSelected ? Icons.check_circle_rounded : Icons.analytics_outlined,
+                        size: 16,
+                      ),
+                      label: Text(
+                        user.isAdmin ? 'Inspect' : 'Inspect Store',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        TextButton.icon(
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppTheme.accentViolet,
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 6,
-                            ),
-                          ),
-                          onPressed: onTap,
-                          icon: const Icon(Icons.analytics_outlined, size: 17),
-                          label: Text(
-                            user.isAdmin ? 'Inspect' : 'Inspect Store',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
                         IconButton(
                           tooltip: 'Reset Password / Quick PIN',
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.key_rounded, size: 18),
+                          icon: const Icon(Icons.key_rounded, size: 17),
                           color: AppTheme.accentAmber,
                           onPressed: () => _showResetCredentialsSheet(
                             context,
@@ -1069,7 +1176,7 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                         IconButton(
                           tooltip: 'Edit Store Profile',
                           visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          icon: const Icon(Icons.edit_outlined, size: 17),
                           color: AppTheme.mutedText(context),
                           onPressed: () => _showEditAccountSheet(
                             context,
@@ -1077,20 +1184,19 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                             controller: _ctrl,
                           ),
                         ),
+                        if (!isSelf) ...[
+                          const SizedBox(width: 2),
+                          Transform.scale(
+                            scale: 0.80,
+                            child: Switch(
+                              value: user.isActive,
+                              activeThumbColor: const Color(0xFF059669),
+                              onChanged: (_) => _confirmAndToggleStatus(user),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
-                    if (!isSelf)
-                      SizedBox(
-                        height: 36,
-                        child: FittedBox(
-                          fit: BoxFit.contain,
-                          child: Switch(
-                            value: user.isActive,
-                            activeThumbColor: AppTheme.accentTeal,
-                            onChanged: (_) => _confirmAndToggleStatus(user),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ],
@@ -1281,6 +1387,8 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
         liveUser.username == authUser?.username;
     final joinedStr = DateFormat('MMM d, yyyy').format(liveUser.createdAt);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return ListView(
       controller: widget.scrollController,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 36),
@@ -1302,9 +1410,16 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            gradient: AppTheme.adminHeroGradient,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            color: isDark ? AppTheme.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.borderColor(context)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1313,22 +1428,34 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 52,
-                    height: 52,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
-                      gradient: liveUser.isAdmin
-                          ? AppTheme.violetGradient
+                      color: liveUser.isAdmin
+                          ? AppTheme.accentViolet.withValues(alpha: isDark ? 0.25 : 0.12)
                           : (liveUser.isActive
-                              ? AppTheme.tealGradient
-                              : AppTheme.roseGradient),
-                      borderRadius: BorderRadius.circular(15),
+                              ? const Color(0xFF059669).withValues(alpha: isDark ? 0.25 : 0.12)
+                              : AppTheme.accentRose.withValues(alpha: isDark ? 0.25 : 0.12)),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: liveUser.isAdmin
+                            ? AppTheme.accentViolet.withValues(alpha: isDark ? 0.35 : 0.20)
+                            : (liveUser.isActive
+                                ? const Color(0xFF059669).withValues(alpha: isDark ? 0.35 : 0.20)
+                                : AppTheme.accentRose.withValues(alpha: isDark ? 0.35 : 0.20)),
+                        width: 0.8,
+                      ),
                     ),
                     child: Icon(
                       liveUser.isAdmin
                           ? Icons.admin_panel_settings_rounded
                           : Icons.storefront_rounded,
-                      color: Colors.white,
-                      size: 26,
+                      color: liveUser.isAdmin
+                          ? AppTheme.accentViolet
+                          : (liveUser.isActive
+                              ? const Color(0xFF059669)
+                              : const Color(0xFFDC2626)),
+                      size: 24,
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -1341,9 +1468,9 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
                             Flexible(
                               child: Text(
                                 liveUser.fullName,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 19,
+                                style: TextStyle(
+                                  color: isDark ? Colors.white : AppTheme.textPrimaryLight,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: -0.3,
                                 ),
@@ -1358,9 +1485,10 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
                         const SizedBox(height: 4),
                         Text(
                           '@${liveUser.username}${liveUser.email != null && liveUser.email!.isNotEmpty ? ' • ${liveUser.email}' : ''}',
-                          style: const TextStyle(
-                            color: AppTheme.textSecondaryDark,
-                            fontSize: 13,
+                          style: TextStyle(
+                            color: isDark ? AppTheme.textSecondaryDark : AppTheme.textSecondaryLight,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -1372,15 +1500,15 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
                           children: [
                             _MicroPill(
                               label: 'Provisioned $joinedStr',
-                              color: Colors.white70,
-                              darkSurface: true,
+                              color: isDark ? Colors.white70 : AppTheme.textSecondaryLight,
+                              darkSurface: isDark,
                             ),
                             _MicroPill(
                               label: metrics.hasPin ? 'Quick PIN Active' : 'No Quick PIN',
                               color: metrics.hasPin
-                                  ? AppTheme.accentTeal
+                                  ? const Color(0xFF059669)
                                   : AppTheme.accentAmber,
-                              darkSurface: true,
+                              darkSurface: isDark,
                             ),
                           ],
                         ),
@@ -1391,13 +1519,13 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
                     IconButton(
                       tooltip: 'Close Inspector',
                       onPressed: widget.onClose,
-                      icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                      icon: Icon(Icons.close_rounded, color: isDark ? Colors.white70 : AppTheme.mutedText(context)),
                     )
                   else
                     IconButton(
                       tooltip: 'Refresh Live Telemetry',
                       onPressed: _loadingLive ? null : _loadLiveDetails,
-                      icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
+                      icon: Icon(Icons.refresh_rounded, color: isDark ? Colors.white70 : AppTheme.mutedText(context)),
                     ),
                 ],
               ),
@@ -2567,29 +2695,48 @@ class _CloudSyncBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isCloudSynced ? AppTheme.accentTeal : AppTheme.accentAmber;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = isCloudSynced ? const Color(0xFF059669) : AppTheme.accentAmber;
+    final bgColor = isDark
+        ? color.withValues(alpha: 0.18)
+        : (isCloudSynced ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB));
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: bgColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: color.withValues(alpha: isDark ? 0.35 : 0.25),
+          width: 0.8,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: isCloudSynced
+                  ? [
+                      BoxShadow(
+                        color: color.withValues(alpha: 0.5),
+                        blurRadius: 4,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 5),
           Text(
             isCloudSynced ? 'NEON LIVE' : 'CACHED',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
+              letterSpacing: 0.4,
               color: color,
             ),
           ),
@@ -2606,30 +2753,39 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final Color color;
+    final Color bgColor;
     final String text;
     if (user.isAdmin) {
       color = AppTheme.accentViolet;
+      bgColor = isDark ? color.withValues(alpha: 0.22) : const Color(0xFFF3E8FF);
       text = 'ADMIN';
     } else if (user.isActive) {
-      color = AppTheme.accentTeal;
+      color = const Color(0xFF059669);
+      bgColor = isDark ? color.withValues(alpha: 0.22) : const Color(0xFFECFDF5);
       text = 'ACTIVE';
     } else {
-      color = AppTheme.accentRose;
+      color = const Color(0xFFDC2626);
+      bgColor = isDark ? color.withValues(alpha: 0.22) : const Color(0xFFFEF2F2);
       text = 'SUSPENDED';
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
+        color: bgColor,
         borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: color.withValues(alpha: isDark ? 0.35 : 0.25),
+          width: 0.8,
+        ),
       ),
       child: Text(
         text,
         style: TextStyle(
           color: color,
-          fontSize: 10,
+          fontSize: 9.5,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.4,
         ),
@@ -2651,19 +2807,20 @@ class _MicroPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark || darkSurface;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: darkSurface
-            ? Colors.white.withValues(alpha: 0.10)
-            : color.withValues(alpha: 0.13),
+        color: isDark
+            ? color.withValues(alpha: 0.18)
+            : color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w700,
           color: color,
         ),
       ),
@@ -2726,7 +2883,7 @@ class _SectionTitle extends StatelessWidget {
       style: TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w800,
-        letterSpacing: 1.0,
+        letterSpacing: 0.8,
         color: AppTheme.mutedText(context),
       ),
     );
@@ -2750,32 +2907,38 @@ class _GovernanceActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: outlined ? Colors.transparent : color.withValues(alpha: 0.13),
-      borderRadius: BorderRadius.circular(12),
+      color: outlined
+          ? Colors.transparent
+          : (isDark ? AppTheme.subtleDark : AppTheme.subtleLight),
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          constraints: const BoxConstraints(minHeight: 38),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: outlined ? color.withValues(alpha: 0.55) : color.withValues(alpha: 0.25),
+              color: outlined
+                  ? color.withValues(alpha: isDark ? 0.6 : 0.45)
+                  : AppTheme.borderColor(context),
+              width: 1,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 17, color: color),
-              const SizedBox(width: 8),
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 7),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: outlined ? color : AppTheme.textPrimary(context),
                 ),
               ),
             ],
@@ -2801,20 +2964,36 @@ class _InspectorKpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: AppTheme.cardBackground(context),
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.borderColor(context)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.02),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: accent),
-              const SizedBox(width: 6),
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: isDark ? 0.22 : 0.12),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(icon, size: 14, color: accent),
+              ),
+              const SizedBox(width: 7),
               Expanded(
                 child: Text(
                   label,
@@ -2829,7 +3008,7 @@ class _InspectorKpiCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 9),
           Text(
             value,
             style: const TextStyle(

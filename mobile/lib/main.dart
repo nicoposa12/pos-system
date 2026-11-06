@@ -108,6 +108,8 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
             context.read<SettingsProvider>().setUserId(userId);
           });
         } else {
+          // Initialize network connectivity monitoring for admin sessions without triggering cashier syncs
+          SyncService.instance.init(null);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             context.read<SettingsProvider>().setUserId(userId);

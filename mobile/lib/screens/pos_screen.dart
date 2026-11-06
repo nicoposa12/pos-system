@@ -556,8 +556,8 @@ class _PosScreenState extends State<PosScreen> {
                     );
                   }
 
-                  final hasFloatingBar =
-                      !isSplitPos && context.watch<CartProvider>().itemCount > 0;
+                  final hasFloatingBar = !isSplitPos &&
+                      context.select<CartProvider, bool>((cart) => cart.itemCount > 0);
 
                   return RefreshIndicator(
                     color: AppTheme.accentOrange,

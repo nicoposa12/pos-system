@@ -22,7 +22,10 @@ class StoreMetrics {
     this.hasPin = false,
   });
 
-  factory StoreMetrics.fromJson(Map<String, dynamic> stats, {bool hasPin = false}) {
+  factory StoreMetrics.fromJson(
+    Map<String, dynamic> stats, {
+    bool hasPin = false,
+  }) {
     return StoreMetrics(
       productsCount: (stats['products_count'] as num?)?.toInt() ?? 0,
       transactionsCount: (stats['transactions_count'] as num?)?.toInt() ?? 0,
@@ -48,6 +51,8 @@ class AdminStoreController extends ChangeNotifier {
   double _networkSales = 0.0;
   int _networkProducts = 0;
   Timer? _realtimeTimer;
+  DateTime _lastActivity = DateTime.now();
+  int _idleTicks = 0;
 
   AdminStoreController({
     List<User>? seedUsers,
@@ -62,16 +67,48 @@ class AdminStoreController extends ChangeNotifier {
       _isCloudSynced = true;
       _lastSyncedAt = DateTime.now();
     }
+
+    SyncService.instance.isOnline.addListener(_onNetworkOnlineChanged);
+
     if (!skipInitialRefresh) {
       refresh();
       startRealtimePolling();
     }
   }
 
+  void _onNetworkOnlineChanged() {
+    if (SyncService.instance.isOnline.value) {
+      debugPrint(
+        '[AdminStoreController] Connectivity online: refreshing live store telemetry...',
+      );
+      refresh(silent: true);
+    }
+  }
+
+  void recordActivity() {
+    _lastActivity = DateTime.now();
+    _idleTicks = 0;
+    if (_realtimeTimer == null) {
+      startRealtimePolling();
+    }
+  }
+
   void startRealtimePolling() {
     _realtimeTimer?.cancel();
-    // Silently fetch store metrics every 8 seconds for real-time executive dashboard
-    _realtimeTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+    // Silently fetch store metrics every 25 seconds for executive dashboard (free-tier optimized)
+    _realtimeTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+      final idleMins = DateTime.now().difference(_lastActivity).inMinutes;
+      if (idleMins >= 15) {
+        stopRealtimePolling();
+        return;
+      }
+      if (idleMins >= 3) {
+        _idleTicks = (_idleTicks + 1) % 3;
+        if (_idleTicks != 0) return;
+      } else {
+        _idleTicks = 0;
+      }
+
       if (ApiService.instance.isAuthenticated) {
         refresh(silent: true);
       }
@@ -85,6 +122,7 @@ class AdminStoreController extends ChangeNotifier {
 
   @override
   void dispose() {
+    SyncService.instance.isOnline.removeListener(_onNetworkOnlineChanged);
     stopRealtimePolling();
     super.dispose();
   }
@@ -191,7 +229,8 @@ class AdminStoreController extends ChangeNotifier {
             }
           }
         }
-        if (data['message'] != null && data['message'].toString().trim().isNotEmpty) {
+        if (data['message'] != null &&
+            data['message'].toString().trim().isNotEmpty) {
           return data['message'].toString();
         }
       }
@@ -230,7 +269,8 @@ class AdminStoreController extends ChangeNotifier {
 
             final localMatch = await DatabaseHelper.instance.getUser(username);
             final id = (item['id'] as num?)?.toInt();
-            final hasPin = item['has_pin'] == true ||
+            final hasPin =
+                item['has_pin'] == true ||
                 (localMatch?.pin != null && localMatch!.pin!.isNotEmpty);
 
             final cloudUser = User(
@@ -243,7 +283,8 @@ class AdminStoreController extends ChangeNotifier {
               role: (item['role'] ?? 'client').toString(),
               isActive: item['is_active'] != false,
               createdAt: item['created_at'] != null
-                  ? DateTime.tryParse(item['created_at'].toString()) ?? DateTime.now()
+                  ? DateTime.tryParse(item['created_at'].toString()) ??
+                        DateTime.now()
                   : (localMatch?.createdAt ?? DateTime.now()),
             );
             cloudUsers.add(cloudUser);
@@ -257,46 +298,20 @@ class AdminStoreController extends ChangeNotifier {
                 hasPin: hasPin,
               );
             }
-
-            // Mirror account metadata locally (preserving local primary key to avoid ID collisions)
-            if (localMatch != null) {
-              await DatabaseHelper.instance.updateUser(
-                localMatch.copyWith(
-                  fullName: cloudUser.fullName,
-                  email: cloudUser.email,
-                  role: cloudUser.role,
-                  isActive: cloudUser.isActive,
-                ),
-              );
-            } else {
-              try {
-                await DatabaseHelper.instance.createUser(
-                  cloudUser.copyWith(id: null),
-                );
-              } catch (_) {}
-            }
-          }
-
-          // Prune stale cached client accounts that were deleted from Neon
-          final localUsers = await DatabaseHelper.instance.getAllUsers();
-          for (final local in localUsers) {
-            final uname = local.username.toLowerCase();
-            if (uname != 'admin' &&
-                !cloudUsernames.contains(uname) &&
-                local.id != null) {
-              await DatabaseHelper.instance.deleteUser(local.id!);
-            }
           }
 
           final summary = onlineData['summary'] is Map
               ? Map<String, dynamic>.from(onlineData['summary'] as Map)
               : const <String, dynamic>{};
 
+          // 2. Commit Live Cloud state to UI immediately
           _users = cloudUsers;
           _metrics = cloudMetrics;
-          _networkSales = (summary['total_network_sales'] as num?)?.toDouble() ??
+          _networkSales =
+              (summary['total_network_sales'] as num?)?.toDouble() ??
               cloudMetrics.values.fold(0.0, (acc, m) => acc + m.totalSales);
-          _networkProducts = (summary['total_network_products'] as num?)?.toInt() ??
+          _networkProducts =
+              (summary['total_network_products'] as num?)?.toInt() ??
               cloudMetrics.values.fold(0, (acc, m) => acc + m.productsCount);
           _isCloudSynced = true;
           _syncBannerMessage = null;
@@ -304,12 +319,32 @@ class AdminStoreController extends ChangeNotifier {
           SyncService.instance.isOnline.value = true;
           _isLoading = false;
           notifyListeners();
+
+          // 3. Persist local SQLite cache mirror in background (isolated from cloud sync state)
+          unawaited(_persistLocalMirror(cloudUsers, cloudUsernames));
           return;
         }
       } catch (e) {
-        debugPrint('[AdminStoreController] Cloud fetch unavailable, using SQLite cache: $e');
+        debugPrint(
+          '[AdminStoreController] Cloud fetch unavailable, using SQLite cache: $e',
+        );
         _isCloudSynced = false;
-        _syncBannerMessage = 'Showing offline cache — connect to internet to sync live store telemetry.';
+        if (e is DioException) {
+          final statusCode = e.response?.statusCode;
+          if (statusCode == 401 || statusCode == 403) {
+            _syncBannerMessage =
+                'Admin authentication required. Please sign in again.';
+          } else if (_isConnectionFailure(e)) {
+            _syncBannerMessage =
+                'Cannot reach cloud server. Showing offline cache.';
+          } else {
+            _syncBannerMessage =
+                'Cloud unavailable (${statusCode ?? "error"}). Showing offline cache.';
+          }
+        } else {
+          _syncBannerMessage =
+              'Showing offline cache — connect to internet to sync live store telemetry.';
+        }
       }
 
       // 2. Offline Fallback: Local SQLite cache
@@ -333,6 +368,52 @@ class AdminStoreController extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _persistLocalMirror(
+    List<User> cloudUsers,
+    Set<String> cloudUsernames,
+  ) async {
+    try {
+      for (final cloudUser in cloudUsers) {
+        final localMatch = await DatabaseHelper.instance.getUser(
+          cloudUser.username,
+        );
+        if (localMatch != null) {
+          await DatabaseHelper.instance.updateUser(
+            localMatch.copyWith(
+              fullName: cloudUser.fullName,
+              email: cloudUser.email,
+              role: cloudUser.role,
+              isActive: cloudUser.isActive,
+            ),
+          );
+        } else {
+          try {
+            await DatabaseHelper.instance.createUser(
+              cloudUser.copyWith(id: null),
+            );
+          } catch (_) {}
+        }
+      }
+
+      // Prune stale cached client accounts that were deleted from Neon
+      final localUsers = await DatabaseHelper.instance.getAllUsers();
+      for (final local in localUsers) {
+        final uname = local.username.toLowerCase();
+        if (uname != 'admin' &&
+            !cloudUsernames.contains(uname) &&
+            local.id != null) {
+          try {
+            await DatabaseHelper.instance.deleteUser(local.id!);
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      debugPrint(
+        '[AdminStoreController] Warning: SQLite local cache mirror non-fatal error: $e',
+      );
     }
   }
 
@@ -495,4 +576,3 @@ class AdminStoreController extends ChangeNotifier {
     }
   }
 }
-

@@ -54,6 +54,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   void _selectTab(int index) {
+    SyncService.instance.recordUserActivity();
     if (_selectedIndex == index) return;
     HapticFeedback.selectionClick();
     setState(() => _selectedIndex = index);
@@ -97,7 +98,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         File(settings.businessPhotoPath).existsSync();
 
     if (useRail) {
-      return Scaffold(
+      return Listener(
+        onPointerDown: (_) => SyncService.instance.recordUserActivity(),
+        behavior: HitTestBehavior.translucent,
+        child: Scaffold(
         body: SafeArea(
           child: Row(
             children: [
@@ -270,10 +274,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ],
           ),
         ),
-      );
+      ),
+    );
     }
 
-    return Scaffold(
+    return Listener(
+      onPointerDown: (_) => SyncService.instance.recordUserActivity(),
+      behavior: HitTestBehavior.translucent,
+      child: Scaffold(
       body: IndexedStack(
         index: _selectedIndex,
         children: _screens,
@@ -323,6 +331,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }

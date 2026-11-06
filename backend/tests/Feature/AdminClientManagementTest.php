@@ -115,6 +115,15 @@ class AdminClientManagementTest extends TestCase
             'is_active' => true,
         ]);
 
+        User::create([
+            'username' => 'admin_test',
+            'full_name' => 'Admin Test',
+            'password' => 'pass123',
+            'pin' => '9999',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+
         // Device A (scoped to store_a) using PIN 5678 must log into Store A
         $resA = $this->postJson('/api/auth/pin-login', [
             'pin' => '5678',
@@ -137,6 +146,21 @@ class AdminClientManagementTest extends TestCase
             'username' => 'store_a',
         ]);
         $resFail->assertStatus(401);
+
+        // Strict Terminal Isolation: Device A entering Admin PIN (9999) must fail
+        $resAdminOnDeviceA = $this->postJson('/api/auth/pin-login', [
+            'pin' => '9999',
+            'username' => 'store_a',
+        ]);
+        $resAdminOnDeviceA->assertStatus(401);
+
+        // Admin device using Admin PIN logs in successfully
+        $resAdmin = $this->postJson('/api/auth/pin-login', [
+            'pin' => '9999',
+            'username' => 'admin_test',
+        ]);
+        $resAdmin->assertStatus(200);
+        $this->assertEquals('admin_test', $resAdmin->json('user.username'));
 
         // An unscoped client PIN request fails
         $resUnscoped = $this->postJson('/api/auth/pin-login', [

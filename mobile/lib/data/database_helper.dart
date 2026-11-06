@@ -25,9 +25,10 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 14,
+      version: 15,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
+      onOpen: (db) async => await _createIndexes(db),
     );
   }
 
@@ -53,10 +54,14 @@ class DatabaseHelper {
     if (oldVersion < 4) {
       // Add user_id column to products and transactions
       try {
-        await db.execute('ALTER TABLE products ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE products ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0',
+        );
       } catch (_) {}
       try {
-        await db.execute('ALTER TABLE transactions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0',
+        );
       } catch (_) {}
     }
     if (oldVersion < 5) {
@@ -66,18 +71,23 @@ class DatabaseHelper {
     }
     if (oldVersion < 6) {
       try {
-        await db.execute('ALTER TABLE transactions ADD COLUMN cash_received REAL DEFAULT 0.0');
-        await db.execute('ALTER TABLE transactions ADD COLUMN change_amount REAL DEFAULT 0.0');
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN cash_received REAL DEFAULT 0.0',
+        );
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN change_amount REAL DEFAULT 0.0',
+        );
       } catch (_) {}
     }
     if (oldVersion < 7) {
-      try {
-      } catch (_) {}
+      try {} catch (_) {}
     }
     if (oldVersion < 8) {
       try {
         await db.execute('ALTER TABLE debts ADD COLUMN transaction_id INTEGER');
-        await db.execute('ALTER TABLE debts ADD COLUMN paid_amount REAL DEFAULT 0.0');
+        await db.execute(
+          'ALTER TABLE debts ADD COLUMN paid_amount REAL DEFAULT 0.0',
+        );
       } catch (_) {}
     }
     if (oldVersion < 9) {
@@ -110,12 +120,16 @@ class DatabaseHelper {
     }
     if (oldVersion < 13) {
       try {
-        await db.execute('ALTER TABLE transactions ADD COLUMN is_synced INTEGER DEFAULT 0');
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN is_synced INTEGER DEFAULT 0',
+        );
       } catch (_) {}
     }
     if (oldVersion < 12) {
       try {
-        await db.execute('ALTER TABLE transactions ADD COLUMN payment_method TEXT DEFAULT "cash"');
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN payment_method TEXT DEFAULT "cash"',
+        );
       } catch (_) {}
     }
     if (oldVersion < 14) {
@@ -123,12 +137,42 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE users ADD COLUMN email TEXT');
       } catch (_) {}
       try {
-        await db.execute('ALTER TABLE users ADD COLUMN role TEXT DEFAULT "client"');
+        await db.execute(
+          'ALTER TABLE users ADD COLUMN role TEXT DEFAULT "client"',
+        );
       } catch (_) {}
       try {
-        await db.execute('ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1');
+        await db.execute(
+          'ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1',
+        );
       } catch (_) {}
     }
+    if (oldVersion < 15) {
+      await _createIndexes(db);
+    }
+  }
+
+  Future<void> _createIndexes(Database db) async {
+    try {
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_products_user_cat ON products(user_id, category)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_products_user_barcode ON products(user_id, barcode)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, date)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_transactions_sync ON transactions(is_synced)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tx_items_tx ON transaction_items(transaction_id, product_id)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_debts_user_status ON debts(user_id, status)',
+      );
+    } catch (_) {}
   }
 
   Future _createDB(Database db, int version) async {
@@ -221,6 +265,8 @@ class DatabaseHelper {
         FOREIGN KEY (product_id) REFERENCES products (id)
       )
     ''');
+
+    await _createIndexes(db);
   }
 
   // --- User CRUD ---
@@ -251,10 +297,12 @@ class DatabaseHelper {
     final db = await instance.database;
 
     if (scopedUsername != null && scopedUsername.isNotEmpty) {
+      // Strict Terminal Isolation: Scoped strictly to this device's bound username.
+      // Cashier registers cannot be unlocked by admin PIN.
       final maps = await db.query(
         'users',
-        where: 'pin = ? AND (username = ? OR role = ?)',
-        whereArgs: [pin, scopedUsername, 'admin'],
+        where: 'pin = ? AND username = ?',
+        whereArgs: [pin, scopedUsername],
       );
       if (maps.isNotEmpty) {
         return User.fromMap(maps.first);
@@ -299,7 +347,11 @@ class DatabaseHelper {
     return count > 0;
   }
 
-  Future<List<User>> getAllUsers({String? search, String? role, bool? isActive}) async {
+  Future<List<User>> getAllUsers({
+    String? search,
+    String? role,
+    bool? isActive,
+  }) async {
     final db = await instance.database;
     List<String> whereClauses = [];
     List<dynamic> whereArgs = [];
@@ -320,7 +372,9 @@ class DatabaseHelper {
       whereArgs.add(isActive ? 1 : 0);
     }
 
-    final whereString = whereClauses.isNotEmpty ? whereClauses.join(' AND ') : null;
+    final whereString = whereClauses.isNotEmpty
+        ? whereClauses.join(' AND ')
+        : null;
 
     final maps = await db.query(
       'users',
@@ -352,7 +406,11 @@ class DatabaseHelper {
     );
   }
 
-  Future<int> updateUserCredentials(int userId, {String? password, String? pin}) async {
+  Future<int> updateUserCredentials(
+    int userId, {
+    String? password,
+    String? pin,
+  }) async {
     final db = await instance.database;
     Map<String, dynamic> values = {};
     if (password != null && password.isNotEmpty) {
@@ -379,12 +437,25 @@ class DatabaseHelper {
       // Delete user's debts
       await txn.delete('debts', where: 'user_id = ?', whereArgs: [userId]);
       // Delete user's transactions and transaction_items
-      final txns = await txn.query('transactions', columns: ['id'], where: 'user_id = ?', whereArgs: [userId]);
+      final txns = await txn.query(
+        'transactions',
+        columns: ['id'],
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
       for (var t in txns) {
         final txId = t['id'];
-        await txn.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [txId]);
+        await txn.delete(
+          'transaction_items',
+          where: 'transaction_id = ?',
+          whereArgs: [txId],
+        );
       }
-      await txn.delete('transactions', where: 'user_id = ?', whereArgs: [userId]);
+      await txn.delete(
+        'transactions',
+        where: 'user_id = ?',
+        whereArgs: [userId],
+      );
       // Delete user's products
       await txn.delete('products', where: 'user_id = ?', whereArgs: [userId]);
       // Delete user
@@ -394,9 +465,12 @@ class DatabaseHelper {
 
   Future<Map<String, dynamic>> getUserStats(int userId) async {
     final db = await instance.database;
-    
+
     // Total products
-    final prodRes = await db.rawQuery('SELECT COUNT(*) as count FROM products WHERE user_id = ?', [userId]);
+    final prodRes = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM products WHERE user_id = ?',
+      [userId],
+    );
     final productsCount = Sqflite.firstIntValue(prodRes) ?? 0;
 
     // Total transactions & revenue
@@ -405,10 +479,15 @@ class DatabaseHelper {
       [userId],
     );
     final txCount = Sqflite.firstIntValue(txRes) ?? 0;
-    final totalRevenue = txRes.isNotEmpty ? (txRes.first['revenue'] as num).toDouble() : 0.0;
+    final totalRevenue = txRes.isNotEmpty
+        ? (txRes.first['revenue'] as num).toDouble()
+        : 0.0;
 
     // Unpaid debts count
-    final debtRes = await db.rawQuery('SELECT COUNT(*) as count FROM debts WHERE user_id = ? AND is_paid = 0', [userId]);
+    final debtRes = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM debts WHERE user_id = ? AND is_paid = 0',
+      [userId],
+    );
     final debtsCount = Sqflite.firstIntValue(debtRes) ?? 0;
 
     return {
@@ -471,11 +550,7 @@ class DatabaseHelper {
 
   Future<Product?> readProduct(int id) async {
     final db = await instance.database;
-    final maps = await db.query(
-      'products',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final maps = await db.query('products', where: 'id = ?', whereArgs: [id]);
 
     if (maps.isNotEmpty) {
       return Product.fromMap(maps.first);
@@ -507,18 +582,17 @@ class DatabaseHelper {
 
   Future<int> deleteProduct(int id) async {
     final db = await instance.database;
-    return await db.delete(
-      'products',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.delete('products', where: 'id = ?', whereArgs: [id]);
   }
 
   // --- Transaction CRUD (user-scoped) ---
 
-  Future<int> createTransaction(SaleTransaction transaction, List<TransactionItem> items) async {
+  Future<int> createTransaction(
+    SaleTransaction transaction,
+    List<TransactionItem> items,
+  ) async {
     final db = await instance.database;
-    
+
     return await db.transaction((txn) async {
       final id = await txn.insert('transactions', transaction.toMap());
 
@@ -540,7 +614,9 @@ class DatabaseHelper {
     });
   }
 
-  Future<List<SaleTransaction>> readAllTransactions({required int userId}) async {
+  Future<List<SaleTransaction>> readAllTransactions({
+    required int userId,
+  }) async {
     final db = await instance.database;
     final result = await db.query(
       'transactions',
@@ -551,17 +627,24 @@ class DatabaseHelper {
     return result.map((json) => SaleTransaction.fromMap(json)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> readTransactionItems(int transactionId) async {
+  Future<List<Map<String, dynamic>>> readTransactionItems(
+    int transactionId,
+  ) async {
     final db = await instance.database;
-    return await db.rawQuery('''
+    return await db.rawQuery(
+      '''
       SELECT ti.*, COALESCE(p.name, 'Item #' || ti.product_id) as product_name
       FROM transaction_items ti
       LEFT JOIN products p ON ti.product_id = p.id
       WHERE ti.transaction_id = ?
-    ''', [transactionId]);
+    ''',
+      [transactionId],
+    );
   }
 
-  Future<Map<String, dynamic>?> getDebtByTransactionId(int transactionId) async {
+  Future<Map<String, dynamic>?> getDebtByTransactionId(
+    int transactionId,
+  ) async {
     final db = await instance.database;
     final results = await db.query(
       'debts',
@@ -607,10 +690,7 @@ class DatabaseHelper {
 
       await txn.update(
         'debts',
-        {
-          'paid_amount': cashReceived,
-          'status': status,
-        },
+        {'paid_amount': cashReceived, 'status': status},
         where: 'transaction_id = ?',
         whereArgs: [transactionId],
       );
@@ -634,9 +714,13 @@ class DatabaseHelper {
 
   // --- Analytics Queries ---
 
-  Future<List<Map<String, dynamic>>> getTopSellingProducts(int userId, {int limit = 5}) async {
+  Future<List<Map<String, dynamic>>> getTopSellingProducts(
+    int userId, {
+    int limit = 5,
+  }) async {
     final db = await instance.database;
-    return await db.rawQuery('''
+    return await db.rawQuery(
+      '''
       SELECT COALESCE(p.name, 'Item #' || ti.product_id) as name, SUM(ti.quantity) as total_sold, SUM(ti.subtotal) as total_revenue
       FROM transaction_items ti
       LEFT JOIN products p ON ti.product_id = p.id
@@ -645,12 +729,15 @@ class DatabaseHelper {
       GROUP BY ti.product_id
       ORDER BY total_sold DESC
       LIMIT ?
-    ''', [userId, limit]);
+    ''',
+      [userId, limit],
+    );
   }
 
   Future<List<Map<String, dynamic>>> getCategorySales(int userId) async {
     final db = await instance.database;
-    return await db.rawQuery('''
+    return await db.rawQuery(
+      '''
       SELECT COALESCE(p.category, 'Uncategorized') as category, SUM(ti.subtotal) as total_revenue
       FROM transaction_items ti
       LEFT JOIN products p ON ti.product_id = p.id
@@ -658,7 +745,9 @@ class DatabaseHelper {
       WHERE t.user_id = ?
       GROUP BY p.category
       ORDER BY total_revenue DESC
-    ''', [userId]);
+    ''',
+      [userId],
+    );
   }
 
   Future<int> createReturn({
@@ -683,10 +772,10 @@ class DatabaseHelper {
       });
 
       // 2. Adjust inventory automatically
-      await txn.execute(
-        'UPDATE products SET stock = stock + ? WHERE id = ?',
-        [quantity, productId],
-      );
+      await txn.execute('UPDATE products SET stock = stock + ? WHERE id = ?', [
+        quantity,
+        productId,
+      ]);
 
       return id;
     });
@@ -694,13 +783,16 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> getReturns(int userId) async {
     final db = await instance.database;
-    return await db.rawQuery('''
+    return await db.rawQuery(
+      '''
       SELECT r.*, p.name as product_name
       FROM returns r
       JOIN products p ON r.product_id = p.id
       WHERE r.user_id = ?
       ORDER BY r.date DESC
-    ''', [userId]);
+    ''',
+      [userId],
+    );
   }
 
   Future<String> backupDatabase() async {
@@ -734,7 +826,9 @@ class DatabaseHelper {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getUnsyncedTransactions({required int userId}) async {
+  Future<List<Map<String, dynamic>>> getUnsyncedTransactions({
+    required int userId,
+  }) async {
     final db = await instance.database;
     final transactions = await db.query(
       'transactions',
@@ -759,11 +853,15 @@ class DatabaseHelper {
         'change_amount': tx['change_amount'],
         'payment_method': tx['payment_method'],
         'date': tx['date'],
-        'items': items.map((i) => {
-          'product_id': i['product_id'],
-          'quantity': i['quantity'],
-          'subtotal': i['subtotal'],
-        }).toList(),
+        'items': items
+            .map(
+              (i) => {
+                'product_id': i['product_id'],
+                'quantity': i['quantity'],
+                'subtotal': i['subtotal'],
+              },
+            )
+            .toList(),
       });
     }
 
@@ -788,20 +886,54 @@ class DatabaseHelper {
     if (oldLocalId == serverId) return;
     final db = await instance.database;
     await db.transaction((txn) async {
-      final existing = await txn.query('transactions', where: 'id = ?', whereArgs: [serverId]);
+      final existing = await txn.query(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: [serverId],
+      );
       if (existing.isNotEmpty) {
-        await txn.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [oldLocalId]);
-        await txn.delete('debts', where: 'transaction_id = ?', whereArgs: [oldLocalId]);
-        await txn.delete('transactions', where: 'id = ?', whereArgs: [oldLocalId]);
+        await txn.delete(
+          'transaction_items',
+          where: 'transaction_id = ?',
+          whereArgs: [oldLocalId],
+        );
+        await txn.delete(
+          'debts',
+          where: 'transaction_id = ?',
+          whereArgs: [oldLocalId],
+        );
+        await txn.delete(
+          'transactions',
+          where: 'id = ?',
+          whereArgs: [oldLocalId],
+        );
       } else {
-        await txn.update('transactions', {'id': serverId, 'is_synced': 1}, where: 'id = ?', whereArgs: [oldLocalId]);
-        await txn.update('transaction_items', {'transaction_id': serverId}, where: 'transaction_id = ?', whereArgs: [oldLocalId]);
-        await txn.update('debts', {'transaction_id': serverId}, where: 'transaction_id = ?', whereArgs: [oldLocalId]);
+        await txn.update(
+          'transactions',
+          {'id': serverId, 'is_synced': 1},
+          where: 'id = ?',
+          whereArgs: [oldLocalId],
+        );
+        await txn.update(
+          'transaction_items',
+          {'transaction_id': serverId},
+          where: 'transaction_id = ?',
+          whereArgs: [oldLocalId],
+        );
+        await txn.update(
+          'debts',
+          {'transaction_id': serverId},
+          where: 'transaction_id = ?',
+          whereArgs: [oldLocalId],
+        );
       }
     });
   }
 
-  Future<void> syncTransactionsFromRemote(int userId, List<dynamic> remoteTransactions) async {
+  Future<void> syncTransactionsFromRemote(
+    int userId,
+    List<dynamic> remoteTransactions,
+  ) async {
     if (remoteTransactions.isEmpty) return;
     final db = await instance.database;
 
@@ -832,7 +964,8 @@ class DatabaseHelper {
             : (double.tryParse(tx['change_amount']?.toString() ?? '0') ?? 0.0);
 
         final paymentMethod = tx['payment_method']?.toString() ?? 'cash';
-        final dateStr = tx['date']?.toString() ?? DateTime.now().toIso8601String();
+        final dateStr =
+            tx['date']?.toString() ?? DateTime.now().toIso8601String();
 
         // 1. Upsert transaction record
         final existing = await txn.query(
@@ -881,7 +1014,8 @@ class DatabaseHelper {
 
           for (var item in items) {
             if (item is! Map) continue;
-            final prodId = int.tryParse(item['product_id']?.toString() ?? '') ?? 0;
+            final prodId =
+                int.tryParse(item['product_id']?.toString() ?? '') ?? 0;
             final qty = int.tryParse(item['quantity']?.toString() ?? '1') ?? 1;
             final subtotal = (item['subtotal'] is num)
                 ? (item['subtotal'] as num).toDouble()
@@ -899,14 +1033,18 @@ class DatabaseHelper {
         // 3. Upsert debt record if present
         final debtData = tx['debt'];
         if (debtData is Map) {
-          final custName = debtData['customer_name']?.toString() ?? 'Walk-in Customer';
+          final custName =
+              debtData['customer_name']?.toString() ?? 'Walk-in Customer';
           final debtAmount = (debtData['amount'] is num)
               ? (debtData['amount'] as num).toDouble()
-              : (double.tryParse(debtData['amount']?.toString() ?? '0') ?? totalAmount);
+              : (double.tryParse(debtData['amount']?.toString() ?? '0') ??
+                    totalAmount);
           final paidAmount = (debtData['paid_amount'] is num)
               ? (debtData['paid_amount'] as num).toDouble()
-              : (double.tryParse(debtData['paid_amount']?.toString() ?? '0') ?? cashReceived);
-          final debtStatus = debtData['status']?.toString() ??
+              : (double.tryParse(debtData['paid_amount']?.toString() ?? '0') ??
+                    cashReceived);
+          final debtStatus =
+              debtData['status']?.toString() ??
               ((paidAmount >= debtAmount) ? 'paid' : 'pending');
 
           final existingDebt = await txn.query(
@@ -953,8 +1091,16 @@ class DatabaseHelper {
         for (var ltx in localTxs) {
           final lid = ltx['id'] as int;
           if (!remoteIds.contains(lid)) {
-            await txn.delete('transaction_items', where: 'transaction_id = ?', whereArgs: [lid]);
-            await txn.delete('debts', where: 'transaction_id = ?', whereArgs: [lid]);
+            await txn.delete(
+              'transaction_items',
+              where: 'transaction_id = ?',
+              whereArgs: [lid],
+            );
+            await txn.delete(
+              'debts',
+              where: 'transaction_id = ?',
+              whereArgs: [lid],
+            );
             await txn.delete('transactions', where: 'id = ?', whereArgs: [lid]);
           }
         }

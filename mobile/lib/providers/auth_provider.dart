@@ -237,6 +237,12 @@ class AuthProvider extends ChangeNotifier {
         _isLocked = false;
         _isLoading = false;
         notifyListeners();
+
+        // Restore active cloud API token if not currently authenticated
+        if (!ApiService.instance.isAuthenticated) {
+          _reauthOnlineWithPin(pin, _currentUser!.username);
+        }
+
         return true;
       }
 
@@ -320,6 +326,17 @@ class AuthProvider extends ChangeNotifier {
 
     _recordFailedPinAttempt('Invalid PIN.');
     return false;
+  }
+
+  Future<void> _reauthOnlineWithPin(String pin, String username) async {
+    try {
+      final res = await ApiService.instance.pinLogin(pin: pin, username: username);
+      if (res['token'] != null) {
+        debugPrint('[AuthProvider] Successfully restored active API token on PIN unlock');
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] Background PIN re-authentication failed (offline or network error): $e');
+    }
   }
 
   void _recordFailedPinAttempt([String? customMessage]) {

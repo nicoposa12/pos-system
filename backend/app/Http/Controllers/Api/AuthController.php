@@ -72,15 +72,13 @@ class AuthController extends Controller
         ]);
 
         if (!empty($validated['username'])) {
-            // Scoped strictly to this device's bound user (or admin)
+            // Strict Terminal Isolation: Scoped strictly to this device's bound user.
+            // Cashier terminals cannot be unlocked by the admin PIN.
             $candidates = User::whereNotNull('pin')
-                ->where(function ($q) use ($validated) {
-                    $q->where('username', $validated['username'])
-                      ->orWhere('role', 'admin');
-                })
+                ->where('username', $validated['username'])
                 ->get();
         } else {
-            // Unscoped PIN entry only permits administrator PIN for global maintenance
+            // Unscoped PIN entry only permits administrator PIN for global maintenance on unbound devices
             $candidates = User::whereNotNull('pin')
                 ->where('role', 'admin')
                 ->get();
@@ -88,11 +86,29 @@ class AuthController extends Controller
 
         $matchedUser = null;
         foreach ($candidates as $user) {
-            // Verify either hashed PIN (Bcrypt/Argon2) or legacy plaintext PIN
-            if (Hash::check($validated['pin'], $user->pin) || $user->pin === $validated['pin']) {
+            $isMatch = false;
+            $needsHashUpgrade = false;
+
+            // Direct check for legacy plaintext PIN
+            if ($user->pin === $validated['pin']) {
+                $isMatch = true;
+                $needsHashUpgrade = true;
+            } else {
+                // Check if stored PIN is a valid password hash
+                try {
+                    $info = password_get_info((string) $user->pin);
+                    if (!empty($info['algo'])) {
+                        $isMatch = Hash::check($validated['pin'], $user->pin);
+                    }
+                } catch (\Throwable) {
+                    $isMatch = false;
+                }
+            }
+
+            if ($isMatch) {
                 $matchedUser = $user;
                 // Seamlessly upgrade legacy plaintext PIN to bcrypt hash in database
-                if ($user->pin === $validated['pin']) {
+                if ($needsHashUpgrade) {
                     $user->pin = Hash::make($validated['pin']);
                     $user->save();
                 }

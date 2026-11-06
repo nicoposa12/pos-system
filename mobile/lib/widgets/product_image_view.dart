@@ -55,14 +55,12 @@ class ProductImageView extends StatelessWidget {
     return imagePath;
   }
 
+  int? get _decodeWidth => (width != null && width! > 0) ? (width! * 2).toInt() : 240;
+  int? get _decodeHeight => (height != null && height! > 0) ? (height! * 2).toInt() : 240;
+
   bool get _isLocalFile {
     final path = _resolvedLocalFilePath;
-    if (path == null) return false;
-    try {
-      return File(path).existsSync();
-    } catch (_) {
-      return false;
-    }
+    return path != null && path.isNotEmpty;
   }
 
   @override
@@ -76,6 +74,8 @@ class ProductImageView extends StatelessWidget {
         width: width,
         height: height,
         fit: fit,
+        cacheWidth: _decodeWidth,
+        cacheHeight: _decodeHeight,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
           return SizedBox(
@@ -105,6 +105,8 @@ class ProductImageView extends StatelessWidget {
         width: width,
         height: height,
         fit: fit,
+        cacheWidth: _decodeWidth,
+        cacheHeight: _decodeHeight,
         errorBuilder: (context, error, stackTrace) =>
             _buildPlaceholder(context),
       );

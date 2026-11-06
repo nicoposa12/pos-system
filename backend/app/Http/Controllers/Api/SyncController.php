@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\TransactionItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class SyncController extends Controller
@@ -15,28 +16,33 @@ class SyncController extends Controller
     /**
      * Fast lightweight sync status & change-detection hashes.
      * Allows mobile clients to detect changes in real-time with near-zero latency and bandwidth.
+     * Cached for 5s to eliminate redundant queries against Neon serverless Postgres on free-tier.
      */
     public function status(Request $request)
     {
         $userId = $request->user()->id;
 
-        $latestProduct = Product::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
-        $productCount = Product::where('user_id', $userId)->count();
+        $data = Cache::remember("sync_status_{$userId}", 5, function () use ($userId) {
+            $latestProduct = Product::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
+            $productCount = Product::where('user_id', $userId)->count();
 
-        $latestTx = Transaction::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
-        $txCount = Transaction::where('user_id', $userId)->count();
+            $latestTx = Transaction::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
+            $txCount = Transaction::where('user_id', $userId)->count();
 
-        $latestDebt = Debt::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
-        $debtCount = Debt::where('user_id', $userId)->count();
+            $latestDebt = Debt::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
+            $debtCount = Debt::where('user_id', $userId)->count();
 
-        $productsVersion = md5(($latestProduct?->updated_at?->toIso8601String() ?? '') . '|' . $productCount);
-        $transactionsVersion = md5(($latestTx?->updated_at?->toIso8601String() ?? '') . '|' . $txCount);
-        $debtsVersion = md5(($latestDebt?->updated_at?->toIso8601String() ?? '') . '|' . $debtCount);
+            return [
+                'products_version' => md5(($latestProduct?->updated_at?->toIso8601String() ?? '') . '|' . $productCount),
+                'transactions_version' => md5(($latestTx?->updated_at?->toIso8601String() ?? '') . '|' . $txCount),
+                'debts_version' => md5(($latestDebt?->updated_at?->toIso8601String() ?? '') . '|' . $debtCount),
+            ];
+        });
+
+        Cache::forget("sync_status_{$userId}");
 
         return response()->json([
-            'products_version' => $productsVersion,
-            'transactions_version' => $transactionsVersion,
-            'debts_version' => $debtsVersion,
+            ...$data,
             'timestamp' => now()->toIso8601String(),
         ]);
     }
@@ -131,6 +137,8 @@ class SyncController extends Controller
                 ];
             }
         });
+
+        Cache::forget("sync_status_{$userId}");
 
         return response()->json([
             'message' => 'Batch sync completed successfully',

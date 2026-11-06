@@ -23,6 +23,11 @@ class TransactionController extends Controller
             ->with(['items.product', 'debt'])
             ->latest('date');
 
+        // Incremental Delta Sync: return only records modified after the specified timestamp
+        if ($request->filled('since')) {
+            $query->where('updated_at', '>', $request->input('since'));
+        }
+
         if ($request->boolean('all')) {
             return response()->json([
                 'data' => $query->get(),

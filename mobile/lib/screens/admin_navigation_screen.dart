@@ -180,16 +180,24 @@ class _AdminNavigationScreenState extends State<AdminNavigationScreen> {
                                     Row(
                                       children: [
                                         Container(
-                                          width: 40,
-                                          height: 40,
+                                          width: 38,
+                                          height: 38,
                                           decoration: BoxDecoration(
-                                            gradient: AppTheme.violetGradient,
-                                            borderRadius: BorderRadius.circular(12),
+                                            color: AppTheme.accentViolet.withValues(
+                                              alpha: isDark ? 0.22 : 0.12,
+                                            ),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: AppTheme.accentViolet.withValues(
+                                                alpha: isDark ? 0.35 : 0.20,
+                                              ),
+                                              width: 0.8,
+                                            ),
                                           ),
                                           child: const Icon(
                                             Icons.hub_rounded,
-                                            color: Colors.white,
-                                            size: 22,
+                                            color: AppTheme.accentViolet,
+                                            size: 20,
                                           ),
                                         ),
                                         const SizedBox(width: 12),
@@ -201,8 +209,8 @@ class _AdminNavigationScreenState extends State<AdminNavigationScreen> {
                                               const Text(
                                                 'TindaKo HQ',
                                                 style: TextStyle(
-                                                  fontWeight: FontWeight.w900,
-                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 15.5,
                                                   letterSpacing: -0.3,
                                                 ),
                                               ),
@@ -210,7 +218,7 @@ class _AdminNavigationScreenState extends State<AdminNavigationScreen> {
                                                 'Platform Admin Console',
                                                 style: TextStyle(
                                                   fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
+                                                  fontWeight: FontWeight.w500,
                                                   color: AppTheme.mutedText(context),
                                                 ),
                                                 maxLines: 1,
@@ -221,29 +229,39 @@ class _AdminNavigationScreenState extends State<AdminNavigationScreen> {
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 14),
+                                    const SizedBox(height: 12),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 10,
-                                        vertical: 7,
+                                        vertical: 6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: (_ctrl.isCloudSynced
-                                                ? AppTheme.accentTeal
-                                                : AppTheme.accentAmber)
-                                            .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(10),
+                                        color: isDark ? AppTheme.cardDark : AppTheme.subtleLight,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: AppTheme.borderColor(context),
+                                          width: 0.8,
+                                        ),
                                       ),
                                       child: Row(
                                         children: [
                                           Container(
-                                            width: 7,
-                                            height: 7,
+                                            width: 6,
+                                            height: 6,
                                             decoration: BoxDecoration(
                                               color: _ctrl.isCloudSynced
-                                                  ? AppTheme.accentTeal
+                                                  ? const Color(0xFF059669)
                                                   : AppTheme.accentAmber,
                                               shape: BoxShape.circle,
+                                              boxShadow: _ctrl.isCloudSynced
+                                                  ? [
+                                                      BoxShadow(
+                                                        color: const Color(0xFF059669).withValues(alpha: 0.5),
+                                                        blurRadius: 4,
+                                                        spreadRadius: 1,
+                                                      ),
+                                                    ]
+                                                  : null,
                                             ),
                                           ),
                                           const SizedBox(width: 8),
@@ -254,9 +272,9 @@ class _AdminNavigationScreenState extends State<AdminNavigationScreen> {
                                                   : 'Offline SQLite Cache',
                                               style: TextStyle(
                                                 fontSize: 11,
-                                                fontWeight: FontWeight.w700,
+                                                fontWeight: FontWeight.w600,
                                                 color: _ctrl.isCloudSynced
-                                                    ? AppTheme.accentTeal
+                                                    ? (isDark ? AppTheme.accentTeal : const Color(0xFF047857))
                                                     : AppTheme.accentAmber,
                                               ),
                                               maxLines: 1,

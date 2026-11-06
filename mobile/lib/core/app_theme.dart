@@ -130,6 +130,11 @@ class AppTheme {
           ? textSecondaryDark
           : textSecondaryLight;
 
+  static Color textPrimary(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? textPrimaryDark
+          : textPrimaryLight;
+
   static List<BoxShadow> cardShadow(BuildContext context) {
     if (Theme.of(context).brightness == Brightness.dark) {
       return const [];

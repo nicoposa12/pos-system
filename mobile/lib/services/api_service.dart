@@ -50,7 +50,7 @@ class ApiService {
   /// Initialize stored base URL and auth token
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Default production cloud API URL
     const String defaultUrl = 'https://pos-system-1-y58u.onrender.com/api';
 
@@ -75,9 +75,14 @@ class ApiService {
       if (legacyToken != null && legacyToken.isNotEmpty) {
         _token = legacyToken;
         try {
-          await _secureStorage.write(key: _secureStorageKey, value: legacyToken);
+          await _secureStorage.write(
+            key: _secureStorageKey,
+            value: legacyToken,
+          );
           await prefs.remove('api_auth_token');
-          debugPrint('[ApiService] Transparently upgraded auth token to secure Keystore/Keychain.');
+          debugPrint(
+            '[ApiService] Transparently upgraded auth token to secure Keystore/Keychain.',
+          );
         } catch (_) {}
       }
     }
@@ -169,10 +174,10 @@ class ApiService {
     required String username,
     required String password,
   }) async {
-    final response = await _dio.post('/auth/login', data: {
-      'username': username,
-      'password': password,
-    });
+    final response = await _dio.post(
+      '/auth/login',
+      data: {'username': username, 'password': password},
+    );
     final data = response.data as Map<String, dynamic>;
     if (data['token'] != null) {
       await setToken(data['token']);
@@ -213,7 +218,8 @@ class ApiService {
   Future<List<dynamic>> getProducts({String? search, String? category}) async {
     final queryParams = <String, dynamic>{};
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
-    if (category != null && category != 'All') queryParams['category'] = category;
+    if (category != null && category != 'All')
+      queryParams['category'] = category;
 
     final response = await _dio.get('/products', queryParameters: queryParams);
     return (response.data['products'] as List? ?? []);
@@ -228,11 +234,7 @@ class ApiService {
     String? variants,
     String? imageFilePath,
   }) async {
-    final map = <String, dynamic>{
-      'name': name,
-      'price': price,
-      'stock': stock,
-    };
+    final map = <String, dynamic>{'name': name, 'price': price, 'stock': stock};
     if (category != null) map['category'] = category;
     if (barcode != null) map['barcode'] = barcode;
     if (variants != null) map['variants'] = variants;
@@ -267,7 +269,10 @@ class ApiService {
     }
 
     final formData = FormData.fromMap(map);
-    final response = await _dio.post('/products/$id?_method=PUT', data: formData);
+    final response = await _dio.post(
+      '/products/$id?_method=PUT',
+      data: formData,
+    );
     return response.data as Map<String, dynamic>;
   }
 
@@ -279,16 +284,30 @@ class ApiService {
   // TRANSACTIONS
   // ==========================================
 
-  Future<Map<String, dynamic>> createTransaction(Map<String, dynamic> txData) async {
+  Future<Map<String, dynamic>> createTransaction(
+    Map<String, dynamic> txData,
+  ) async {
     final response = await _dio.post('/transactions', data: txData);
     return response.data as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> getTransactions({bool all = true, int perPage = 100}) async {
-    final response = await _dio.get('/transactions', queryParameters: {
+  Future<List<dynamic>> getTransactions({
+    bool all = true,
+    int perPage = 100,
+    String? since,
+  }) async {
+    final queryParams = <String, dynamic>{
       'all': all ? 1 : 0,
       'per_page': perPage,
-    });
+    };
+    if (since != null && since.isNotEmpty) {
+      queryParams['since'] = since;
+    }
+
+    final response = await _dio.get(
+      '/transactions',
+      queryParameters: queryParams,
+    );
     if (response.data is Map && response.data['data'] != null) {
       return response.data['data'] as List;
     }
@@ -301,11 +320,14 @@ class ApiService {
     double? cashReceived,
     double? changeAmount,
   }) async {
-    await _dio.post('/transactions/$transactionId/mark-paid', data: {
-      'payment_method': paymentMethod,
-      'cash_received': cashReceived,
-      'change_amount': changeAmount,
-    });
+    await _dio.post(
+      '/transactions/$transactionId/mark-paid',
+      data: {
+        'payment_method': paymentMethod,
+        'cash_received': cashReceived,
+        'change_amount': changeAmount,
+      },
+    );
   }
 
   // ==========================================
@@ -340,11 +362,14 @@ class ApiService {
     }
   }
 
-  Future<List<dynamic>> syncOfflineTransactions(List<Map<String, dynamic>> transactions) async {
+  Future<List<dynamic>> syncOfflineTransactions(
+    List<Map<String, dynamic>> transactions,
+  ) async {
     if (transactions.isEmpty) return [];
-    final response = await _dio.post('/sync', data: {
-      'transactions': transactions,
-    });
+    final response = await _dio.post(
+      '/sync',
+      data: {'transactions': transactions},
+    );
     return (response.data['synced'] as List? ?? []);
   }
 
@@ -352,14 +377,24 @@ class ApiService {
   // ADMIN CLIENT MANAGEMENT
   // ==========================================
 
-  Future<Map<String, dynamic>> getAdminClients({String? search, String? role, bool? status}) async {
+  Future<Map<String, dynamic>> getAdminClients({
+    String? search,
+    String? role,
+    bool? status,
+  }) async {
     final queryParams = <String, dynamic>{};
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
     if (role != null && role.isNotEmpty) queryParams['role'] = role;
     if (status != null) queryParams['status'] = status ? 'true' : 'false';
 
-    final response = await _dio.get('/admin/clients', queryParameters: queryParams);
-    return response.data as Map<String, dynamic>;
+    final response = await _dio.get(
+      '/admin/clients',
+      queryParameters: queryParams,
+    );
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Invalid server response format');
   }
 
   Future<Map<String, dynamic>> createAdminClient({
@@ -371,21 +406,30 @@ class ApiService {
     String role = 'client',
     bool isActive = true,
   }) async {
-    final response = await _dio.post('/admin/clients', data: {
-      'username': username,
-      'full_name': fullName,
-      'password': password,
-      'email': email,
-      'pin': pin,
-      'role': role,
-      'is_active': isActive,
-    });
-    return response.data as Map<String, dynamic>;
+    final response = await _dio.post(
+      '/admin/clients',
+      data: {
+        'username': username,
+        'full_name': fullName,
+        'password': password,
+        'email': email,
+        'pin': pin,
+        'role': role,
+        'is_active': isActive,
+      },
+    );
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Invalid server response format');
   }
 
   Future<Map<String, dynamic>> getAdminClientDetails(int id) async {
     final response = await _dio.get('/admin/clients/$id');
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Invalid server response format');
   }
 
   Future<Map<String, dynamic>> updateAdminClient(
@@ -402,12 +446,18 @@ class ApiService {
     if (isActive != null) data['is_active'] = isActive;
 
     final response = await _dio.put('/admin/clients/$id', data: data);
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Invalid server response format');
   }
 
   Future<Map<String, dynamic>> toggleClientStatus(int id) async {
     final response = await _dio.patch('/admin/clients/$id/toggle-status');
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Invalid server response format');
   }
 
   Future<Map<String, dynamic>> resetClientCredentials(
@@ -419,12 +469,21 @@ class ApiService {
     if (password != null && password.isNotEmpty) data['password'] = password;
     if (pin != null) data['pin'] = pin;
 
-    final response = await _dio.post('/admin/clients/$id/reset-credentials', data: data);
-    return response.data as Map<String, dynamic>;
+    final response = await _dio.post(
+      '/admin/clients/$id/reset-credentials',
+      data: data,
+    );
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Invalid server response format');
   }
 
   Future<Map<String, dynamic>> deleteAdminClient(int id) async {
     final response = await _dio.delete('/admin/clients/$id');
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Invalid server response format');
   }
 }
