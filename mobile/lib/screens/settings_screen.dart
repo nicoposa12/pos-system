@@ -8,10 +8,13 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../core/app_theme.dart';
 import '../data/database_helper.dart';
+import '../models/transaction.dart';
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
+import '../services/pdf_service.dart';
 import '../services/sync_service.dart';
+import '../widgets/store_image_view.dart';
 import 'client_management_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -27,8 +30,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _addressController;
   late final TextEditingController _phoneController;
   late final TextEditingController _gcashNumberController;
+  late final TextEditingController _receiptFooterController;
   String? _gcashQrPath;
   String? _businessPhotoPath;
+  String _paperSize = '58mm';
 
   @override
   void initState() {
@@ -38,8 +43,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _addressController = TextEditingController(text: settings.storeAddress);
     _phoneController = TextEditingController(text: settings.storePhone);
     _gcashNumberController = TextEditingController(text: settings.gcashNumber);
+    _receiptFooterController = TextEditingController(text: settings.receiptFooterNote);
     _gcashQrPath = settings.gcashQrPath;
     _businessPhotoPath = settings.businessPhotoPath;
+    _paperSize = settings.receiptPaperSize;
   }
 
   @override
@@ -48,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _addressController.dispose();
     _phoneController.dispose();
     _gcashNumberController.dispose();
+    _receiptFooterController.dispose();
     super.dispose();
   }
 
@@ -62,6 +70,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         gcashNumber: _gcashNumberController.text.trim(),
         gcashQrPath: _gcashQrPath ?? '',
         businessPhotoPath: _businessPhotoPath ?? settings.businessPhotoPath,
+        receiptPaperSize: _paperSize,
+        receiptFooterNote: _receiptFooterController.text.trim(),
       );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -69,7 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
               SizedBox(width: 10),
-              Text('Store & payment settings saved'),
+              Text('Store & printer settings saved'),
             ],
           ),
           backgroundColor: AppTheme.accentTeal,
@@ -78,17 +88,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _testPrintReceipt() {
+    HapticFeedback.lightImpact();
+    final auth = context.read<AuthProvider>();
+    final settings = context.read<SettingsProvider>();
+    final effectivePhoto = _businessPhotoPath ?? settings.businessPhotoPath;
+
+    final dummyTx = SaleTransaction(
+      id: 999,
+      userId: auth.currentUser?.id ?? 1,
+      totalAmount: 60.0,
+      discount: 0.0,
+      cashReceived: 100.0,
+      change: 40.0,
+      paymentMethod: 'cash',
+      date: DateTime.now(),
+    );
+
+    final dummyItems = [
+      {'product_name': 'Coke Mismo 290ml', 'quantity': 2, 'subtotal': 36.0},
+      {'product_name': 'SkyFlakes Crackers', 'quantity': 3, 'subtotal': 24.0},
+    ];
+
+    PdfService.generateAndPrintReceipt(
+      transaction: dummyTx,
+      items: dummyItems,
+      user: auth.currentUser,
+      storeName: _nameController.text.trim().isNotEmpty
+          ? _nameController.text.trim()
+          : settings.storeName,
+      storeAddress: _addressController.text.trim().isNotEmpty
+          ? _addressController.text.trim()
+          : settings.storeAddress,
+      storePhone: _phoneController.text.trim().isNotEmpty
+          ? _phoneController.text.trim()
+          : settings.storePhone,
+      businessPhotoPath: effectivePhoto.isNotEmpty
+          ? effectivePhoto
+          : auth.currentUser?.imagePath,
+      receiptFooterNote: _receiptFooterController.text.trim().isNotEmpty
+          ? _receiptFooterController.text.trim()
+          : settings.receiptFooterNote,
+      paperSize: _paperSize,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final settings = context.watch<SettingsProvider>();
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
+    final isAdmin = user?.isAdmin ?? false;
     final currentBusinessPhoto =
         _businessPhotoPath ?? settings.businessPhotoPath;
-    final hasValidBusinessPhoto = currentBusinessPhoto.isNotEmpty &&
-        File(currentBusinessPhoto).existsSync();
-    final hasValidQr = _gcashQrPath != null &&
+    final effectiveBusinessPhoto = currentBusinessPhoto.isNotEmpty
+        ? currentBusinessPhoto
+        : (user?.imagePath ?? '');
+    final hasValidBusinessPhoto =
+        effectiveBusinessPhoto.isNotEmpty &&
+        (File(effectiveBusinessPhoto).existsSync() ||
+            effectiveBusinessPhoto.startsWith('http://') ||
+            effectiveBusinessPhoto.startsWith('https://'));
+    final hasValidQr =
+        _gcashQrPath != null &&
         _gcashQrPath!.isNotEmpty &&
         File(_gcashQrPath!).existsSync();
 
@@ -133,39 +196,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             child: Stack(
                               clipBehavior: Clip.none,
                               children: [
-                                Container(
+                                StoreImageView(
+                                  imagePath: effectiveBusinessPhoto,
                                   width: 56,
                                   height: 56,
-                                  clipBehavior: Clip.antiAlias,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    gradient: hasValidBusinessPhoto
-                                        ? null
-                                        : AppTheme.orangeGradient,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.2),
-                                      width: 1.5,
+                                  borderRadius: BorderRadius.circular(16),
+                                  fallbackIcon: user.isAdmin
+                                      ? Icons.admin_panel_settings_rounded
+                                      : Icons.storefront_rounded,
+                                  customPlaceholder: Container(
+                                    width: 56,
+                                    height: 56,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      gradient: AppTheme.orangeGradient,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      user.fullName.isNotEmpty
+                                          ? user.fullName[0].toUpperCase()
+                                          : 'T',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
-                                  child: hasValidBusinessPhoto
-                                      ? Image.file(
-                                          File(currentBusinessPhoto),
-                                          width: 56,
-                                          height: 56,
-                                          fit: BoxFit.cover,
-                                        )
-                                      : Text(
-                                          user.fullName.isNotEmpty
-                                              ? user.fullName[0].toUpperCase()
-                                              : 'T',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
                                 ),
                                 Positioned(
                                   right: -2,
@@ -212,18 +275,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   Text(
                                     '@${user.username}',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.65),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.65,
+                                      ),
                                       fontSize: 13,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                   if (user.isAdmin)
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 2,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: AppTheme.accentPurple.withValues(alpha: 0.25),
+                                        color: AppTheme.accentPurple.withValues(
+                                          alpha: 0.25,
+                                        ),
                                         borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: AppTheme.accentPurple.withValues(alpha: 0.5)),
+                                        border: Border.all(
+                                          color: AppTheme.accentPurple
+                                              .withValues(alpha: 0.5),
+                                        ),
                                       ),
                                       child: Text(
                                         'ADMIN',
@@ -246,10 +319,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: (user.pin != null
-                                    ? AppTheme.accentTeal
-                                    : AppTheme.accentAmber)
-                                .withValues(alpha: 0.18),
+                            color:
+                                (user.pin != null
+                                        ? AppTheme.accentTeal
+                                        : AppTheme.accentAmber)
+                                    .withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
@@ -292,12 +366,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.admin_panel_settings_rounded,
                         iconColor: AppTheme.accentPurple,
                         title: 'Manage Client Accounts',
-                        subtitle: 'View, edit, activate/deactivate client stores and view sales',
-                        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                        subtitle:
+                            'View, edit, activate/deactivate client stores and view sales',
+                        trailing: const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 14,
+                        ),
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const ClientManagementScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const ClientManagementScreen(),
+                            ),
                           );
                         },
                       ),
@@ -319,8 +399,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
                           color: theme.cardTheme.color,
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.radiusLg),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusLg,
+                          ),
                           border: Border.all(
                             color: AppTheme.borderColor(context),
                           ),
@@ -342,42 +423,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         width: 88,
                                         clipBehavior: Clip.antiAlias,
                                         decoration: BoxDecoration(
-                                          color: AppTheme.subtleSurface(context),
-                                          borderRadius:
-                                              BorderRadius.circular(16),
+                                          color: AppTheme.subtleSurface(
+                                            context,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                           border: Border.all(
-                                            color:
-                                                AppTheme.borderColor(context),
+                                            color: AppTheme.borderColor(
+                                              context,
+                                            ),
                                           ),
                                         ),
-                                        child: hasValidBusinessPhoto
-                                            ? Image.file(
-                                                File(currentBusinessPhoto),
-                                                fit: BoxFit.cover,
-                                              )
-                                            : Column(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Icon(
-                                                    Icons.storefront_outlined,
-                                                    size: 32,
-                                                    color: AppTheme.mutedText(
-                                                        context),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    'Add Photo',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      color: AppTheme.mutedText(
-                                                          context),
-                                                    ),
-                                                  ),
-                                                ],
+                                        child: StoreImageView(
+                                          imagePath: effectiveBusinessPhoto,
+                                          width: 88,
+                                          height: 88,
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          fallbackIcon:
+                                              Icons.storefront_outlined,
+                                          customPlaceholder: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              Icon(
+                                                Icons.storefront_outlined,
+                                                size: 32,
+                                                color: AppTheme.mutedText(
+                                                  context,
+                                                ),
                                               ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Add Photo',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppTheme.mutedText(
+                                                    context,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                                       Positioned(
                                         right: 4,
@@ -388,7 +479,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             color: AppTheme.accentOrange,
                                             shape: BoxShape.circle,
                                             border: Border.all(
-                                              color: theme.cardTheme.color ??
+                                              color:
+                                                  theme.cardTheme.color ??
                                                   Colors.white,
                                               width: 1.5,
                                             ),
@@ -437,8 +529,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               minimumSize: const Size(0, 36),
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                horizontal: 12,
-                                              ),
+                                                    horizontal: 12,
+                                                  ),
                                             ),
                                             icon: const Icon(
                                               Icons.upload_outlined,
@@ -449,7 +541,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                                   ? 'Replace'
                                                   : 'Upload',
                                               style: const TextStyle(
-                                                  fontSize: 12),
+                                                fontSize: 12,
+                                              ),
                                             ),
                                           ),
                                           if (hasValidBusinessPhoto)
@@ -458,8 +551,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               style: TextButton.styleFrom(
                                                 foregroundColor:
                                                     AppTheme.accentRose,
-                                                minimumSize:
-                                                    const Size(0, 36),
+                                                minimumSize: const Size(0, 36),
                                               ),
                                               child: const Text(
                                                 'Remove',
@@ -485,8 +577,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 labelText: 'Store Name',
                                 prefixIcon: Icon(Icons.storefront_outlined),
                               ),
-                              validator: (v) =>
-                                  v == null || v.trim().isEmpty ? 'Required' : null,
+                              validator: (v) => v == null || v.trim().isEmpty
+                                  ? 'Required'
+                                  : null,
                             ),
                             const SizedBox(height: 14),
                             TextFormField(
@@ -495,8 +588,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 labelText: 'Business Address',
                                 prefixIcon: Icon(Icons.location_on_outlined),
                               ),
-                              validator: (v) =>
-                                  v == null || v.trim().isEmpty ? 'Required' : null,
+                              validator: (v) => v == null || v.trim().isEmpty
+                                  ? 'Required'
+                                  : null,
                             ),
                             const SizedBox(height: 14),
                             TextFormField(
@@ -506,8 +600,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 labelText: 'Contact Number',
                                 prefixIcon: Icon(Icons.phone_outlined),
                               ),
-                              validator: (v) =>
-                                  v == null || v.trim().isEmpty ? 'Required' : null,
+                              validator: (v) => v == null || v.trim().isEmpty
+                                  ? 'Required'
+                                  : null,
                             ),
                           ],
                         ),
@@ -521,8 +616,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
                           color: theme.cardTheme.color,
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.radiusLg),
+                          borderRadius: BorderRadius.circular(
+                            AppTheme.radiusLg,
+                          ),
                           border: Border.all(
                             color: AppTheme.borderColor(context),
                           ),
@@ -611,8 +707,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             ),
                                             label: Text(
                                               hasValidQr ? 'Replace' : 'Upload',
-                                              style:
-                                                  const TextStyle(fontSize: 12),
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                              ),
                                             ),
                                           ),
                                           if (hasValidQr)
@@ -645,6 +742,204 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onPressed: _saveSettings,
                         icon: const Icon(Icons.check_rounded, size: 20),
                         label: const Text('Save Store & Payment Info'),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                // ── Thermal Receipt & Printer Setup ──
+                const _SettingsSectionLabel('THERMAL RECEIPT & PRINTER'),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: theme.cardTheme.color,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+                    border: Border.all(color: AppTheme.borderColor(context)),
+                    boxShadow: AppTheme.cardShadow(context),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentTeal.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.print_rounded,
+                              size: 20,
+                              color: AppTheme.accentTeal,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Thermal Roll Paper Width',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Select your printer\'s paper roll format (58mm or 80mm).',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.mutedText(context),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.subtleSurface(context),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.borderColor(context)),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _paperSize = '58mm');
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _paperSize == '58mm'
+                                        ? AppTheme.accentOrange
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(9),
+                                    boxShadow: _paperSize == '58mm'
+                                        ? [
+                                            BoxShadow(
+                                              color: AppTheme.accentOrange.withValues(alpha: 0.3),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        '58mm (2-inch Roll)',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                          color: _paperSize == '58mm'
+                                              ? Colors.white
+                                              : theme.textTheme.bodyMedium?.color,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Bluetooth / Mobile Mini POS',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: _paperSize == '58mm'
+                                              ? Colors.white.withValues(alpha: 0.85)
+                                              : AppTheme.mutedText(context),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _paperSize = '80mm');
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _paperSize == '80mm'
+                                        ? AppTheme.accentOrange
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(9),
+                                    boxShadow: _paperSize == '80mm'
+                                        ? [
+                                            BoxShadow(
+                                              color: AppTheme.accentOrange.withValues(alpha: 0.3),
+                                              blurRadius: 6,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        '80mm (3-inch Roll)',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                          color: _paperSize == '80mm'
+                                              ? Colors.white
+                                              : theme.textTheme.bodyMedium?.color,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Desktop / Standard Counter POS',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: _paperSize == '80mm'
+                                              ? Colors.white.withValues(alpha: 0.85)
+                                              : AppTheme.mutedText(context),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _receiptFooterController,
+                        decoration: const InputDecoration(
+                          labelText: 'Receipt Footer Note',
+                          hintText: 'e.g. THANK YOU FOR YOUR PURCHASE!',
+                          prefixIcon: Icon(Icons.short_text_rounded),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: _testPrintReceipt,
+                        icon: const Icon(Icons.print_outlined, size: 18),
+                        label: Text('Test Print Thermal Slip ($_paperSize)'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 46),
+                          foregroundColor: AppTheme.accentTeal,
+                          side: BorderSide(
+                            color: AppTheme.accentTeal.withValues(alpha: 0.6),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -697,25 +992,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               icon: Icons.brightness_auto_rounded,
                               isSelected:
                                   settings.themeMode == ThemeMode.system,
-                              onTap: () => settings.setThemeMode(
-                                ThemeMode.system,
-                              ),
+                              onTap: () =>
+                                  settings.setThemeMode(ThemeMode.system),
                             ),
                             _ThemeModeOption(
                               label: 'Light',
                               icon: Icons.light_mode_rounded,
                               isSelected: settings.themeMode == ThemeMode.light,
-                              onTap: () => settings.setThemeMode(
-                                ThemeMode.light,
-                              ),
+                              onTap: () =>
+                                  settings.setThemeMode(ThemeMode.light),
                             ),
                             _ThemeModeOption(
                               label: 'Dark',
                               icon: Icons.dark_mode_rounded,
                               isSelected: settings.themeMode == ThemeMode.dark,
-                              onTap: () => settings.setThemeMode(
-                                ThemeMode.dark,
-                              ),
+                              onTap: () =>
+                                  settings.setThemeMode(ThemeMode.dark),
                             ),
                           ],
                         ),
@@ -754,7 +1046,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 28),
 
                 // ── 4.5 Cloud Sync & Online API ──
-                const _SettingsSectionLabel('CLOUD SYNC & ONLINE BACKEND'),
+                _SettingsSectionLabel(
+                  isAdmin ? 'CLOUD SYNC & ONLINE BACKEND' : 'CLOUD DATA SYNC',
+                ),
                 const SizedBox(height: 8),
                 _SettingsGroupCard(
                   children: [
@@ -762,14 +1056,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       valueListenable: SyncService.instance.isOnline,
                       builder: (context, online, _) {
                         return _SettingsTile(
-                          icon: online ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                          icon: online
+                              ? Icons.cloud_done_rounded
+                              : Icons.cloud_off_rounded,
                           iconColor: online ? AppTheme.accentTeal : Colors.grey,
-                          title: online ? 'Cloud Server Connected' : 'Working Offline (SQLite)',
-                          subtitle: ApiService.instance.baseUrl,
+                          title: online
+                              ? 'Cloud Server Connected'
+                              : 'Working Offline (SQLite)',
+                          subtitle: isAdmin
+                              ? ApiService.instance.baseUrl
+                              : (online
+                                    ? 'Connected to Neon Cloud Backend'
+                                    : 'Offline Mode • Local SQLite active'),
                           trailing: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
-                              color: (online ? AppTheme.accentTeal : Colors.grey).withValues(alpha: 0.15),
+                              color:
+                                  (online ? AppTheme.accentTeal : Colors.grey)
+                                      .withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -777,11 +1084,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
-                                color: online ? AppTheme.accentTeal : Colors.grey,
+                                color: online
+                                    ? AppTheme.accentTeal
+                                    : Colors.grey,
                               ),
                             ),
                           ),
-                          onTap: () => _showChangeServerUrlDialog(context),
+                          onTap: isAdmin
+                              ? () => _showChangeServerUrlDialog(context)
+                              : null,
                         );
                       },
                     ),
@@ -792,54 +1103,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         return _SettingsTile(
                           icon: Icons.sync_rounded,
                           iconColor: AppTheme.accentOrange,
-                          title: isSyncing ? 'Syncing...' : 'Sync Store with Cloud Now',
-                          subtitle: 'Uploads offline sales & downloads latest cloud catalog',
+                          title: isSyncing
+                              ? 'Syncing...'
+                              : 'Sync Store with Cloud Now',
+                          subtitle:
+                              'Uploads offline products & sales, and downloads latest cloud catalog',
                           trailing: isSyncing
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 )
-                              : const Icon(Icons.arrow_forward_ios_rounded, size: 14),
-                          onTap: (isSyncing || user == null) ? null : () => _handleManualSync(user.id!),
+                              : const Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                  size: 14,
+                                ),
+                          onTap: (isSyncing || user == null)
+                              ? null
+                              : () => _handleManualSync(user.id!),
                         );
                       },
                     ),
-                    Divider(height: 1, color: AppTheme.borderColor(context)),
-                    _SettingsTile(
-                      icon: Icons.network_check_rounded,
-                      iconColor: AppTheme.accentIndigo,
-                      title: 'Test Server Connection',
-                      subtitle: 'Pings the configured Laravel / Render endpoint',
-                      onTap: _handleTestConnection,
-                    ),
+                    if (isAdmin) ...[
+                      Divider(height: 1, color: AppTheme.borderColor(context)),
+                      _SettingsTile(
+                        icon: Icons.network_check_rounded,
+                        iconColor: AppTheme.accentIndigo,
+                        title: 'Test Server Connection',
+                        subtitle:
+                            'Pings the configured Laravel / Render endpoint',
+                        onTap: _handleTestConnection,
+                      ),
+                    ],
                   ],
                 ),
 
-                const SizedBox(height: 28),
-
-                // ── 5. Data Management ──
-                const _SettingsSectionLabel('DATABASE BACKUP'),
-                const SizedBox(height: 8),
-                _SettingsGroupCard(
-                  children: [
-                    _SettingsTile(
-                      icon: Icons.cloud_upload_outlined,
-                      iconColor: AppTheme.accentTeal,
-                      title: 'Backup Store Data',
-                      subtitle: 'Export SQLite database file to share or save',
-                      onTap: _handleBackup,
-                    ),
-                    Divider(height: 1, color: AppTheme.borderColor(context)),
-                    _SettingsTile(
-                      icon: Icons.settings_backup_restore_rounded,
-                      iconColor: AppTheme.accentAmber,
-                      title: 'Restore from Backup',
-                      subtitle: 'Import a previously exported database file',
-                      onTap: _handleRestore,
-                    ),
-                  ],
-                ),
+                if (isAdmin) ...[
+                  const SizedBox(height: 28),
+                  // ── 5. Data Management (Admin Only) ──
+                  const _SettingsSectionLabel('DATABASE BACKUP (ADMIN ONLY)'),
+                  const SizedBox(height: 8),
+                  _SettingsGroupCard(
+                    children: [
+                      _SettingsTile(
+                        icon: Icons.cloud_upload_outlined,
+                        iconColor: AppTheme.accentTeal,
+                        title: 'Backup Store Data',
+                        subtitle:
+                            'Export SQLite database file to share or save',
+                        onTap: _handleBackup,
+                      ),
+                      Divider(height: 1, color: AppTheme.borderColor(context)),
+                      _SettingsTile(
+                        icon: Icons.settings_backup_restore_rounded,
+                        iconColor: AppTheme.accentAmber,
+                        title: 'Restore from Backup',
+                        subtitle: 'Import a previously exported database file',
+                        onTap: _handleRestore,
+                      ),
+                    ],
+                  ),
+                ],
 
                 const SizedBox(height: 28),
 
@@ -943,10 +1269,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showBusinessPhotoPickerSheet() {
-    final currentPhoto = _businessPhotoPath ??
+    final auth = context.read<AuthProvider>();
+    final user = auth.currentUser;
+    final currentPhoto =
+        _businessPhotoPath ??
         context.read<SettingsProvider>().businessPhotoPath;
-    final hasValidBusinessPhoto = currentPhoto.isNotEmpty &&
-        File(currentPhoto).existsSync();
+    final effectivePhoto = currentPhoto.isNotEmpty
+        ? currentPhoto
+        : (user?.imagePath ?? '');
+    final hasValidBusinessPhoto =
+        effectivePhoto.isNotEmpty &&
+        (File(effectivePhoto).existsSync() ||
+            effectivePhoto.startsWith('http://') ||
+            effectivePhoto.startsWith('https://') ||
+            effectivePhoto.contains('/media/stores/'));
 
     showModalBottomSheet(
       context: context,
@@ -971,17 +1307,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               Text(
                 'Business Photo',
-                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                style: Theme.of(
+                  ctx,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
               Text(
                 'Choose a store logo or business photo to display on the POS dashboard, receipts, and navigation.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.mutedText(ctx),
-                ),
+                style: TextStyle(fontSize: 12, color: AppTheme.mutedText(ctx)),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
@@ -1171,7 +1504,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             ),
             SizedBox(width: 12),
             Text('Pinging server...'),
@@ -1194,7 +1530,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               size: 20,
             ),
             const SizedBox(width: 10),
-            Text(ok ? 'Server reached successfully!' : 'Cannot reach server. Check URL / internet.'),
+            Text(
+              ok
+                  ? 'Server reached successfully!'
+                  : 'Cannot reach server. Check URL / internet.',
+            ),
           ],
         ),
         backgroundColor: ok ? AppTheme.accentTeal : AppTheme.accentRose,
@@ -1204,6 +1544,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _handleManualSync(int userId) async {
     final messenger = ScaffoldMessenger.of(context);
+    final auth = context.read<AuthProvider>();
+
+    // If not authenticated yet, attempt silent PIN re-authentication
+    if (!ApiService.instance.isAuthenticated &&
+        auth.currentUser != null &&
+        auth.currentUser!.pin != null) {
+      try {
+        await ApiService.instance.pinLogin(
+          pin: auth.currentUser!.pin!,
+          username: auth.currentUser!.username,
+        );
+      } catch (_) {}
+    }
 
     if (!ApiService.instance.isAuthenticated) {
       messenger.showSnackBar(
@@ -1213,7 +1566,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Icon(Icons.lock_outline_rounded, color: Colors.white, size: 20),
               SizedBox(width: 10),
               Expanded(
-                child: Text('Not signed in to Cloud. Sign Out and Log In / Register to sync.'),
+                child: Text(
+                  'Not signed in to Cloud. Sign Out and Log In / Register to sync.',
+                ),
               ),
             ],
           ),
@@ -1235,7 +1590,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               size: 20,
             ),
             const SizedBox(width: 10),
-            Text(success ? 'Sync completed successfully!' : 'Sync failed. Check connection.'),
+            Text(
+              success
+                  ? 'Sync completed successfully!'
+                  : 'Sync failed. Check connection.',
+            ),
           ],
         ),
         backgroundColor: success ? AppTheme.accentTeal : AppTheme.accentAmber,
@@ -1244,7 +1603,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showChangeServerUrlDialog(BuildContext context) {
-    final urlController = TextEditingController(text: ApiService.instance.baseUrl);
+    final urlController = TextEditingController(
+      text: ApiService.instance.baseUrl,
+    );
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

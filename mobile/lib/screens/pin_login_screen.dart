@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/store_image_view.dart';
 import 'login_screen.dart';
 
 class PinLoginScreen extends StatefulWidget {
@@ -201,21 +202,29 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                                   ),
                                 ),
                                 clipBehavior: Clip.antiAlias,
-                                child: widget.isLockMode
-                                    ? const Icon(
-                                        Icons.lock_person_rounded,
-                                        color: AppTheme.accentOrange,
-                                        size: 32,
-                                      )
-                                    : Image.asset(
-                                        'assets/images/app_icon.png',
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, _, _) => const Icon(
-                                          Icons.storefront_rounded,
-                                          color: AppTheme.accentOrange,
-                                          size: 32,
+                                child: StoreImageView(
+                                  imagePath: user?.imagePath,
+                                  width: compact ? 56 : 68,
+                                  height: compact ? 56 : 68,
+                                  borderRadius: BorderRadius.circular(18),
+                                  customPlaceholder: widget.isLockMode
+                                      ? const Center(
+                                          child: Icon(
+                                            Icons.lock_person_rounded,
+                                            color: AppTheme.accentOrange,
+                                            size: 32,
+                                          ),
+                                        )
+                                      : Image.asset(
+                                          'assets/images/app_icon.png',
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) => const Icon(
+                                            Icons.storefront_rounded,
+                                            color: AppTheme.accentOrange,
+                                            size: 32,
+                                          ),
                                         ),
-                                      ),
+                                ),
                               ),
                               SizedBox(height: compact ? 14 : 20),
 

@@ -8,6 +8,7 @@ import '../providers/admin_store_controller.dart';
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
+import '../widgets/store_image_view.dart';
 import 'client_management_screen.dart';
 
 /// Dedicated Executive Command Center workspace for Platform Administrators.
@@ -1820,6 +1821,13 @@ class _LeaderboardRow extends StatelessWidget {
                       color: rank == 1 ? Colors.white : null,
                     ),
                   ),
+                ),
+                const SizedBox(width: 10),
+                StoreImageView(
+                  imagePath: user.imagePath,
+                  width: 32,
+                  height: 32,
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 const SizedBox(width: 10),
                 Expanded(

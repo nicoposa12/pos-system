@@ -1004,6 +1004,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                   transaction: tx,
                                   items: items,
                                   user: auth.currentUser,
+                                  customerName: customerName,
                                 );
                               },
                               icon: const Icon(

@@ -280,6 +280,7 @@ class AdminStoreController extends ChangeNotifier {
               pin: localMatch?.pin,
               fullName: (item['full_name'] ?? username).toString(),
               email: item['email']?.toString(),
+              imagePath: item['image_path']?.toString() ?? localMatch?.imagePath,
               role: (item['role'] ?? 'client').toString(),
               isActive: item['is_active'] != false,
               createdAt: item['created_at'] != null
@@ -385,6 +386,7 @@ class AdminStoreController extends ChangeNotifier {
             localMatch.copyWith(
               fullName: cloudUser.fullName,
               email: cloudUser.email,
+              imagePath: cloudUser.imagePath,
               role: cloudUser.role,
               isActive: cloudUser.isActive,
             ),
@@ -438,10 +440,11 @@ class AdminStoreController extends ChangeNotifier {
     required String password,
     String? email,
     String? pin,
+    String? imageFilePath,
     String role = 'client',
   }) async {
     try {
-      await ApiService.instance.createAdminClient(
+      final res = await ApiService.instance.createAdminClient(
         username: username,
         fullName: fullName,
         password: password,
@@ -449,7 +452,11 @@ class AdminStoreController extends ChangeNotifier {
         pin: pin,
         role: role,
         isActive: true,
+        imageFilePath: imageFilePath,
       );
+
+      final createdUser = res['user'] is Map ? Map<String, dynamic>.from(res['user'] as Map) : null;
+      final savedImagePath = createdUser?['image_path']?.toString() ?? imageFilePath;
 
       // Mirror locally for instant offline resilience
       final existingLocal = await DatabaseHelper.instance.getUser(username);
@@ -461,6 +468,7 @@ class AdminStoreController extends ChangeNotifier {
             fullName: fullName,
             email: email,
             pin: pin,
+            imagePath: savedImagePath,
             role: role,
             isActive: true,
             createdAt: DateTime.now(),
@@ -478,26 +486,40 @@ class AdminStoreController extends ChangeNotifier {
     }
   }
 
-  /// Updates business name, email, or role. Returns `null` on success.
+  /// Updates business name, email, role, and store photo. Returns `null` on success.
   Future<String?> updateAccount(
     User user, {
     required String fullName,
     String? email,
     required String role,
+    String? imageFilePath,
+    bool removeImage = false,
   }) async {
     if (user.id == null) return 'Invalid account ID.';
     try {
-      await ApiService.instance.updateAdminClient(
+      final res = await ApiService.instance.updateAdminClient(
         user.id!,
         fullName: fullName,
         email: email,
         role: role,
+        imageFilePath: imageFilePath,
+        removeImage: removeImage,
       );
+
+      final updatedData = res['user'] is Map ? Map<String, dynamic>.from(res['user'] as Map) : null;
+      final updatedImagePath = removeImage
+          ? null
+          : (updatedData?['image_path']?.toString() ?? imageFilePath ?? user.imagePath);
 
       final local = await DatabaseHelper.instance.getUser(user.username);
       if (local != null) {
         await DatabaseHelper.instance.updateUser(
-          local.copyWith(fullName: fullName, email: email, role: role),
+          local.copyWith(
+            fullName: fullName,
+            email: email,
+            role: role,
+            imagePath: updatedImagePath,
+          ),
         );
       }
 

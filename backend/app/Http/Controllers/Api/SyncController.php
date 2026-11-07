@@ -145,4 +145,83 @@ class SyncController extends Controller
             'synced' => $syncedMapping,
         ]);
     }
+
+    /**
+     * Batch sync offline created/updated products from Flutter SQLite to PostgreSQL.
+     */
+    public function syncOfflineProducts(Request $request)
+    {
+        $validated = $request->validate([
+            'products' => 'required|array',
+            'products.*.client_id' => 'required',
+            'products.*.name' => 'required|string|max:255',
+            'products.*.price' => 'required|numeric|min:0',
+            'products.*.stock' => 'required|integer|min:0',
+            'products.*.category' => 'nullable|string|max:100',
+            'products.*.barcode' => 'nullable|string|max:100',
+            'products.*.variants' => 'nullable',
+        ]);
+
+        $userId = $request->user()->id;
+        $syncedMapping = [];
+
+        DB::transaction(function () use ($validated, $userId, &$syncedMapping) {
+            foreach ($validated['products'] as $pData) {
+                // Find existing product by barcode (if non-empty) or by exact name for this user
+                $existing = Product::where('user_id', $userId)
+                    ->where(function ($q) use ($pData) {
+                        if (!empty($pData['barcode'])) {
+                            $q->where('barcode', $pData['barcode'])
+                              ->orWhere('name', $pData['name']);
+                        } else {
+                            $q->where('name', $pData['name']);
+                        }
+                    })
+                    ->first();
+
+                if ($existing) {
+                    $existing->update([
+                        'price' => $pData['price'],
+                        'stock' => $pData['stock'],
+                        'category' => $pData['category'] ?? $existing->category,
+                        'barcode' => $pData['barcode'] ?? $existing->barcode,
+                        'variants' => is_string($pData['variants'] ?? null)
+                            ? json_decode($pData['variants'], true)
+                            : ($pData['variants'] ?? $existing->variants),
+                    ]);
+
+                    $syncedMapping[] = [
+                        'client_id' => $pData['client_id'],
+                        'server_id' => $existing->id,
+                        'image_path' => $existing->image_path,
+                    ];
+                } else {
+                    $product = Product::create([
+                        'user_id' => $userId,
+                        'name' => $pData['name'],
+                        'price' => $pData['price'],
+                        'stock' => $pData['stock'],
+                        'category' => $pData['category'] ?? null,
+                        'barcode' => $pData['barcode'] ?? null,
+                        'variants' => is_string($pData['variants'] ?? null)
+                            ? json_decode($pData['variants'], true)
+                            : ($pData['variants'] ?? null),
+                    ]);
+
+                    $syncedMapping[] = [
+                        'client_id' => $pData['client_id'],
+                        'server_id' => $product->id,
+                        'image_path' => null,
+                    ];
+                }
+            }
+        });
+
+        Cache::forget("sync_status_{$userId}");
+
+        return response()->json([
+            'message' => 'Products batch synced successfully',
+            'synced' => $syncedMapping,
+        ]);
+    }
 }

@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'package:barcode/barcode.dart' as bc;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -11,6 +11,7 @@ import '../models/user.dart';
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/pdf_service.dart';
+import 'store_image_view.dart';
 
 /// Shows the authentic in-app cash receipt dialog
 Future<void> showReceiptDialog(
@@ -18,6 +19,7 @@ Future<void> showReceiptDialog(
   required SaleTransaction transaction,
   required List<Map<String, dynamic>> items,
   User? user,
+  String? customerName,
 }) {
   final settings = context.read<SettingsProvider>();
   final authUser = user ?? context.read<AuthProvider>().currentUser;
@@ -33,19 +35,27 @@ Future<void> showReceiptDialog(
       storeName: settings.storeName,
       storeAddress: settings.storeAddress,
       storePhone: settings.storePhone,
-      businessPhotoPath: settings.businessPhotoPath,
+      customerName: customerName,
+      receiptFooterNote: settings.receiptFooterNote,
+      initialPaperSize: settings.receiptPaperSize,
+      businessPhotoPath: settings.businessPhotoPath.isNotEmpty
+          ? settings.businessPhotoPath
+          : authUser?.imagePath,
     ),
   );
 }
 
-class ReceiptDialog extends StatelessWidget {
+class ReceiptDialog extends StatefulWidget {
   final SaleTransaction transaction;
   final List<Map<String, dynamic>> items;
   final User? user;
   final String storeName;
   final String storeAddress;
   final String storePhone;
+  final String? customerName;
   final String? businessPhotoPath;
+  final String? receiptFooterNote;
+  final String initialPaperSize;
 
   const ReceiptDialog({
     super.key,
@@ -55,143 +65,197 @@ class ReceiptDialog extends StatelessWidget {
     required this.storeName,
     required this.storeAddress,
     required this.storePhone,
+    this.customerName,
     this.businessPhotoPath,
+    this.receiptFooterNote,
+    this.initialPaperSize = '58mm',
   });
 
+  @override
+  State<ReceiptDialog> createState() => _ReceiptDialogState();
+}
+
+class _ReceiptDialogState extends State<ReceiptDialog> {
+  late String _paperSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _paperSize = widget.initialPaperSize;
+  }
+
+  void _setPaperSize(String size) {
+    if (_paperSize == size) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _paperSize = size;
+    });
+    context.read<SettingsProvider>().setReceiptPaperSize(size);
+  }
+
   void _shareReceipt() {
-    final dateStr = DateFormat('MM-dd-yyyy HH:mm').format(transaction.date);
-    final subtotalAmount = transaction.totalAmount + transaction.discount;
+    final dateStr = DateFormat('MM-dd-yyyy hh:mm a').format(widget.transaction.date);
+    final subtotalAmount = widget.transaction.totalAmount + widget.transaction.discount;
     final buffer = StringBuffer();
-    buffer.writeln('==============================');
-    buffer.writeln('         CASH RECEIPT         ');
-    if (storeName.trim().isNotEmpty) {
-      buffer.writeln('     ${storeName.trim().toUpperCase()}');
+    final is58 = _paperSize == '58mm';
+    final lineSep = is58
+        ? '--------------------------------'
+        : '========================================';
+    final doubleSep = is58
+        ? '================================'
+        : '========================================';
+
+    buffer.writeln(doubleSep);
+    buffer.writeln(
+      widget.storeName.trim().isNotEmpty
+          ? widget.storeName.trim().toUpperCase()
+          : 'TINDAKO STORE',
+    );
+    buffer.writeln('OFFICIAL RECEIPT');
+    if (widget.storeAddress.trim().isNotEmpty) {
+      buffer.writeln('Address: ${widget.storeAddress.trim()}');
     }
-    if (storeAddress.trim().isNotEmpty) {
-      buffer.writeln('  Address: ${storeAddress.trim()}');
-    }
-    final phone = storePhone.trim().isNotEmpty
-        ? storePhone.trim()
+    final phone = widget.storePhone.trim().isNotEmpty
+        ? widget.storePhone.trim()
         : '09XX XXX XXXX';
-    buffer.writeln('  Tel: $phone');
-    buffer.writeln('------------------------------');
-    buffer.writeln('Order #: ${transaction.id ?? 0}');
+    buffer.writeln('Tel: $phone');
+    buffer.writeln(lineSep);
+    buffer.writeln('Order #: ${widget.transaction.id ?? 0}');
     buffer.writeln('Date: $dateStr');
-    if (user != null && user!.fullName.trim().isNotEmpty) {
-      buffer.writeln('Cashier: ${user!.fullName.trim()}');
+    if (widget.user != null && widget.user!.fullName.trim().isNotEmpty) {
+      buffer.writeln('Cashier: ${widget.user!.fullName.trim()}');
     }
-    buffer.writeln('------------------------------');
-    for (final item in items) {
-      final name = item['product_name'] ?? 'Item';
+    if (widget.customerName != null && widget.customerName!.trim().isNotEmpty) {
+      buffer.writeln('Customer: ${widget.customerName!.trim()}');
+    }
+    buffer.writeln(lineSep);
+    buffer.writeln('ITEM DESCRIPTION                 AMOUNT');
+    buffer.writeln(lineSep);
+
+    for (final item in widget.items) {
+      final name = (item['product_name'] ?? 'Item').toString();
       final qty = (item['quantity'] as num?)?.toInt() ?? 1;
       final subtotal = ((item['subtotal'] as num?) ?? 0.0).toDouble();
-      final displayName = qty > 1 ? '$name x$qty' : '$name';
-      buffer.writeln(
-        '${displayName.padRight(20)} ${subtotal.toStringAsFixed(2).padLeft(8)}',
-      );
+      final unitPrice = qty > 0 ? (subtotal / qty) : subtotal;
+
+      buffer.writeln(name);
+      buffer.writeln('  $qty x P${unitPrice.toStringAsFixed(2).padLeft(7)}    P${subtotal.toStringAsFixed(2).padLeft(9)}');
     }
-    buffer.writeln('------------------------------');
-    buffer.writeln(
-      'Sub-total            ${subtotalAmount.toStringAsFixed(2).padLeft(8)}',
-    );
-    if (transaction.discount > 0) {
-      buffer.writeln(
-        'Discount            -${transaction.discount.toStringAsFixed(2).padLeft(8)}',
-      );
+
+    buffer.writeln(lineSep);
+    buffer.writeln('Sub-total:            P${subtotalAmount.toStringAsFixed(2).padLeft(9)}');
+    if (widget.transaction.discount > 0) {
+      buffer.writeln('Discount:            -P${widget.transaction.discount.toStringAsFixed(2).padLeft(9)}');
     }
-    buffer.writeln(
-      'TOTAL                ${transaction.totalAmount.toStringAsFixed(2).padLeft(8)}',
-    );
-    final isGcash = transaction.paymentMethod.toLowerCase() == 'gcash';
-    final isPending = transaction.paymentMethod.toLowerCase() == 'pending' ||
-        transaction.paymentMethod.toLowerCase() == 'debt';
-    final payMethod = isGcash
-        ? 'GCash Paid'
-        : (isPending ? 'Deposit / Paid' : 'Cash Received');
-    final payAmount = isGcash
-        ? transaction.totalAmount
-        : transaction.cashReceived;
-    buffer.writeln(
-      '${payMethod.padRight(20)} ${payAmount.toStringAsFixed(2).padLeft(8)}',
-    );
-    if (isPending) {
-      final bal = (transaction.totalAmount - transaction.cashReceived).clamp(0.0, transaction.totalAmount);
-      buffer.writeln(
-        '${'Balance Due'.padRight(20)} ${bal.toStringAsFixed(2).padLeft(8)}',
-      );
+    buffer.writeln(doubleSep);
+    buffer.writeln('TOTAL DUE:            P${widget.transaction.totalAmount.toStringAsFixed(2).padLeft(9)}');
+    buffer.writeln(doubleSep);
+
+    final isGcash = widget.transaction.paymentMethod.toLowerCase() == 'gcash';
+    final isDebt = widget.transaction.paymentMethod.toLowerCase() == 'pending' ||
+        widget.transaction.paymentMethod.toLowerCase() == 'debt';
+
+    if (isGcash) {
+      buffer.writeln('Payment: GCASH        P${widget.transaction.totalAmount.toStringAsFixed(2).padLeft(9)}');
+      buffer.writeln('Status: COMPLETED');
+    } else if (isDebt) {
+      final bal = (widget.transaction.totalAmount - widget.transaction.cashReceived)
+          .clamp(0.0, widget.transaction.totalAmount);
+      buffer.writeln('Deposit / Paid:       P${widget.transaction.cashReceived.toStringAsFixed(2).padLeft(9)}');
+      buffer.writeln('Remaining Balance:    P${bal.toStringAsFixed(2).padLeft(9)}');
+    } else {
+      buffer.writeln('Cash Received:        P${widget.transaction.cashReceived.toStringAsFixed(2).padLeft(9)}');
+      buffer.writeln('Change:               P${widget.transaction.change.toStringAsFixed(2).padLeft(9)}');
     }
-    buffer.writeln(
-      'Change               ${transaction.change.toStringAsFixed(2).padLeft(8)}',
+
+    final totalUnits = widget.items.fold<int>(
+      0,
+      (sum, i) => sum + ((i['quantity'] as num?)?.toInt() ?? 1),
     );
-    buffer.writeln('==============================');
-    buffer.writeln('          THANK YOU           ');
-    buffer.writeln('==============================');
+    buffer.writeln('Item Count: $totalUnits units (${widget.items.length} items)');
+    buffer.writeln(lineSep);
+    buffer.writeln(
+      widget.receiptFooterNote?.trim().isNotEmpty == true
+          ? widget.receiptFooterNote!.trim().toUpperCase()
+          : 'THANK YOU FOR YOUR PURCHASE!',
+    );
+    buffer.writeln(doubleSep);
 
     SharePlus.instance.share(
       ShareParams(
         text: buffer.toString(),
-        subject: 'Receipt #${transaction.id}',
+        subject: 'Receipt #${widget.transaction.id ?? 0}',
       ),
     );
   }
 
   void _printReceipt() {
+    HapticFeedback.lightImpact();
     PdfService.generateAndPrintReceipt(
-      transaction: transaction,
-      items: items,
-      user: user,
-      storeName: storeName,
-      storeAddress: storeAddress,
-      storePhone: storePhone,
+      transaction: widget.transaction,
+      items: widget.items,
+      user: widget.user,
+      storeName: widget.storeName,
+      storeAddress: widget.storeAddress,
+      storePhone: widget.storePhone,
+      customerName: widget.customerName,
+      businessPhotoPath: widget.businessPhotoPath,
+      receiptFooterNote: widget.receiptFooterNote,
+      paperSize: _paperSize,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = DateFormat('MMM dd, yyyy').format(transaction.date);
-    final timeStr = DateFormat('hh:mm a').format(transaction.date);
-    final phone = storePhone.trim().isNotEmpty
-        ? storePhone.trim()
+    final dateStr = DateFormat('MMM dd, yyyy').format(widget.transaction.date);
+    final timeStr = DateFormat('hh:mm a').format(widget.transaction.date);
+    final phone = widget.storePhone.trim().isNotEmpty
+        ? widget.storePhone.trim()
         : '09XX XXX XXXX';
-    final subtotalAmount = transaction.totalAmount + transaction.discount;
-    final isGcash = transaction.paymentMethod.toLowerCase() == 'gcash';
-    final isPending = transaction.paymentMethod.toLowerCase() == 'pending' ||
-        transaction.paymentMethod.toLowerCase() == 'debt';
-
-    const monoStyle = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: 12,
-      color: Color(0xFF334155),
-      height: 1.4,
-      fontFeatures: AppTheme.tabularFigures,
+    final subtotalAmount = widget.transaction.totalAmount + widget.transaction.discount;
+    final isGcash = widget.transaction.paymentMethod.toLowerCase() == 'gcash';
+    final isDebt = widget.transaction.paymentMethod.toLowerCase() == 'pending' ||
+        widget.transaction.paymentMethod.toLowerCase() == 'debt';
+    final is58 = _paperSize == '58mm';
+    final totalUnits = widget.items.fold<int>(
+      0,
+      (sum, i) => sum + ((i['quantity'] as num?)?.toInt() ?? 1),
     );
-    const monoMuted = TextStyle(
+
+    final monoStyle = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 11,
-      color: Color(0xFF64748B),
+      fontSize: is58 ? 11 : 12,
+      color: const Color(0xFF334155),
       height: 1.35,
       fontFeatures: AppTheme.tabularFigures,
     );
-    const monoBold = TextStyle(
+    final monoMuted = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 12,
-      fontWeight: FontWeight.w700,
-      color: Color(0xFF0F172A),
-      height: 1.4,
+      fontSize: is58 ? 10 : 11,
+      color: const Color(0xFF64748B),
+      height: 1.3,
       fontFeatures: AppTheme.tabularFigures,
     );
-    const monoHeader = TextStyle(
+    final monoBold = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 15,
-      fontWeight: FontWeight.w900,
-      letterSpacing: 1.6,
-      color: Color(0xFF0F172A),
+      fontSize: is58 ? 11 : 12,
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF0F172A),
+      height: 1.35,
+      fontFeatures: AppTheme.tabularFigures,
     );
-    const monoTotal = TextStyle(
+    final monoHeader = TextStyle(
       fontFamily: 'monospace',
-      fontSize: 16,
+      fontSize: is58 ? 14 : 16,
       fontWeight: FontWeight.w900,
-      color: Color(0xFF0F172A),
+      letterSpacing: 1.2,
+      color: const Color(0xFF0F172A),
+    );
+    final monoTotal = TextStyle(
+      fontFamily: 'monospace',
+      fontSize: is58 ? 15 : 17,
+      fontWeight: FontWeight.w900,
+      color: const Color(0xFF0F172A),
       fontFeatures: AppTheme.tabularFigures,
     );
 
@@ -199,48 +263,70 @@ class ReceiptDialog extends StatelessWidget {
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 368),
+          constraints: BoxConstraints(maxWidth: is58 ? 336 : 380),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── Top Confirmation Pill ──
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryDark.withValues(alpha: 0.92),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: AppTheme.accentTeal.withValues(alpha: 0.45),
-                  ),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.check_circle_rounded,
-                      size: 16,
-                      color: AppTheme.accentTeal,
+              // ── Top Bar: Header Pill & Thermal Width Switcher ──
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
                     ),
-                    SizedBox(width: 7),
-                    Text(
-                      'Official Cash Receipt',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryDark.withValues(alpha: 0.94),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: AppTheme.accentTeal.withValues(alpha: 0.45),
                       ),
                     ),
-                  ],
-                ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 15,
+                          color: AppTheme.accentTeal,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Cash Receipt',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Paper Size Toggle Pill
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryDark.withValues(alpha: 0.94),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppTheme.borderDark),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildPaperToggle('58mm', '58mm'),
+                        _buildPaperToggle('80mm', '80mm'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
 
               // ── Thermal Receipt Paper Slip ──
               Flexible(
@@ -253,34 +339,35 @@ class ReceiptDialog extends StatelessWidget {
                   elevation: 16,
                   shadowColor: Colors.black.withValues(alpha: 0.45),
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+                    padding: EdgeInsets.fromLTRB(
+                      is58 ? 16 : 22,
+                      20,
+                      is58 ? 16 : 22,
+                      20,
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // Store Header
-                        if (businessPhotoPath != null &&
-                            businessPhotoPath!.isNotEmpty &&
-                            File(businessPhotoPath!).existsSync()) ...[
+                        // Store Header & Logo
+                        if (widget.businessPhotoPath != null &&
+                            widget.businessPhotoPath!.isNotEmpty) ...[
                           Center(
-                            child: Container(
-                              width: 52,
-                              height: 52,
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: StoreImageView(
+                                imagePath: widget.businessPhotoPath,
+                                width: is58 ? 44 : 52,
+                                height: is58 ? 44 : 52,
                                 borderRadius: BorderRadius.circular(10),
-                                image: DecorationImage(
-                                  image: FileImage(File(businessPhotoPath!)),
-                                  fit: BoxFit.cover,
-                                ),
                               ),
                             ),
                           ),
                         ],
                         Center(
                           child: Text(
-                            storeName.trim().isNotEmpty
-                                ? storeName.trim().toUpperCase()
+                            widget.storeName.trim().isNotEmpty
+                                ? widget.storeName.trim().toUpperCase()
                                 : 'TINDAKO STORE',
                             style: monoHeader,
                             textAlign: TextAlign.center,
@@ -288,13 +375,19 @@ class ReceiptDialog extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         const Center(
-                          child: Text('OFFICIAL RECEIPT', style: monoMuted),
+                          child: Text('OFFICIAL RECEIPT', style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF64748B),
+                            letterSpacing: 1.0,
+                          )),
                         ),
-                        if (storeAddress.trim().isNotEmpty) ...[
+                        if (widget.storeAddress.trim().isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Center(
                             child: Text(
-                              storeAddress.trim(),
+                              widget.storeAddress.trim(),
                               style: monoMuted,
                               textAlign: TextAlign.center,
                             ),
@@ -305,7 +398,7 @@ class ReceiptDialog extends StatelessWidget {
                           child: Text('Tel: $phone', style: monoMuted),
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         const DashedDivider(),
                         const SizedBox(height: 8),
 
@@ -314,7 +407,7 @@ class ReceiptDialog extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Receipt #${transaction.id ?? 0}',
+                              'Order #${widget.transaction.id ?? 0}',
                               style: monoBold,
                             ),
                             Container(
@@ -323,18 +416,22 @@ class ReceiptDialog extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: isPending
+                                color: isDebt
                                     ? AppTheme.accentAmber.withValues(alpha: 0.18)
-                                    : const Color(0xFFE2E8F0),
+                                    : (isGcash
+                                        ? AppTheme.accentTeal.withValues(alpha: 0.18)
+                                        : const Color(0xFFE2E8F0)),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
                                 isGcash
                                     ? 'GCASH'
-                                    : (isPending ? 'PENDING' : 'CASH'),
+                                    : (isDebt ? 'STORE CREDIT' : 'CASH'),
                                 style: monoBold.copyWith(
                                   fontSize: 10,
-                                  color: isPending ? AppTheme.accentAmber : null,
+                                  color: isDebt
+                                      ? AppTheme.accentAmber
+                                      : (isGcash ? AppTheme.accentTeal : null),
                                 ),
                               ),
                             ),
@@ -348,17 +445,35 @@ class ReceiptDialog extends StatelessWidget {
                             Text(timeStr, style: monoMuted),
                           ],
                         ),
-                        if (user != null &&
-                            user!.fullName.trim().isNotEmpty) ...[
+                        if (widget.user != null &&
+                            widget.user!.fullName.trim().isNotEmpty) ...[
                           const SizedBox(height: 3),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Cashier', style: monoMuted),
+                              Text('Cashier', style: monoMuted),
                               Flexible(
                                 child: Text(
-                                  user!.fullName.trim(),
+                                  widget.user!.fullName.trim(),
                                   style: monoMuted,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if (isDebt &&
+                            widget.customerName != null &&
+                            widget.customerName!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Customer', style: monoBold),
+                              Flexible(
+                                child: Text(
+                                  widget.customerName!.trim(),
+                                  style: monoBold,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -368,20 +483,32 @@ class ReceiptDialog extends StatelessWidget {
 
                         const SizedBox(height: 8),
                         const DashedDivider(),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
 
                         // Column Header
                         const Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('ITEM / QTY', style: monoMuted),
-                            Text('AMOUNT', style: monoMuted),
+                            Text('ITEM DESCRIPTION', style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF475569),
+                            )),
+                            Text('AMOUNT', style: TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF475569),
+                            )),
                           ],
                         ),
+                        const SizedBox(height: 4),
+                        const DashedDivider(),
                         const SizedBox(height: 6),
 
-                        // Itemized List
-                        ...items.map((item) {
+                        // Itemized List (Anti-Collision Format)
+                        ...widget.items.map((item) {
                           final name =
                               (item['product_name'] ?? 'Item').toString();
                           final qty = (item['quantity'] as num?)?.toInt() ?? 1;
@@ -391,27 +518,29 @@ class ReceiptDialog extends StatelessWidget {
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 3.5),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(name, style: monoStyle),
-                                      if (qty > 1)
-                                        Text(
-                                          '$qty x ₱${unitPrice.toStringAsFixed(2)}',
-                                          style: monoMuted,
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  '₱${subtotal.toStringAsFixed(2)}',
-                                  style: monoBold,
+                                // Item title (wraps full-width without crowding prices)
+                                Text(name, style: monoBold),
+                                const SizedBox(height: 2),
+                                // Qty x unit price and Subtotal
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 4),
+                                      child: Text(
+                                        '$qty x ₱${unitPrice.toStringAsFixed(2)}',
+                                        style: monoMuted,
+                                      ),
+                                    ),
+                                    Text(
+                                      '₱${subtotal.toStringAsFixed(2)}',
+                                      style: monoBold,
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -422,25 +551,25 @@ class ReceiptDialog extends StatelessWidget {
                         const DashedDivider(),
                         const SizedBox(height: 8),
 
-                        // Subtotal & Discount BEFORE Total
+                        // Subtotal & Discount
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Sub-total', style: monoStyle),
+                            Text('Sub-total', style: monoStyle),
                             Text(
                               '₱${subtotalAmount.toStringAsFixed(2)}',
                               style: monoStyle,
                             ),
                           ],
                         ),
-                        if (transaction.discount > 0) ...[
+                        if (widget.transaction.discount > 0) ...[
                           const SizedBox(height: 4),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Discount', style: monoStyle),
+                              Text('Discount', style: monoStyle),
                               Text(
-                                '-₱${transaction.discount.toStringAsFixed(2)}',
+                                '-₱${widget.transaction.discount.toStringAsFixed(2)}',
                                 style: monoStyle,
                               ),
                             ],
@@ -448,23 +577,23 @@ class ReceiptDialog extends StatelessWidget {
                         ],
                         const SizedBox(height: 6),
 
-                        // Prominent Total
+                        // Prominent Total Box
                         Container(
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           decoration: const BoxDecoration(
                             border: Border.symmetric(
                               horizontal: BorderSide(
-                                color: Color(0xFFCBD5E1),
-                                width: 1,
+                                color: Color(0xFF0F172A),
+                                width: 1.2,
                               ),
                             ),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('TOTAL', style: monoTotal),
+                              Text('TOTAL', style: monoTotal),
                               Text(
-                                '₱${transaction.totalAmount.toStringAsFixed(2)}',
+                                '₱${widget.transaction.totalAmount.toStringAsFixed(2)}',
                                 style: monoTotal,
                               ),
                             ],
@@ -472,61 +601,100 @@ class ReceiptDialog extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
 
-                        // Tendered & Change
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              isGcash
-                                  ? 'GCash Paid'
-                                  : (isPending ? 'Deposit / Paid' : 'Cash Tendered'),
-                              style: monoStyle,
-                            ),
-                            Text(
-                              '₱${(isGcash ? transaction.totalAmount : transaction.cashReceived).toStringAsFixed(2)}',
-                              style: monoStyle,
-                            ),
-                          ],
-                        ),
-                        if (isPending) ...[
+                        // Tendered, Change, or Credit Balance
+                        if (isGcash) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('GCash Paid', style: monoStyle),
+                              Text(
+                                '₱${widget.transaction.totalAmount.toStringAsFixed(2)}',
+                                style: monoBold,
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 3),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text('Pending Balance', style: monoBold),
+                              Text('Payment Status', style: monoStyle),
+                              Text('COMPLETED', style: monoBold),
+                            ],
+                          ),
+                        ] else if (isDebt) ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Deposit / Paid', style: monoStyle),
                               Text(
-                                '₱${(transaction.totalAmount - transaction.cashReceived).clamp(0.0, transaction.totalAmount).toStringAsFixed(2)}',
+                                '₱${widget.transaction.cashReceived.toStringAsFixed(2)}',
+                                style: monoStyle,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Remaining Balance', style: monoBold),
+                              Text(
+                                '₱${(widget.transaction.totalAmount - widget.transaction.cashReceived).clamp(0.0, widget.transaction.totalAmount).toStringAsFixed(2)}',
                                 style: monoBold.copyWith(
                                   color: AppTheme.accentAmber,
                                 ),
                               ),
                             ],
                           ),
+                        ] else ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Cash Received', style: monoStyle),
+                              Text(
+                                '₱${widget.transaction.cashReceived.toStringAsFixed(2)}',
+                                style: monoStyle,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('Change', style: monoBold),
+                              Text(
+                                '₱${widget.transaction.change.toStringAsFixed(2)}',
+                                style: monoBold,
+                              ),
+                            ],
+                          ),
                         ],
-                        const SizedBox(height: 3),
+
+                        const SizedBox(height: 6),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Change', style: monoBold),
+                            Text('Item Count', style: monoMuted),
                             Text(
-                              '₱${transaction.change.toStringAsFixed(2)}',
-                              style: monoBold,
+                              '$totalUnits units (${widget.items.length} items)',
+                              style: monoMuted,
                             ),
                           ],
                         ),
 
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                         Center(
                           child: Text(
-                            'THANK YOU FOR YOUR PURCHASE!',
+                            widget.receiptFooterNote?.trim().isNotEmpty == true
+                                ? widget.receiptFooterNote!.trim().toUpperCase()
+                                : 'THANK YOU FOR YOUR PURCHASE!',
                             style: monoBold.copyWith(
-                              letterSpacing: 1.0,
-                              fontSize: 11,
+                              letterSpacing: 0.8,
+                              fontSize: is58 ? 10 : 11,
                             ),
                             textAlign: TextAlign.center,
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
 
                         // Barcode
                         Center(
@@ -534,20 +702,21 @@ class ReceiptDialog extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               SizedBox(
-                                width: 184,
-                                height: 40,
+                                width: is58 ? 150 : 180,
+                                height: 38,
                                 child: CustomPaint(
                                   painter: BarcodePainter(
-                                    data: 'ORDER-${transaction.id ?? 0}',
+                                    data: 'ORD-${widget.transaction.id ?? 0}',
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'ORDER #${transaction.id ?? 0}',
+                                '* ORDER #${widget.transaction.id ?? 0} *',
                                 style: monoMuted.copyWith(
                                   fontSize: 10,
                                   letterSpacing: 1.2,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -559,7 +728,7 @@ class ReceiptDialog extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
 
               // ── Floating Action Dock ──
               Container(
@@ -576,7 +745,7 @@ class ReceiptDialog extends StatelessWidget {
                       icon: const Icon(Icons.share_outlined, size: 20),
                       tooltip: 'Share Receipt',
                       style: IconButton.styleFrom(
-                        minimumSize: const Size(48, 48),
+                        minimumSize: const Size(46, 46),
                         backgroundColor: AppTheme.cardDark,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
@@ -588,11 +757,11 @@ class ReceiptDialog extends StatelessWidget {
                     IconButton(
                       onPressed: _printReceipt,
                       icon: const Icon(Icons.print_outlined, size: 20),
-                      tooltip: 'Print Receipt',
+                      tooltip: 'Print Thermal Receipt ($_paperSize)',
                       style: IconButton.styleFrom(
-                        minimumSize: const Size(48, 48),
-                        backgroundColor: AppTheme.cardDark,
-                        foregroundColor: Colors.white,
+                        minimumSize: const Size(46, 46),
+                        backgroundColor: AppTheme.accentTeal.withValues(alpha: 0.2),
+                        foregroundColor: AppTheme.accentTeal,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -601,7 +770,7 @@ class ReceiptDialog extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: SizedBox(
-                        height: 48,
+                        height: 46,
                         child: ElevatedButton.icon(
                           onPressed: () => Navigator.pop(context),
                           icon: const Icon(
@@ -614,7 +783,7 @@ class ReceiptDialog extends StatelessWidget {
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: Colors.white,
-                              fontSize: 15,
+                              fontSize: 14,
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -631,6 +800,28 @@ class ReceiptDialog extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaperToggle(String value, String label) {
+    final isSelected = _paperSize == value;
+    return GestureDetector(
+      onTap: () => _setPaperSize(value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.accentOrange : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            color: isSelected ? Colors.white : Colors.white70,
           ),
         ),
       ),

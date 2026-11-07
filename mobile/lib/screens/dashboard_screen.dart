@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +10,7 @@ import '../providers/settings_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../widgets/product_image_view.dart';
 import '../widgets/skeleton.dart';
+import '../widgets/store_image_view.dart';
 import 'add_edit_product_screen.dart';
 import 'client_management_screen.dart';
 import 'product_list_screen.dart';
@@ -142,21 +142,26 @@ class _DashboardScreenState extends State<DashboardScreen>
                   titleSpacing: 20,
                   title: Row(
                     children: [
-                      Container(
+                      StoreImageView(
+                        imagePath: user?.imagePath ??
+                            (settings.businessPhotoPath.isNotEmpty
+                                ? settings.businessPhotoPath
+                                : null),
                         width: 40,
                         height: 40,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          image: DecorationImage(
-                            image: settings.businessPhotoPath.isNotEmpty &&
-                                    File(settings.businessPhotoPath).existsSync()
-                                ? FileImage(File(settings.businessPhotoPath))
-                                : const AssetImage('assets/images/app_icon.png')
-                                    as ImageProvider,
-                            fit: BoxFit.cover,
-                          ),
-                          border: Border.all(
-                            color: AppTheme.borderColor(context),
+                        borderRadius: BorderRadius.circular(12),
+                        customPlaceholder: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            image: const DecorationImage(
+                              image: AssetImage('assets/images/app_icon.png'),
+                              fit: BoxFit.cover,
+                            ),
+                            border: Border.all(
+                              color: AppTheme.borderColor(context),
+                            ),
                           ),
                         ),
                       ),

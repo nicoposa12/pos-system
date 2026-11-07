@@ -8,6 +8,7 @@ import 'package:tindako/providers/auth_provider.dart';
 import 'package:tindako/providers/settings_provider.dart';
 import 'package:tindako/screens/admin_navigation_screen.dart';
 import 'package:tindako/screens/client_management_screen.dart';
+import 'package:tindako/widgets/store_image_view.dart';
 
 class _StubAdminAuthProvider extends ChangeNotifier implements AuthProvider {
   final User _admin = User(
@@ -318,6 +319,29 @@ void main() {
       await tester.tap(find.text('Stores'));
       await tester.pumpAndSettle();
       expect(find.text('NEON LIVE'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Store photos render StoreImageView in business cards, leaderboard, and modals',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 820);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final ctrl = _buildSeededController();
+      await tester.pumpWidget(_wrapAdminConsole(controller: ctrl));
+      await tester.pumpAndSettle();
+
+      // Check leaderboard contains StoreImageView
+      expect(find.byType(StoreImageView), findsWidgets);
+
+      // Navigate to Stores tab
+      await tester.tap(find.text('Stores'));
+      await tester.pumpAndSettle();
+
+      // Check business card has StoreImageView
+      expect(find.byType(StoreImageView), findsWidgets);
     },
   );
 }

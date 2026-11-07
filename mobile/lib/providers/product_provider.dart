@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../data/database_helper.dart';
 import '../models/product.dart';
@@ -114,6 +115,7 @@ class ProductProvider with ChangeNotifier {
               stock: item['stock'] ?? 0,
               barcode: item['barcode'],
               imagePath: finalImagePath,
+              isSynced: true,
               variants: item['variants'] != null
                   ? (item['variants'] as List)
                       .map((v) => ProductVariant.fromMap(v))
@@ -128,10 +130,10 @@ class ProductProvider with ChangeNotifier {
             }
           }
 
-          // Clean up any stale local orphan duplicates in SQLite that don't exist on server
+          // Clean up any stale local orphan duplicates in SQLite that don't exist on server (only if previously synced)
           final localProducts = await DatabaseHelper.instance.readAllProducts(userId: _userId!);
           for (var lp in localProducts) {
-            if (lp.id != null && !remoteIds.contains(lp.id)) {
+            if (lp.id != null && lp.isSynced && !remoteIds.contains(lp.id)) {
               await DatabaseHelper.instance.deleteProduct(lp.id!);
             }
           }
@@ -161,6 +163,10 @@ class ProductProvider with ChangeNotifier {
   }
 
   Future<void> addProduct(Product product) async {
+    if (_userId == null && product.userId > 0) {
+      _userId = product.userId;
+    }
+
     // 1. If online, create on server first to get authoritative server ID and prevent local duplicates
     if (ApiService.instance.isAuthenticated) {
       try {
@@ -170,6 +176,9 @@ class ProductProvider with ChangeNotifier {
           stock: product.stock,
           category: product.category,
           barcode: product.barcode,
+          variants: product.variants.isNotEmpty
+              ? jsonEncode(product.variants.map((v) => v.toMap()).toList())
+              : null,
           imageFilePath: product.imagePath,
         );
         if (res['product'] != null) {
@@ -178,6 +187,7 @@ class ProductProvider with ChangeNotifier {
           final serverImagePath = serverProd['image_path']?.toString().trim();
           final serverProduct = product.copyWith(
             id: serverId,
+            isSynced: true,
             imagePath: (serverImagePath != null && serverImagePath.isNotEmpty)
                 ? serverImagePath
                 : product.imagePath,
@@ -191,9 +201,16 @@ class ProductProvider with ChangeNotifier {
       }
     }
 
-    // 2. Offline fallback: save locally if disconnected or server request failed
-    await DatabaseHelper.instance.createProduct(product);
+    // 2. Offline fallback: save locally with isSynced = false if disconnected or server request failed
+    final localProduct = product.copyWith(isSynced: false);
+    await DatabaseHelper.instance.createProduct(localProduct);
     await fetchProducts();
+
+    // 3. Trigger background sync so pending product uploads to cloud as soon as reachable
+    final targetUserId = _userId ?? (product.userId > 0 ? product.userId : null);
+    if (targetUserId != null && ApiService.instance.isAuthenticated) {
+      SyncService.instance.syncNow(targetUserId);
+    }
   }
 
   Future<void> updateProduct(Product product) async {
@@ -208,19 +225,35 @@ class ProductProvider with ChangeNotifier {
           stock: product.stock,
           category: product.category,
           barcode: product.barcode,
+          variants: product.variants.isNotEmpty
+              ? jsonEncode(product.variants.map((v) => v.toMap()).toList())
+              : null,
           imageFilePath: product.imagePath,
         );
         if (res['product'] != null && res['product']['image_path'] != null) {
           final serverImagePath = res['product']['image_path'].toString().trim();
           if (serverImagePath.isNotEmpty) {
             await DatabaseHelper.instance.updateProduct(
-              product.copyWith(imagePath: serverImagePath),
+              product.copyWith(imagePath: serverImagePath, isSynced: true),
+            );
+          } else {
+            await DatabaseHelper.instance.updateProduct(
+              product.copyWith(isSynced: true),
             );
           }
+        } else {
+          await DatabaseHelper.instance.updateProduct(
+            product.copyWith(isSynced: true),
+          );
         }
       } catch (e) {
         debugPrint('Online update product error: $e');
       }
+    } else {
+      // Offline edit: mark as unsynced so next sync pushes changes
+      await DatabaseHelper.instance.updateProduct(
+        product.copyWith(isSynced: false),
+      );
     }
 
     await fetchProducts();

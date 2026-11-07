@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminClientManagementTest extends TestCase
@@ -167,5 +169,58 @@ class AdminClientManagementTest extends TestCase
             'pin' => '5678',
         ]);
         $resUnscoped->assertStatus(401);
+    }
+
+    public function test_admin_can_provision_store_with_photo_and_update_it()
+    {
+        Storage::fake('public');
+
+        $admin = User::create([
+            'username' => 'photo_admin_' . uniqid(),
+            'full_name' => 'Photo Admin',
+            'password' => 'secret123',
+            'role' => 'admin',
+            'is_active' => true,
+        ]);
+
+        $photoFile = UploadedFile::fake()->image('store_front.jpg', 400, 400);
+
+        // 1. Provision store with photo
+        $createRes = $this->actingAs($admin, 'sanctum')->post('/api/admin/clients', [
+            'username' => 'photo_store_' . uniqid(),
+            'full_name' => 'Bakery Store',
+            'password' => 'pass1234',
+            'role' => 'client',
+            'image' => $photoFile,
+        ], ['Accept' => 'application/json']);
+
+        $createRes->assertStatus(201);
+        $this->assertNotNull($createRes->json('user.image_path'));
+        $this->assertStringContainsString('/api/media/stores/', $createRes->json('user.image_path'));
+        $clientId = $createRes->json('user.id');
+
+        // 2. Fetch clients list and verify image_path is included
+        $listRes = $this->actingAs($admin, 'sanctum')->getJson('/api/admin/clients');
+        $listRes->assertStatus(200);
+        $clientInList = collect($listRes->json('clients'))->firstWhere('id', $clientId);
+        $this->assertNotNull($clientInList['image_path']);
+
+        // 3. Update store photo
+        $newPhotoFile = UploadedFile::fake()->image('new_store.png', 400, 400);
+        $updateRes = $this->actingAs($admin, 'sanctum')->post("/api/admin/clients/{$clientId}?_method=PUT", [
+            'full_name' => 'Bakery Deluxe',
+            'image' => $newPhotoFile,
+        ], ['Accept' => 'application/json']);
+
+        $updateRes->assertStatus(200);
+        $this->assertNotNull($updateRes->json('user.image_path'));
+
+        // 4. Remove store photo
+        $removeRes = $this->actingAs($admin, 'sanctum')->post("/api/admin/clients/{$clientId}?_method=PUT", [
+            'remove_image' => 1,
+        ], ['Accept' => 'application/json']);
+
+        $removeRes->assertStatus(200);
+        $this->assertNull($removeRes->json('user.image_path'));
     }
 }

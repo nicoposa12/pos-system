@@ -1,11 +1,533 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:dio/dio.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:intl/intl.dart';
 import '../models/transaction.dart';
 import '../models/user.dart';
 
 class PdfService {
+  /// Cleans strings to guarantee pure ASCII/WinAnsi characters.
+  /// Prevents glyph dropouts and printer buffer errors across thermal heads.
+  static String _clean(String? text) {
+    if (text == null) return '';
+    return text
+        .replaceAll('₱', 'P')
+        .replaceAll('“', '"')
+        .replaceAll('”', '"')
+        .replaceAll('‘', "'")
+        .replaceAll('’', "'")
+        .replaceAll('—', '-')
+        .replaceAll('–', '-')
+        .replaceAll('•', '*')
+        .replaceAll('\u00A0', ' ')
+        .trim();
+  }
+
+  /// Builds a complete PDF receipt byte buffer for 58mm or 80mm thermal rolls.
+  static Future<Uint8List> buildReceiptPdfBytes({
+    required SaleTransaction transaction,
+    required List<Map<String, dynamic>> items,
+    required User? user,
+    required String storeName,
+    required String storeAddress,
+    String? storePhone,
+    String? customerName,
+    String? businessPhotoPath,
+    String? receiptFooterNote,
+    String paperSize = '58mm',
+    PdfPageFormat? customFormat,
+  }) async {
+    final pdf = pw.Document();
+
+    final fontMono = pw.Font.courier();
+    final fontMonoBold = pw.Font.courierBold();
+
+    final dateStr = DateFormat('MM-dd-yyyy').format(transaction.date);
+    final timeStr = DateFormat('hh:mm a').format(transaction.date);
+
+    // ── Determine Roll Width & Sizing ──
+    final bool is58;
+    final double rollWidth;
+    final pw.EdgeInsets pageMargin;
+
+    if (customFormat != null &&
+        customFormat.width > 0 &&
+        customFormat.width <= 100 * PdfPageFormat.mm) {
+      // Hardware printer driver explicitly communicated its physical width
+      rollWidth = customFormat.width;
+      is58 = rollWidth <= 68 * PdfPageFormat.mm;
+      pageMargin = is58
+          ? const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 10)
+          : const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12);
+    } else {
+      // Use configured paper size preference
+      is58 = paperSize.toLowerCase() == '58mm';
+      rollWidth = is58 ? 58.0 * PdfPageFormat.mm : 80.0 * PdfPageFormat.mm;
+      pageMargin = is58
+          ? const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 10)
+          : const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12);
+    }
+
+    final pageFormat = PdfPageFormat(
+      rollWidth,
+      double.infinity,
+      marginLeft: pageMargin.left,
+      marginRight: pageMargin.right,
+      marginTop: pageMargin.top,
+      marginBottom: pageMargin.bottom,
+    );
+
+    // Dynamic typography scaling based on roll format
+    final headerTitleSize = is58 ? 11.5 : 13.5;
+    final headerMetaSize = is58 ? 7.5 : 8.5;
+    final bodySize = is58 ? 7.8 : 8.8;
+    final itemNameSize = is58 ? 8.5 : 9.5;
+    final totalSize = is58 ? 11.5 : 13.5;
+    final barcodeW = is58 ? 112.0 : 148.0;
+    final barcodeH = is58 ? 28.0 : 34.0;
+    final dividerThick = is58 ? 0.75 : 0.9;
+    final spacing = is58 ? 3.0 : 4.0;
+
+    final headerTitleStyle = pw.TextStyle(
+      font: fontMonoBold,
+      fontSize: headerTitleSize,
+      color: PdfColors.black,
+    );
+    final headerSubStyle = pw.TextStyle(
+      font: fontMono,
+      fontSize: headerMetaSize,
+      color: PdfColors.black,
+    );
+    final bold = pw.TextStyle(
+      font: fontMonoBold,
+      fontSize: bodySize,
+      color: PdfColors.black,
+    );
+    final regular = pw.TextStyle(
+      font: fontMono,
+      fontSize: bodySize,
+      color: PdfColors.black,
+    );
+    final itemNameStyle = pw.TextStyle(
+      font: fontMonoBold,
+      fontSize: itemNameSize,
+      color: PdfColors.black,
+    );
+    final totalStyle = pw.TextStyle(
+      font: fontMonoBold,
+      fontSize: totalSize,
+      color: PdfColors.black,
+    );
+
+    final cleanStoreName = _clean(storeName).isNotEmpty
+        ? _clean(storeName).toUpperCase()
+        : 'TINDAKO STORE';
+    final cleanStoreAddress = _clean(storeAddress);
+    final phone = _clean(storePhone).isNotEmpty
+        ? _clean(storePhone)
+        : '09XX XXX XXXX';
+    final footerMsg = _clean(receiptFooterNote).isNotEmpty
+        ? _clean(receiptFooterNote).toUpperCase()
+        : 'THANK YOU FOR YOUR PURCHASE!';
+
+    // Optional store logo image loading
+    pw.MemoryImage? logoImage;
+    if (businessPhotoPath != null && businessPhotoPath.trim().isNotEmpty) {
+      try {
+        final path = businessPhotoPath.trim();
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          final res = await Dio().get<List<int>>(
+            path,
+            options: Options(
+              responseType: ResponseType.bytes,
+              receiveTimeout: const Duration(seconds: 3),
+              sendTimeout: const Duration(seconds: 3),
+            ),
+          );
+          if (res.data != null && res.data!.isNotEmpty) {
+            logoImage = pw.MemoryImage(Uint8List.fromList(res.data!));
+          }
+        } else {
+          final file = File(path);
+          if (file.existsSync()) {
+            final bytes = await file.readAsBytes();
+            if (bytes.isNotEmpty) {
+              logoImage = pw.MemoryImage(bytes);
+            }
+          }
+        }
+      } catch (_) {
+        // Safe fallback without logo
+      }
+    }
+
+    final isGcash = transaction.paymentMethod.toLowerCase() == 'gcash';
+    final isDebt = transaction.paymentMethod.toLowerCase() == 'debt' ||
+        transaction.paymentMethod.toLowerCase() == 'pending';
+    final cashierName = _clean(user?.fullName);
+    final cleanCustomer = _clean(customerName);
+
+    final subtotalAmount = transaction.totalAmount + transaction.discount;
+    final totalUnits = items.fold<int>(
+      0,
+      (sum, i) => sum + ((i['quantity'] as num?)?.toInt() ?? 1),
+    );
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: pageFormat,
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              // ── Header Section ──
+              if (logoImage != null) ...[
+                pw.Center(
+                  child: pw.Padding(
+                    padding: pw.EdgeInsets.only(bottom: spacing),
+                    child: pw.Image(
+                      logoImage,
+                      width: is58 ? 36 : 46,
+                      height: is58 ? 36 : 46,
+                      fit: pw.BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ],
+              pw.Center(
+                child: pw.Column(
+                  children: [
+                    pw.Text(
+                      cleanStoreName,
+                      style: headerTitleStyle,
+                      textAlign: pw.TextAlign.center,
+                    ),
+                    pw.SizedBox(height: spacing * 0.4),
+                    pw.Text('OFFICIAL RECEIPT', style: headerSubStyle),
+                    if (cleanStoreAddress.isNotEmpty) ...[
+                      pw.SizedBox(height: spacing * 0.3),
+                      pw.Text(
+                        cleanStoreAddress,
+                        style: headerSubStyle,
+                        textAlign: pw.TextAlign.center,
+                      ),
+                    ],
+                    pw.SizedBox(height: spacing * 0.3),
+                    pw.Text('Tel: $phone', style: headerSubStyle),
+                  ],
+                ),
+              ),
+
+              pw.SizedBox(height: spacing * 1.2),
+              pw.Divider(
+                borderStyle: pw.BorderStyle.dashed,
+                thickness: dividerThick,
+                color: PdfColors.black,
+              ),
+              pw.SizedBox(height: spacing * 0.4),
+
+              // ── Metadata Rows ──
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Order #${transaction.id ?? 0}', style: bold),
+                  pw.Text(
+                    isGcash
+                        ? '[GCASH]'
+                        : (isDebt ? '[STORE CREDIT]' : '[CASH]'),
+                    style: bold,
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: spacing * 0.4),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(dateStr, style: regular),
+                  pw.Text(timeStr, style: regular),
+                ],
+              ),
+              if (cashierName.isNotEmpty) ...[
+                pw.SizedBox(height: spacing * 0.4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Cashier:', style: regular),
+                    pw.Text(cashierName, style: regular),
+                  ],
+                ),
+              ],
+              if (isDebt && cleanCustomer.isNotEmpty) ...[
+                pw.SizedBox(height: spacing * 0.4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Customer:', style: bold),
+                    pw.Text(cleanCustomer, style: bold),
+                  ],
+                ),
+              ],
+
+              pw.SizedBox(height: spacing * 0.8),
+              pw.Divider(
+                borderStyle: pw.BorderStyle.dashed,
+                thickness: dividerThick,
+                color: PdfColors.black,
+              ),
+              pw.SizedBox(height: spacing * 0.4),
+
+              // ── Items Table Header ──
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('ITEM DESCRIPTION', style: bold),
+                  pw.Text('AMOUNT', style: bold),
+                ],
+              ),
+              pw.SizedBox(height: spacing * 0.4),
+              pw.Divider(
+                borderStyle: pw.BorderStyle.dashed,
+                thickness: dividerThick,
+                color: PdfColors.black,
+              ),
+              pw.SizedBox(height: spacing * 0.6),
+
+              // ── Itemized Rows (Anti-Collision Format) ──
+              ...items.map((item) {
+                final rawName = (item['product_name'] ?? 'Item').toString();
+                final name = _clean(rawName);
+                final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+                final subtotal =
+                    ((item['subtotal'] as num?) ?? 0.0).toDouble();
+                final unitPrice = qty > 0 ? (subtotal / qty) : subtotal;
+
+                return pw.Padding(
+                  padding: pw.EdgeInsets.symmetric(vertical: spacing * 0.4),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                    children: [
+                      // Item name (wraps smoothly to multiple lines if long)
+                      pw.Text(name, style: itemNameStyle),
+                      pw.SizedBox(height: 1.5),
+                      // Quantity x Unit Price ... Line Subtotal
+                      pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                        children: [
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.only(left: 4),
+                            child: pw.Text(
+                              '$qty x P${unitPrice.toStringAsFixed(2)}',
+                              style: regular,
+                            ),
+                          ),
+                          pw.Text(
+                            'P${subtotal.toStringAsFixed(2)}',
+                            style: bold,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              }),
+
+              pw.SizedBox(height: spacing * 0.8),
+              pw.Divider(
+                borderStyle: pw.BorderStyle.dashed,
+                thickness: dividerThick,
+                color: PdfColors.black,
+              ),
+              pw.SizedBox(height: spacing * 0.6),
+
+              // ── Subtotal & Discount ──
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Sub-total', style: regular),
+                  pw.Text('P${subtotalAmount.toStringAsFixed(2)}',
+                      style: regular),
+                ],
+              ),
+              if (transaction.discount > 0) ...[
+                pw.SizedBox(height: spacing * 0.4),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Discount', style: regular),
+                    pw.Text(
+                      '-P${transaction.discount.toStringAsFixed(2)}',
+                      style: regular,
+                    ),
+                  ],
+                ),
+              ],
+
+              pw.SizedBox(height: spacing * 0.6),
+
+              // ── Prominent TOTAL Bordered Box ──
+              pw.Container(
+                padding: pw.EdgeInsets.symmetric(vertical: spacing * 0.8),
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border.symmetric(
+                    horizontal: pw.BorderSide(
+                      color: PdfColors.black,
+                      width: 1.2,
+                    ),
+                  ),
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('TOTAL', style: totalStyle),
+                    pw.Text(
+                      'P${transaction.totalAmount.toStringAsFixed(2)}',
+                      style: totalStyle,
+                    ),
+                  ],
+                ),
+              ),
+
+              pw.SizedBox(height: spacing * 0.6),
+
+              // ── Payment Tendered & Balance / Change ──
+              if (isGcash) ...[
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('GCash Paid', style: regular),
+                    pw.Text(
+                      'P${transaction.totalAmount.toStringAsFixed(2)}',
+                      style: bold,
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: spacing * 0.3),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Payment Status', style: regular),
+                    pw.Text('COMPLETED', style: bold),
+                  ],
+                ),
+              ] else if (isDebt) ...[
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Deposit / Paid', style: regular),
+                    pw.Text(
+                      'P${transaction.cashReceived.toStringAsFixed(2)}',
+                      style: regular,
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: spacing * 0.3),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Balance Due', style: bold),
+                    pw.Text(
+                      'P${(transaction.totalAmount - transaction.cashReceived).clamp(0.0, transaction.totalAmount).toStringAsFixed(2)}',
+                      style: bold,
+                    ),
+                  ],
+                ),
+              ] else ...[
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Cash Received', style: regular),
+                    pw.Text(
+                      'P${transaction.cashReceived.toStringAsFixed(2)}',
+                      style: regular,
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: spacing * 0.3),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Change', style: bold),
+                    pw.Text(
+                      'P${transaction.change.toStringAsFixed(2)}',
+                      style: bold,
+                    ),
+                  ],
+                ),
+              ],
+
+              pw.SizedBox(height: spacing * 0.5),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Item Count', style: regular),
+                  pw.Text(
+                    '$totalUnits units (${items.length} items)',
+                    style: regular,
+                  ),
+                ],
+              ),
+
+              pw.SizedBox(height: spacing * 1.4),
+              pw.Divider(
+                borderStyle: pw.BorderStyle.dashed,
+                thickness: dividerThick,
+                color: PdfColors.black,
+              ),
+              pw.SizedBox(height: spacing * 1.2),
+
+              // ── Footer Note & Barcode ──
+              pw.Center(
+                child: pw.Text(
+                  footerMsg,
+                  style: pw.TextStyle(
+                    font: fontMonoBold,
+                    fontSize: is58 ? 8.0 : 9.0,
+                    letterSpacing: 0.8,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+              pw.SizedBox(height: spacing * 1.2),
+
+              pw.Center(
+                child: pw.Column(
+                  mainAxisSize: pw.MainAxisSize.min,
+                  children: [
+                    pw.BarcodeWidget(
+                      barcode: pw.Barcode.code128(),
+                      data: 'ORD-${transaction.id ?? 0}',
+                      width: barcodeW,
+                      height: barcodeH,
+                      drawText: false,
+                      color: PdfColors.black,
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      '* ORDER #${transaction.id ?? 0} *',
+                      style: pw.TextStyle(
+                        font: fontMonoBold,
+                        fontSize: is58 ? 7.5 : 8.5,
+                        letterSpacing: 1.0,
+                        color: PdfColors.black,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: spacing * 1.5),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  /// Spools and prints receipt directly to thermal printers, bluetooth rolls, or system print dialog.
   static Future<void> generateAndPrintReceipt({
     required SaleTransaction transaction,
     required List<Map<String, dynamic>> items,
@@ -13,249 +535,37 @@ class PdfService {
     required String storeName,
     required String storeAddress,
     String? storePhone,
+    String? customerName,
+    String? businessPhotoPath,
+    String? receiptFooterNote,
+    String paperSize = '58mm',
   }) async {
-    final fontMono = pw.Font.courier();
-    final fontMonoBold = pw.Font.courierBold();
-
-    final dateStr = DateFormat('MM-dd-yyyy').format(transaction.date);
-    final timeStr = DateFormat('HH:mm').format(transaction.date);
+    final defaultRoll = (paperSize == '80mm')
+        ? PdfPageFormat.roll80
+        : PdfPageFormat(58 * PdfPageFormat.mm, double.infinity);
 
     await Printing.layoutPdf(
       name: 'receipt_${transaction.id}.pdf',
-      format: PdfPageFormat.roll80,
+      format: defaultRoll,
       onLayout: (PdfPageFormat format) async {
-        final pdf = pw.Document();
-
-        final isRoll =
-            format.height == double.infinity ||
-            format.width <= 100 * PdfPageFormat.mm;
-
-        final pageFormat = isRoll
-            ? PdfPageFormat(
-                format.width > 0 ? format.width : PdfPageFormat.roll80.width,
-                double.infinity,
-                marginLeft: 10,
-                marginRight: 10,
-                marginTop: 12,
-                marginBottom: 12,
-              )
-            : format.copyWith(
-                marginLeft: 24,
-                marginRight: 24,
-                marginTop: 28,
-                marginBottom: 28,
-              );
-
-        final availableWidth = pageFormat.availableWidth;
-        // Base width for thermal roll is ~200 pt.
-        // Scale font and widgets dynamically up to 2.4x for large sheets (Letter, A4, Legal)
-        final scale = (availableWidth / 200.0).clamp(0.7, 2.4);
-
-        final regular = pw.TextStyle(font: fontMono, fontSize: 9 * scale);
-        final bold = pw.TextStyle(font: fontMonoBold, fontSize: 9 * scale);
-        final titleStyle = pw.TextStyle(
-          font: fontMonoBold,
-          fontSize: 13 * scale,
+        return buildReceiptPdfBytes(
+          transaction: transaction,
+          items: items,
+          user: user,
+          storeName: storeName,
+          storeAddress: storeAddress,
+          storePhone: storePhone,
+          customerName: customerName,
+          businessPhotoPath: businessPhotoPath,
+          receiptFooterNote: receiptFooterNote,
+          paperSize: paperSize,
+          customFormat: format,
         );
-        final totalStyle = pw.TextStyle(
-          font: fontMonoBold,
-          fontSize: 13 * scale,
-        );
-
-        final spacing = 4.0 * scale;
-        final barcodeW = (140.0 * scale).clamp(100.0, availableWidth * 0.75);
-        final barcodeH = (36.0 * scale).clamp(28.0, 85.0);
-        final dividerThick = (0.8 * scale).clamp(0.6, 2.0);
-
-        final phone = (storePhone != null && storePhone.trim().isNotEmpty)
-            ? storePhone.trim()
-            : '09XX XXX XXXX';
-
-        pdf.addPage(
-          pw.Page(
-            pageFormat: pageFormat,
-            build: (pw.Context context) {
-              return pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                children: [
-                  // Centered Header
-                  pw.Center(
-                    child: pw.Column(
-                      children: [
-                        pw.Text('CASH RECEIPT', style: titleStyle),
-                        pw.SizedBox(height: spacing * 0.6),
-                        if (storeName.trim().isNotEmpty)
-                          pw.Text(storeName.trim().toUpperCase(), style: bold),
-                        if (storeAddress.trim().isNotEmpty)
-                          pw.Text(
-                            'Address: ${storeAddress.trim()}',
-                            style: regular,
-                            textAlign: pw.TextAlign.center,
-                          ),
-                        pw.Text('Tel: $phone', style: regular),
-                      ],
-                    ),
-                  ),
-                  pw.SizedBox(height: spacing * 1.2),
-                  pw.Divider(
-                    borderStyle: pw.BorderStyle.dashed,
-                    thickness: dividerThick,
-                  ),
-                  pw.SizedBox(height: spacing * 0.5),
-
-                  // Order # and Date/Time
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('Order #${transaction.id ?? 0}', style: bold),
-                      pw.Text('$dateStr  $timeStr', style: regular),
-                    ],
-                  ),
-                  pw.SizedBox(height: spacing * 0.5),
-                  pw.Divider(
-                    borderStyle: pw.BorderStyle.dashed,
-                    thickness: dividerThick,
-                  ),
-                  pw.SizedBox(height: spacing * 0.8),
-
-                  // Itemized List
-                  ...items.map((item) {
-                    final name = item['product_name'] ?? 'Item';
-                    final qty = (item['quantity'] as num?)?.toInt() ?? 1;
-                    final subtotal = ((item['subtotal'] as num?) ?? 0.0)
-                        .toDouble();
-                    final displayName = qty > 1 ? '$name x$qty' : name;
-
-                    return pw.Padding(
-                      padding: pw.EdgeInsets.symmetric(vertical: spacing * 0.4),
-                      child: pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Expanded(
-                            child: pw.Text(displayName, style: regular),
-                          ),
-                          pw.SizedBox(width: spacing * 2),
-                          pw.Text(subtotal.toStringAsFixed(2), style: regular),
-                        ],
-                      ),
-                    );
-                  }),
-
-                  pw.SizedBox(height: spacing * 1.2),
-                  pw.Divider(
-                    borderStyle: pw.BorderStyle.dashed,
-                    thickness: dividerThick,
-                  ),
-                  pw.SizedBox(height: spacing * 0.8),
-
-                  // Prominent Total
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('Total', style: totalStyle),
-                      pw.Text(
-                        transaction.totalAmount.toStringAsFixed(2),
-                        style: totalStyle,
-                      ),
-                    ],
-                  ),
-                  pw.SizedBox(height: spacing * 1.2),
-
-                  // Sub-total & Breakdown
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('Sub-total', style: regular),
-                      pw.Text(
-                        (transaction.totalAmount + transaction.discount)
-                            .toStringAsFixed(2),
-                        style: regular,
-                      ),
-                    ],
-                  ),
-                  if (transaction.discount > 0) ...[
-                    pw.SizedBox(height: spacing * 0.5),
-                    pw.Row(
-                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                      children: [
-                        pw.Text('Discount', style: regular),
-                        pw.Text(
-                          '-${transaction.discount.toStringAsFixed(2)}',
-                          style: regular,
-                        ),
-                      ],
-                    ),
-                  ],
-                  pw.SizedBox(height: spacing * 0.5),
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text(
-                        transaction.paymentMethod == 'gcash'
-                            ? 'GCash'
-                            : 'Cash Received',
-                        style: regular,
-                      ),
-                      pw.Text(
-                        (transaction.paymentMethod == 'gcash'
-                                ? transaction.totalAmount
-                                : transaction.cashReceived)
-                            .toStringAsFixed(2),
-                        style: regular,
-                      ),
-                    ],
-                  ),
-                  pw.SizedBox(height: spacing * 0.5),
-                  pw.Row(
-                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                    children: [
-                      pw.Text('Change', style: regular),
-                      pw.Text(
-                        transaction.change.toStringAsFixed(2),
-                        style: regular,
-                      ),
-                    ],
-                  ),
-
-                  // Footer & Barcode
-                  pw.SizedBox(height: spacing * 2.2),
-                  pw.Center(
-                    child: pw.Text(
-                      'THANK YOU',
-                      style: pw.TextStyle(
-                        font: fontMonoBold,
-                        fontSize: 12 * scale,
-                        letterSpacing: 1.5 * scale,
-                      ),
-                    ),
-                  ),
-                  pw.SizedBox(height: spacing * 1.4),
-                  pw.Center(
-                    child: pw.BarcodeWidget(
-                      barcode: pw.Barcode.code128(),
-                      data: 'ORDER-${transaction.id ?? 0}',
-                      width: barcodeW,
-                      height: barcodeH,
-                      drawText: true,
-                      textStyle: pw.TextStyle(
-                        font: fontMonoBold,
-                        fontSize: 8 * scale,
-                        letterSpacing: 1.2 * scale,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-
-        return pdf.save();
       },
     );
   }
 
+  /// Generates clean sales summary reports on standard A4 format.
   static Future<void> generateSalesReport({
     required List<SaleTransaction> transactions,
     required String periodLabel,
@@ -282,14 +592,14 @@ class PdfService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(
-                      storeName.toUpperCase(),
+                      _clean(storeName).toUpperCase(),
                       style: pw.TextStyle(
                         fontSize: 24,
                         fontWeight: pw.FontWeight.bold,
                       ),
                     ),
                     pw.Text(
-                      storeAddress,
+                      _clean(storeAddress),
                       style: const pw.TextStyle(fontSize: 12),
                     ),
                   ],
@@ -329,7 +639,7 @@ class PdfService {
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                     ),
                     pw.Text(
-                      periodLabel,
+                      _clean(periodLabel),
                       style: const pw.TextStyle(fontSize: 14),
                     ),
                   ],

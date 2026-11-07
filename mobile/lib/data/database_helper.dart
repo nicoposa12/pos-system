@@ -25,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 15,
+      version: 17,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
       onOpen: (db) async => await _createIndexes(db),
@@ -150,6 +150,23 @@ class DatabaseHelper {
     if (oldVersion < 15) {
       await _createIndexes(db);
     }
+    if (oldVersion < 16) {
+      try {
+        await db.execute('ALTER TABLE users ADD COLUMN image_path TEXT');
+      } catch (_) {}
+    }
+    if (oldVersion < 17) {
+      try {
+        await db.execute(
+          'ALTER TABLE products ADD COLUMN is_synced INTEGER DEFAULT 0',
+        );
+      } catch (_) {}
+      try {
+        await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_products_sync ON products(is_synced)',
+        );
+      } catch (_) {}
+    }
   }
 
   Future<void> _createIndexes(Database db) async {
@@ -159,6 +176,9 @@ class DatabaseHelper {
       );
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_products_user_barcode ON products(user_id, barcode)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_products_sync ON products(is_synced)',
       );
       await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, date)',
@@ -189,6 +209,7 @@ class DatabaseHelper {
         pin TEXT,
         full_name $textType,
         email TEXT,
+        image_path TEXT,
         role TEXT DEFAULT 'client',
         is_active INTEGER DEFAULT 1,
         created_at $textType
@@ -206,6 +227,7 @@ class DatabaseHelper {
         barcode TEXT,
         image_path TEXT,
         variants TEXT,
+        is_synced INTEGER DEFAULT 0,
         created_at $textType,
         FOREIGN KEY (user_id) REFERENCES users (id)
       )
@@ -583,6 +605,81 @@ class DatabaseHelper {
   Future<int> deleteProduct(int id) async {
     final db = await instance.database;
     return await db.delete('products', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Product>> getUnsyncedProducts({required int userId}) async {
+    final db = await instance.database;
+    final maps = await db.query(
+      'products',
+      where: 'user_id = ? AND (is_synced = 0 OR is_synced IS NULL)',
+      whereArgs: [userId],
+    );
+    return maps.map((map) => Product.fromMap(map)).toList();
+  }
+
+  Future<void> replaceProductId(
+    int oldId,
+    int newId, {
+    String? serverImagePath,
+  }) async {
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      if (oldId != newId) {
+        await txn.update(
+          'transaction_items',
+          {'product_id': newId},
+          where: 'product_id = ?',
+          whereArgs: [oldId],
+        );
+        try {
+          await txn.update(
+            'returns',
+            {'product_id': newId},
+            where: 'product_id = ?',
+            whereArgs: [oldId],
+          );
+        } catch (_) {}
+
+        // Check if newId already exists in SQLite to avoid UNIQUE constraint crash
+        final existingWithNewId = await txn.query(
+          'products',
+          where: 'id = ?',
+          whereArgs: [newId],
+        );
+        if (existingWithNewId.isNotEmpty) {
+          // Delete old temporary row and keep/update target row
+          await txn.delete(
+            'products',
+            where: 'id = ?',
+            whereArgs: [oldId],
+          );
+          final updateExisting = <String, dynamic>{'is_synced': 1};
+          if (serverImagePath != null && serverImagePath.isNotEmpty) {
+            updateExisting['image_path'] = serverImagePath;
+          }
+          await txn.update(
+            'products',
+            updateExisting,
+            where: 'id = ?',
+            whereArgs: [newId],
+          );
+          return;
+        }
+      }
+      final updateValues = <String, dynamic>{
+        'id': newId,
+        'is_synced': 1,
+      };
+      if (serverImagePath != null && serverImagePath.isNotEmpty) {
+        updateValues['image_path'] = serverImagePath;
+      }
+      await txn.update(
+        'products',
+        updateValues,
+        where: 'id = ?',
+        whereArgs: [oldId],
+      );
+    });
   }
 
   // --- Transaction CRUD (user-scoped) ---

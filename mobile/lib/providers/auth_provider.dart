@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/database_helper.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
+import '../services/sync_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   User? _currentUser;
@@ -40,7 +41,27 @@ class AuthProvider extends ChangeNotifier {
   }
 
   AuthProvider() {
+    SyncService.instance.addProfileUpdateListener(_onRealtimeProfileUpdate);
     _checkLoginStatus();
+  }
+
+  void _onRealtimeProfileUpdate() {
+    if (_currentUser != null) {
+      DatabaseHelper.instance.getUser(_currentUser!.username).then((user) {
+        if (user != null &&
+            (_currentUser?.imagePath != user.imagePath ||
+                _currentUser?.fullName != user.fullName)) {
+          _currentUser = user;
+          notifyListeners();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    SyncService.instance.removeProfileUpdateListener(_onRealtimeProfileUpdate);
+    super.dispose();
   }
 
   void lock() {
@@ -88,6 +109,10 @@ class AuthProvider extends ChangeNotifier {
               _isLocked = true;
               _preferPinLogin = true;
             }
+            // Asynchronously sync latest cloud profile (including store photo)
+            if (ApiService.instance.isAuthenticated) {
+              reloadCurrentUser();
+            }
           }
         }
       }
@@ -129,6 +154,7 @@ class AuthProvider extends ChangeNotifier {
         // Cache or sync into SQLite
         var localUser = await DatabaseHelper.instance.getUser(username);
         final defaultRole = (username == 'admin') ? 'admin' : 'client';
+        final cloudImagePath = userData['image_path']?.toString();
         if (localUser == null) {
           final newUser = User(
             id: userData['id'],
@@ -139,6 +165,7 @@ class AuthProvider extends ChangeNotifier {
             role: userData['role'] ?? defaultRole,
             isActive: userData['is_active'] ?? true,
             pin: null,
+            imagePath: cloudImagePath,
             createdAt: DateTime.now(),
           );
           await DatabaseHelper.instance.createUser(newUser);
@@ -151,6 +178,7 @@ class AuthProvider extends ChangeNotifier {
             email: userData['email'] ?? localUser.email,
             role: userData['role'] ?? (localUser.role == 'client' && defaultRole == 'admin' ? 'admin' : localUser.role),
             isActive: userData['is_active'] ?? localUser.isActive,
+            imagePath: userData.containsKey('image_path') ? cloudImagePath : localUser.imagePath,
           );
           await DatabaseHelper.instance.updateUser(updated);
           localUser = updated;
@@ -265,11 +293,16 @@ class AuthProvider extends ChangeNotifier {
 
         final uname = userData['username'] ?? '';
         final defaultPinRole = (uname == 'admin') ? 'admin' : 'client';
+        final cloudImagePath = userData['image_path']?.toString();
         var localUser = await DatabaseHelper.instance.getUser(uname);
         if (localUser != null) {
           final updated = localUser.copyWith(
+            id: userData['id'] ?? localUser.id,
+            fullName: userData['full_name'] ?? localUser.fullName,
+            email: userData['email'] ?? localUser.email,
             role: userData['role'] ?? (localUser.role == 'client' && defaultPinRole == 'admin' ? 'admin' : localUser.role),
             isActive: userData['is_active'] ?? localUser.isActive,
+            imagePath: userData.containsKey('image_path') ? cloudImagePath : localUser.imagePath,
           );
           await DatabaseHelper.instance.updateUser(updated);
           _currentUser = updated;
@@ -283,6 +316,7 @@ class AuthProvider extends ChangeNotifier {
             role: userData['role'] ?? defaultPinRole,
             isActive: userData['is_active'] ?? true,
             pin: pin,
+            imagePath: cloudImagePath,
             createdAt: DateTime.now(),
           );
           await DatabaseHelper.instance.createUser(newUser);
@@ -321,6 +355,12 @@ class AuthProvider extends ChangeNotifier {
       await prefs.setString('logged_in_username', user.username);
       _isLoading = false;
       notifyListeners();
+
+      // Automatically restore active cloud token in background if not authenticated
+      if (!ApiService.instance.isAuthenticated && scopedUsername != null) {
+        _reauthOnlineWithPin(pin, scopedUsername);
+      }
+
       return true;
     }
 
@@ -333,6 +373,24 @@ class AuthProvider extends ChangeNotifier {
       final res = await ApiService.instance.pinLogin(pin: pin, username: username);
       if (res['token'] != null) {
         debugPrint('[AuthProvider] Successfully restored active API token on PIN unlock');
+        if (res['user'] != null && res['user'] is Map) {
+          final userData = res['user'] as Map;
+          final local = await DatabaseHelper.instance.getUser(username);
+          if (local != null) {
+            final cloudImage = userData['image_path']?.toString();
+            final updated = local.copyWith(
+              id: userData['id'] ?? local.id,
+              fullName: userData['full_name']?.toString() ?? local.fullName,
+              email: userData['email']?.toString() ?? local.email,
+              imagePath: userData.containsKey('image_path') ? cloudImage : local.imagePath,
+              role: userData['role']?.toString() ?? local.role,
+              isActive: userData['is_active'] ?? local.isActive,
+            );
+            await DatabaseHelper.instance.updateUser(updated);
+            _currentUser = updated;
+            notifyListeners();
+          }
+        }
       }
     } catch (e) {
       debugPrint('[AuthProvider] Background PIN re-authentication failed (offline or network error): $e');
@@ -448,6 +506,30 @@ class AuthProvider extends ChangeNotifier {
       if (updated != null) {
         _currentUser = updated;
         notifyListeners();
+      }
+
+      // If online and authenticated, refresh profile from cloud
+      if (ApiService.instance.isAuthenticated) {
+        try {
+          final res = await ApiService.instance.getCurrentUser();
+          final userData = res['user'];
+          if (userData is Map && updated != null) {
+            final cloudImage = userData['image_path']?.toString();
+            final cloudUser = updated.copyWith(
+              id: userData['id'] ?? updated.id,
+              fullName: userData['full_name']?.toString() ?? updated.fullName,
+              email: userData['email']?.toString() ?? updated.email,
+              imagePath: userData.containsKey('image_path') ? cloudImage : updated.imagePath,
+              role: userData['role']?.toString() ?? updated.role,
+              isActive: userData['is_active'] ?? updated.isActive,
+            );
+            await DatabaseHelper.instance.updateUser(cloudUser);
+            _currentUser = cloudUser;
+            notifyListeners();
+          }
+        } catch (e) {
+          debugPrint('[AuthProvider] Online profile reload failed: $e');
+        }
       }
     }
   }

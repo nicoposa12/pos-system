@@ -21,7 +21,6 @@ class ApiService {
         receiveTimeout: const Duration(seconds: 35),
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json',
         },
       ),
     );
@@ -204,6 +203,12 @@ class ApiService {
     await _dio.post('/auth/pin', data: {'pin': newPin});
   }
 
+  /// Fetches current authenticated user profile including cloud image_path
+  Future<Map<String, dynamic>> getCurrentUser() async {
+    final response = await _dio.get('/auth/me');
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<void> logout() async {
     try {
       await _dio.post('/auth/logout');
@@ -217,9 +222,12 @@ class ApiService {
 
   Future<List<dynamic>> getProducts({String? search, String? category}) async {
     final queryParams = <String, dynamic>{};
-    if (search != null && search.isNotEmpty) queryParams['search'] = search;
-    if (category != null && category != 'All')
+      if (search != null && search.isNotEmpty) {
+        queryParams['search'] = search;
+      }
+    if (category != null && category != 'All') {
       queryParams['category'] = category;
+    }
 
     final response = await _dio.get('/products', queryParameters: queryParams);
     return (response.data['products'] as List? ?? []);
@@ -234,17 +242,65 @@ class ApiService {
     String? variants,
     String? imageFilePath,
   }) async {
-    final map = <String, dynamic>{'name': name, 'price': price, 'stock': stock};
-    if (category != null) map['category'] = category;
-    if (barcode != null) map['barcode'] = barcode;
-    if (variants != null) map['variants'] = variants;
-    if (imageFilePath != null && File(imageFilePath).existsSync()) {
-      map['image'] = await MultipartFile.fromFile(imageFilePath);
-    }
+    final hasImage = imageFilePath != null &&
+        imageFilePath.trim().isNotEmpty &&
+        File(imageFilePath).existsSync();
 
-    final formData = FormData.fromMap(map);
-    final response = await _dio.post('/products', data: formData);
-    return response.data as Map<String, dynamic>;
+    if (hasImage) {
+      final map = <String, dynamic>{
+        'name': name,
+        'price': price,
+        'stock': stock,
+        'image': await MultipartFile.fromFile(imageFilePath),
+      };
+      if (category != null && category.trim().isNotEmpty) {
+        map['category'] = category.trim();
+      }
+      if (barcode != null && barcode.trim().isNotEmpty) {
+        map['barcode'] = barcode.trim();
+      }
+      if (variants != null && variants.trim().isNotEmpty) {
+        map['variants'] = variants.trim();
+      }
+
+      final formData = FormData.fromMap(map);
+      final response = await _dio.post(
+        '/products',
+        data: formData,
+        options: Options(
+          headers: {'Accept': 'application/json'},
+          contentType: 'multipart/form-data',
+        ),
+      );
+      return response.data as Map<String, dynamic>;
+    } else {
+      final body = <String, dynamic>{
+        'name': name,
+        'price': price,
+        'stock': stock,
+      };
+      if (category != null && category.trim().isNotEmpty) {
+        body['category'] = category.trim();
+      }
+      if (barcode != null && barcode.trim().isNotEmpty) {
+        body['barcode'] = barcode.trim();
+      }
+      if (variants != null && variants.trim().isNotEmpty) {
+        body['variants'] = variants.trim();
+      }
+
+      final response = await _dio.post(
+        '/products',
+        data: body,
+        options: Options(
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      return response.data as Map<String, dynamic>;
+    }
   }
 
   Future<Map<String, dynamic>> updateProduct(
@@ -257,23 +313,65 @@ class ApiService {
     String? variants,
     String? imageFilePath,
   }) async {
-    final map = <String, dynamic>{};
-    if (name != null) map['name'] = name;
-    if (price != null) map['price'] = price;
-    if (stock != null) map['stock'] = stock;
-    if (category != null) map['category'] = category;
-    if (barcode != null) map['barcode'] = barcode;
-    if (variants != null) map['variants'] = variants;
-    if (imageFilePath != null && File(imageFilePath).existsSync()) {
-      map['image'] = await MultipartFile.fromFile(imageFilePath);
-    }
+    final hasImage = imageFilePath != null &&
+        imageFilePath.trim().isNotEmpty &&
+        File(imageFilePath).existsSync();
 
-    final formData = FormData.fromMap(map);
-    final response = await _dio.post(
-      '/products/$id?_method=PUT',
-      data: formData,
-    );
-    return response.data as Map<String, dynamic>;
+    if (hasImage) {
+      final map = <String, dynamic>{
+        '_method': 'PUT',
+      };
+      if (name != null) map['name'] = name;
+      if (price != null) map['price'] = price;
+      if (stock != null) map['stock'] = stock;
+      if (category != null && category.trim().isNotEmpty) {
+        map['category'] = category.trim();
+      }
+      if (barcode != null && barcode.trim().isNotEmpty) {
+        map['barcode'] = barcode.trim();
+      }
+      if (variants != null && variants.trim().isNotEmpty) {
+        map['variants'] = variants.trim();
+      }
+      map['image'] = await MultipartFile.fromFile(imageFilePath);
+
+      final formData = FormData.fromMap(map);
+      final response = await _dio.post(
+        '/products/$id',
+        data: formData,
+        options: Options(
+          headers: {'Accept': 'application/json'},
+          contentType: 'multipart/form-data',
+        ),
+      );
+      return response.data as Map<String, dynamic>;
+    } else {
+      final body = <String, dynamic>{};
+      if (name != null) body['name'] = name;
+      if (price != null) body['price'] = price;
+      if (stock != null) body['stock'] = stock;
+      if (category != null && category.trim().isNotEmpty) {
+        body['category'] = category.trim();
+      }
+      if (barcode != null && barcode.trim().isNotEmpty) {
+        body['barcode'] = barcode.trim();
+      }
+      if (variants != null && variants.trim().isNotEmpty) {
+        body['variants'] = variants.trim();
+      }
+
+      final response = await _dio.put(
+        '/products/$id',
+        data: body,
+        options: Options(
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      return response.data as Map<String, dynamic>;
+    }
   }
 
   Future<void> deleteProduct(int id) async {
@@ -373,6 +471,17 @@ class ApiService {
     return (response.data['synced'] as List? ?? []);
   }
 
+  Future<List<dynamic>> syncOfflineProducts(
+    List<Map<String, dynamic>> products,
+  ) async {
+    if (products.isEmpty) return [];
+    final response = await _dio.post(
+      '/sync/products',
+      data: {'products': products},
+    );
+    return (response.data['synced'] as List? ?? []);
+  }
+
   // ==========================================
   // ADMIN CLIENT MANAGEMENT
   // ==========================================
@@ -405,18 +514,25 @@ class ApiService {
     String? pin,
     String role = 'client',
     bool isActive = true,
+    String? imageFilePath,
   }) async {
+    final map = <String, dynamic>{
+      'username': username,
+      'full_name': fullName,
+      'password': password,
+      'role': role,
+      'is_active': isActive,
+    };
+    if (email != null && email.isNotEmpty) map['email'] = email;
+    if (pin != null && pin.isNotEmpty) map['pin'] = pin;
+    if (imageFilePath != null && File(imageFilePath).existsSync()) {
+      map['image'] = await MultipartFile.fromFile(imageFilePath);
+    }
+
+    final formData = FormData.fromMap(map);
     final response = await _dio.post(
       '/admin/clients',
-      data: {
-        'username': username,
-        'full_name': fullName,
-        'password': password,
-        'email': email,
-        'pin': pin,
-        'role': role,
-        'is_active': isActive,
-      },
+      data: formData,
     );
     if (response.data is Map) {
       return Map<String, dynamic>.from(response.data as Map);
@@ -438,14 +554,25 @@ class ApiService {
     String? email,
     String? role,
     bool? isActive,
+    String? imageFilePath,
+    bool removeImage = false,
   }) async {
-    final data = <String, dynamic>{};
-    if (fullName != null) data['full_name'] = fullName;
-    if (email != null) data['email'] = email;
-    if (role != null) data['role'] = role;
-    if (isActive != null) data['is_active'] = isActive;
+    final map = <String, dynamic>{};
+    if (fullName != null) map['full_name'] = fullName;
+    if (email != null) map['email'] = email;
+    if (role != null) map['role'] = role;
+    if (isActive != null) map['is_active'] = isActive;
+    if (removeImage) {
+      map['remove_image'] = 1;
+    } else if (imageFilePath != null && File(imageFilePath).existsSync()) {
+      map['image'] = await MultipartFile.fromFile(imageFilePath);
+    }
 
-    final response = await _dio.put('/admin/clients/$id', data: data);
+    final formData = FormData.fromMap(map);
+    final response = await _dio.post(
+      '/admin/clients/$id?_method=PUT',
+      data: formData,
+    );
     if (response.data is Map) {
       return Map<String, dynamic>.from(response.data as Map);
     }

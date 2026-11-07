@@ -19,6 +19,7 @@ class User extends Authenticatable
         'pin',
         'role',
         'is_active',
+        'image_path',
     ];
 
     protected $hidden = [

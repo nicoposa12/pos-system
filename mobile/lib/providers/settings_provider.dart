@@ -9,6 +9,8 @@ class SettingsProvider with ChangeNotifier {
   String _gcashNumber = '';
   String _gcashQrPath = '';
   String _businessPhotoPath = '';
+  String _receiptPaperSize = '58mm'; // '58mm' or '80mm'
+  String _receiptFooterNote = 'THANK YOU FOR YOUR PURCHASE!';
   ThemeMode _themeMode = ThemeMode.system;
 
   String get storeName => _storeName;
@@ -17,6 +19,8 @@ class SettingsProvider with ChangeNotifier {
   String get gcashNumber => _gcashNumber;
   String get gcashQrPath => _gcashQrPath;
   String get businessPhotoPath => _businessPhotoPath;
+  String get receiptPaperSize => _receiptPaperSize;
+  String get receiptFooterNote => _receiptFooterNote;
   ThemeMode get themeMode => _themeMode;
 
   void setUserId(int? id) {
@@ -39,6 +43,8 @@ class SettingsProvider with ChangeNotifier {
     _gcashNumber = prefs.getString(_getKey('gcashNumber')) ?? '';
     _gcashQrPath = prefs.getString(_getKey('gcashQrPath')) ?? '';
     _businessPhotoPath = prefs.getString(_getKey('businessPhotoPath')) ?? '';
+    _receiptPaperSize = prefs.getString(_getKey('receiptPaperSize')) ?? '58mm';
+    _receiptFooterNote = prefs.getString(_getKey('receiptFooterNote')) ?? 'THANK YOU FOR YOUR PURCHASE!';
     final themeIndex = prefs.getInt(_getKey('themeMode')) ?? 0;
     _themeMode = ThemeMode.values[themeIndex];
     notifyListeners();
@@ -51,6 +57,8 @@ class SettingsProvider with ChangeNotifier {
     String? gcashNumber,
     String? gcashQrPath,
     String? businessPhotoPath,
+    String? receiptPaperSize,
+    String? receiptFooterNote,
   }) async {
     _storeName = name;
     _storeAddress = address;
@@ -58,6 +66,8 @@ class SettingsProvider with ChangeNotifier {
     if (gcashNumber != null) _gcashNumber = gcashNumber;
     if (gcashQrPath != null) _gcashQrPath = gcashQrPath;
     if (businessPhotoPath != null) _businessPhotoPath = businessPhotoPath;
+    if (receiptPaperSize != null) _receiptPaperSize = receiptPaperSize;
+    if (receiptFooterNote != null) _receiptFooterNote = receiptFooterNote;
     
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_getKey('storeName'), name);
@@ -66,6 +76,23 @@ class SettingsProvider with ChangeNotifier {
     await prefs.setString(_getKey('gcashNumber'), _gcashNumber);
     await prefs.setString(_getKey('gcashQrPath'), _gcashQrPath);
     await prefs.setString(_getKey('businessPhotoPath'), _businessPhotoPath);
+    await prefs.setString(_getKey('receiptPaperSize'), _receiptPaperSize);
+    await prefs.setString(_getKey('receiptFooterNote'), _receiptFooterNote);
+    notifyListeners();
+  }
+
+  Future<void> setReceiptPaperSize(String size) async {
+    if (size != '58mm' && size != '80mm') return;
+    _receiptPaperSize = size;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_getKey('receiptPaperSize'), size);
+    notifyListeners();
+  }
+
+  Future<void> setReceiptFooterNote(String note) async {
+    _receiptFooterNote = note;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_getKey('receiptFooterNote'), note);
     notifyListeners();
   }
 

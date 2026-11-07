@@ -18,8 +18,9 @@ Route::prefix('auth')->group(function () {
     Route::post('/pin-login', [AuthController::class, 'pinLogin'])->middleware('throttle:auth-limiter');
 });
 
-// Public image proxy route (allows mobile and web apps to stream product images directly through API)
+// Public image proxy route (allows mobile and web apps to stream product and store images directly through API)
 Route::get('/media/products/{filename}', [ProductController::class, 'serveImage']);
+Route::get('/media/stores/{filename}', [AdminController::class, 'serveStoreImage']);
 
 // Protected routes (Sanctum)
 Route::middleware('auth:sanctum')->group(function () {
@@ -46,6 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Offline Batch Sync & Real-Time Sync Status
     Route::get('/sync/status', [SyncController::class, 'status']);
     Route::post('/sync', [SyncController::class, 'syncOfflineTransactions']);
+    Route::post('/sync/products', [SyncController::class, 'syncOfflineProducts']);
 
     // Admin Client Management
     Route::middleware('admin')->prefix('admin')->group(function () {

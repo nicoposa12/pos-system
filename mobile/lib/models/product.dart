@@ -43,6 +43,7 @@ class Product {
   final String? barcode;
   final String? imagePath;
   final List<ProductVariant> variants;
+  final bool isSynced;
   final DateTime createdAt;
 
   Product({
@@ -55,6 +56,7 @@ class Product {
     this.barcode,
     this.imagePath,
     this.variants = const [],
+    this.isSynced = false,
     required this.createdAt,
   });
 
@@ -71,6 +73,7 @@ class Product {
       'barcode': barcode,
       'image_path': imagePath,
       'variants': jsonEncode(variants.map((v) => v.toMap()).toList()),
+      'is_synced': isSynced ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -101,6 +104,7 @@ class Product {
       barcode: map['barcode'],
       imagePath: map['image_path'],
       variants: parsedVariants,
+      isSynced: (map['is_synced'] == 1 || map['is_synced'] == true),
       createdAt: parsedDate,
     );
   }
@@ -115,6 +119,7 @@ class Product {
     String? barcode,
     String? imagePath,
     List<ProductVariant>? variants,
+    bool? isSynced,
     DateTime? createdAt,
   }) {
     return Product(
@@ -127,6 +132,7 @@ class Product {
       barcode: barcode ?? this.barcode,
       imagePath: imagePath ?? this.imagePath,
       variants: variants ?? this.variants,
+      isSynced: isSynced ?? this.isSynced,
       createdAt: createdAt ?? this.createdAt,
     );
   }

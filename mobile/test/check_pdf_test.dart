@@ -1,150 +1,118 @@
 // ignore_for_file: avoid_print
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
+import 'package:tindako/models/transaction.dart';
+import 'package:tindako/models/user.dart';
+import 'package:tindako/services/pdf_service.dart';
 
 void main() {
-  test('verify receipt design with courier', () async {
-    final pdf = pw.Document();
-    final fontMono = pw.Font.courier();
-    final fontMonoBold = pw.Font.courierBold();
+  final sampleUser = User(
+    id: 1,
+    username: 'jiccastore',
+    password: 'password123',
+    role: 'client',
+    fullName: 'Jicca Dela Cruz',
+    createdAt: DateTime.now(),
+  );
 
-    final pageFormat = PdfPageFormat(
-      72 * PdfPageFormat.mm,
-      double.infinity,
-      marginLeft: 6 * PdfPageFormat.mm,
-      marginRight: 6 * PdfPageFormat.mm,
-      marginTop: 8 * PdfPageFormat.mm,
-      marginBottom: 8 * PdfPageFormat.mm,
+  final sampleItems = [
+    {
+      'product_name': 'San Miguel Pale Pilsen Can 330ml Extra Cold',
+      'quantity': 2,
+      'subtotal': 150.00,
+    },
+    {
+      'product_name': 'Mega Sardines in Tomato Sauce 155g',
+      'quantity': 4,
+      'subtotal': 100.00,
+    },
+    {
+      'product_name': 'SkyFlakes Crackers Single Pack',
+      'quantity': 1,
+      'subtotal': 8.50,
+    },
+  ];
+
+  test('generate 58mm thermal receipt PDF bytes cleanly', () async {
+    final tx = SaleTransaction(
+      id: 101,
+      userId: 1,
+      totalAmount: 248.50,
+      discount: 10.00,
+      cashReceived: 500.00,
+      change: 251.50,
+      paymentMethod: 'cash',
+      date: DateTime(2026, 11, 7, 20, 30),
     );
 
-    pdf.addPage(
-      pw.Page(
-        pageFormat: pageFormat,
-        build: (pw.Context context) {
-          final regular = pw.TextStyle(font: fontMono, fontSize: 9);
-          final bold = pw.TextStyle(font: fontMonoBold, fontSize: 9);
-          final titleStyle = pw.TextStyle(font: fontMonoBold, fontSize: 13);
-          final totalStyle = pw.TextStyle(font: fontMonoBold, fontSize: 13);
-
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-            children: [
-              // Header
-              pw.Center(
-                child: pw.Column(
-                  children: [
-                    pw.Text('CASH RECEIPT', style: titleStyle),
-                    pw.SizedBox(height: 3),
-                    pw.Text('MINI-STORE', style: bold),
-                    pw.Text('Address: Your Address Here', style: regular, textAlign: pw.TextAlign.center),
-                    pw.Text('Tel: 123-456-7890', style: regular),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Divider(borderStyle: pw.BorderStyle.dashed, thickness: 0.8),
-              pw.SizedBox(height: 2),
-
-              // Date & Time row
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Date: 10-29-2026', style: regular),
-                  pw.Text('04:04', style: regular),
-                ],
-              ),
-              pw.SizedBox(height: 2),
-              pw.Divider(borderStyle: pw.BorderStyle.dashed, thickness: 0.8),
-              pw.SizedBox(height: 4),
-
-              // Items
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Expanded(child: pw.Text('Mega Sardines x4', style: regular)),
-                  pw.Text('100.00', style: regular),
-                ],
-              ),
-              pw.SizedBox(height: 3),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Expanded(child: pw.Text('Coke x2', style: regular)),
-                  pw.Text('40.00', style: regular),
-                ],
-              ),
-              pw.SizedBox(height: 3),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Expanded(child: pw.Text('Super Crunch x2', style: regular)),
-                  pw.Text('30.00', style: regular),
-                ],
-              ),
-
-              pw.SizedBox(height: 6),
-              pw.Divider(borderStyle: pw.BorderStyle.dashed, thickness: 0.8),
-              pw.SizedBox(height: 4),
-
-              // Total
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Total', style: totalStyle),
-                  pw.Text('170.00', style: totalStyle),
-                ],
-              ),
-              pw.SizedBox(height: 6),
-
-              // Breakdown
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Sub-total', style: regular),
-                  pw.Text('170.00', style: regular),
-                ],
-              ),
-              pw.SizedBox(height: 2),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Cash Received', style: regular),
-                  pw.Text('200.00', style: regular),
-                ],
-              ),
-              pw.SizedBox(height: 2),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('Change', style: regular),
-                  pw.Text('30.00', style: regular),
-                ],
-              ),
-
-              pw.SizedBox(height: 14),
-              pw.Center(
-                child: pw.Text('THANK YOU', style: pw.TextStyle(font: fontMonoBold, fontSize: 12, letterSpacing: 1.5)),
-              ),
-              pw.SizedBox(height: 8),
-
-              // Barcode
-              pw.Center(
-                child: pw.BarcodeWidget(
-                  barcode: pw.Barcode.code128(),
-                  data: 'RCPT-2',
-                  width: 140,
-                  height: 36,
-                  drawText: false,
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+    final bytes = await PdfService.buildReceiptPdfBytes(
+      transaction: tx,
+      items: sampleItems,
+      user: sampleUser,
+      storeName: 'Jicca Sari-Sari Store',
+      storeAddress: 'Barangay 123, Manila, Philippines',
+      storePhone: '0917 123 4567',
+      paperSize: '58mm',
+      receiptFooterNote: 'Salamat sa pagbili! Balik po kayo!',
     );
 
-    final bytes = await pdf.save();
-    print('PDF generated successfully, bytes: ${bytes.length}');
+    expect(bytes.isNotEmpty, isTrue);
+    expect(bytes.length, greaterThan(1000));
+    print('58mm Receipt generated successfully: ${bytes.length} bytes');
+  });
+
+  test('generate 80mm thermal receipt PDF bytes cleanly', () async {
+    final tx = SaleTransaction(
+      id: 102,
+      userId: 1,
+      totalAmount: 258.50,
+      discount: 0.00,
+      cashReceived: 258.50,
+      change: 0.00,
+      paymentMethod: 'gcash',
+      date: DateTime(2026, 11, 7, 20, 35),
+    );
+
+    final bytes = await PdfService.buildReceiptPdfBytes(
+      transaction: tx,
+      items: sampleItems,
+      user: sampleUser,
+      storeName: 'Jicca SuperMart & Wholesale',
+      storeAddress: '123 Commercial St., Quezon City',
+      storePhone: '0918 987 6543',
+      paperSize: '80mm',
+      receiptFooterNote: 'Thank you for shopping with us!',
+    );
+
+    expect(bytes.isNotEmpty, isTrue);
+    expect(bytes.length, greaterThan(1000));
+    print('80mm Receipt generated successfully: ${bytes.length} bytes');
+  });
+
+  test('generate Debt / Store Credit receipt with customer name', () async {
+    final tx = SaleTransaction(
+      id: 103,
+      userId: 1,
+      totalAmount: 258.50,
+      discount: 0.00,
+      cashReceived: 100.00,
+      change: 0.00,
+      paymentMethod: 'debt',
+      date: DateTime(2026, 11, 7, 20, 40),
+    );
+
+    final bytes = await PdfService.buildReceiptPdfBytes(
+      transaction: tx,
+      items: sampleItems,
+      user: sampleUser,
+      storeName: 'Jicca Store',
+      storeAddress: 'Manila',
+      storePhone: '0912 345 6789',
+      customerName: 'Aling Maria (Purok 4)',
+      paperSize: '58mm',
+    );
+
+    expect(bytes.isNotEmpty, isTrue);
+    expect(bytes.length, greaterThan(1000));
+    print('Debt Receipt generated successfully: ${bytes.length} bytes');
   });
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/widgets.dart';
 import '../data/database_helper.dart';
@@ -25,6 +26,7 @@ class SyncService with WidgetsBindingObserver {
 
   final Set<VoidCallback> _productUpdateListeners = {};
   final Set<VoidCallback> _transactionUpdateListeners = {};
+  final Set<VoidCallback> _profileUpdateListeners = {};
 
   SyncService._init() {
     WidgetsBinding.instance.addObserver(this);
@@ -35,6 +37,19 @@ class SyncService with WidgetsBindingObserver {
 
   void addTransactionUpdateListener(VoidCallback listener) => _transactionUpdateListeners.add(listener);
   void removeTransactionUpdateListener(VoidCallback listener) => _transactionUpdateListeners.remove(listener);
+
+  void addProfileUpdateListener(VoidCallback listener) => _profileUpdateListeners.add(listener);
+  void removeProfileUpdateListener(VoidCallback listener) => _profileUpdateListeners.remove(listener);
+
+  void notifyProfileUpdate() {
+    for (final listener in List.of(_profileUpdateListeners)) {
+      try {
+        listener();
+      } catch (e) {
+        debugPrint('[SyncService] Error notifying profile listener: $e');
+      }
+    }
+  }
 
   void notifyProductUpdate() {
     for (final listener in List.of(_productUpdateListeners)) {
@@ -196,7 +211,14 @@ class SyncService with WidgetsBindingObserver {
         didTxChange = true;
       }
 
-      // 3. Push any locally queued offline transactions if network is online
+      // 3. Push any locally queued offline products if network is online
+      final pendingProducts = await DatabaseHelper.instance.getUnsyncedProducts(userId: _currentUserId!);
+      if (pendingProducts.isNotEmpty) {
+        await _pushPendingProducts(_currentUserId!);
+        didProductChange = true;
+      }
+
+      // 4. Push any locally queued offline transactions if network is online
       final pending = await DatabaseHelper.instance.getUnsyncedTransactions(userId: _currentUserId!);
       if (pending.isNotEmpty) {
         await _pushPendingTransactions(_currentUserId!);
@@ -228,6 +250,8 @@ class SyncService with WidgetsBindingObserver {
 
     isSyncing.value = true;
     try {
+      await _syncUserProfile(userId);
+      await _pushPendingProducts(userId);
       await _pushPendingTransactions(userId);
       await _pullRemoteProducts(userId);
       await _pullRemoteTransactions(userId);
@@ -243,6 +267,68 @@ class SyncService with WidgetsBindingObserver {
       debugPrint('[SyncService] Sync error: $e');
       isSyncing.value = false;
       return false;
+    }
+  }
+
+  Future<void> _syncUserProfile(int userId) async {
+    try {
+      final res = await ApiService.instance.getCurrentUser();
+      final userData = res['user'];
+      if (userData is Map && userData['username'] != null) {
+        final username = userData['username'].toString();
+        final local = await DatabaseHelper.instance.getUser(username);
+        if (local != null) {
+          final cloudImage = userData['image_path']?.toString();
+          final updated = local.copyWith(
+            id: userData['id'] ?? local.id,
+            fullName: userData['full_name']?.toString() ?? local.fullName,
+            email: userData['email']?.toString() ?? local.email,
+            imagePath: userData.containsKey('image_path') ? cloudImage : local.imagePath,
+            role: userData['role']?.toString() ?? local.role,
+            isActive: userData['is_active'] ?? local.isActive,
+          );
+          await DatabaseHelper.instance.updateUser(updated);
+          notifyProfileUpdate();
+        }
+      }
+    } catch (e) {
+      debugPrint('[SyncService] Profile sync error: $e');
+    }
+  }
+
+  Future<void> _pushPendingProducts(int userId) async {
+    try {
+      final pending = await DatabaseHelper.instance.getUnsyncedProducts(userId: userId);
+      if (pending.isEmpty) return;
+
+      final payload = pending.map((p) => {
+        'client_id': p.id,
+        'name': p.name,
+        'price': p.price,
+        'stock': p.stock,
+        'category': p.category,
+        'barcode': p.barcode,
+        'variants': p.variants.isNotEmpty
+            ? jsonEncode(p.variants.map((v) => v.toMap()).toList())
+            : null,
+      }).toList();
+
+      final syncedResults = await ApiService.instance.syncOfflineProducts(payload);
+      for (var s in syncedResults) {
+        final clientId = int.tryParse(s['client_id']?.toString() ?? '');
+        final serverId = int.tryParse(s['server_id']?.toString() ?? '');
+        final serverImage = s['image_path']?.toString();
+        if (clientId != null && serverId != null) {
+          await DatabaseHelper.instance.replaceProductId(
+            clientId,
+            serverId,
+            serverImagePath: serverImage,
+          );
+        }
+      }
+      debugPrint('[SyncService] Synced ${syncedResults.length} offline products to cloud.');
+    } catch (e) {
+      debugPrint('[SyncService] _pushPendingProducts error: $e');
     }
   }
 
@@ -284,6 +370,7 @@ class SyncService with WidgetsBindingObserver {
         stock: p['stock'] ?? 0,
         barcode: p['barcode'],
         imagePath: finalImagePath,
+        isSynced: true,
         variants: p['variants'] != null
             ? (p['variants'] as List)
                 .map((v) => ProductVariant.fromMap(v))
@@ -299,10 +386,10 @@ class SyncService with WidgetsBindingObserver {
       }
     }
 
-    // Clean up any stale local orphan duplicates in SQLite
+    // Clean up any stale local orphan duplicates in SQLite (only if previously synced to server)
     final localProducts = await DatabaseHelper.instance.readAllProducts(userId: userId);
     for (var lp in localProducts) {
-      if (lp.id != null && !remoteIds.contains(lp.id)) {
+      if (lp.id != null && lp.isSynced && !remoteIds.contains(lp.id)) {
         await DatabaseHelper.instance.deleteProduct(lp.id!);
       }
     }

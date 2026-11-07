@@ -1,12 +1,14 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../models/user.dart';
 import '../providers/admin_store_controller.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/store_image_view.dart';
 
 enum StoreSortOption { revenueDesc, newest, nameAsc, catalogDesc }
 
@@ -967,38 +969,21 @@ class _ClientManagementScreenState extends State<ClientManagementScreen> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
+                    StoreImageView(
+                      imagePath: user.imagePath,
                       width: 42,
                       height: 42,
-                      decoration: BoxDecoration(
-                        color: user.isAdmin
-                            ? AppTheme.accentViolet.withValues(alpha: isDark ? 0.22 : 0.12)
-                            : (user.isActive
-                                ? const Color(0xFF059669).withValues(alpha: isDark ? 0.22 : 0.12)
-                                : AppTheme.accentRose.withValues(alpha: isDark ? 0.22 : 0.12)),
-                        borderRadius: BorderRadius.circular(11),
-                        border: Border.all(
-                          color: user.isAdmin
-                              ? AppTheme.accentViolet.withValues(alpha: isDark ? 0.35 : 0.20)
-                              : (user.isActive
-                                  ? const Color(0xFF059669).withValues(alpha: isDark ? 0.35 : 0.20)
-                                  : AppTheme.accentRose.withValues(alpha: isDark ? 0.35 : 0.20)),
-                          width: 0.8,
-                        ),
-                      ),
-                      child: Icon(
-                        user.isAdmin
-                            ? Icons.admin_panel_settings_rounded
-                            : (user.isActive
-                                ? Icons.storefront_rounded
-                                : Icons.store_mall_directory_outlined),
-                        color: user.isAdmin
-                            ? AppTheme.accentViolet
-                            : (user.isActive
-                                ? const Color(0xFF059669)
-                                : const Color(0xFFDC2626)),
-                        size: 20,
-                      ),
+                      borderRadius: BorderRadius.circular(11),
+                      fallbackIcon: user.isAdmin
+                          ? Icons.admin_panel_settings_rounded
+                          : (user.isActive
+                              ? Icons.storefront_rounded
+                              : Icons.store_mall_directory_outlined),
+                      fallbackColor: user.isAdmin
+                          ? AppTheme.accentViolet
+                          : (user.isActive
+                              ? const Color(0xFF059669)
+                              : const Color(0xFFDC2626)),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1427,36 +1412,19 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
+                  StoreImageView(
+                    imagePath: liveUser.imagePath,
                     width: 48,
                     height: 48,
-                    decoration: BoxDecoration(
-                      color: liveUser.isAdmin
-                          ? AppTheme.accentViolet.withValues(alpha: isDark ? 0.25 : 0.12)
-                          : (liveUser.isActive
-                              ? const Color(0xFF059669).withValues(alpha: isDark ? 0.25 : 0.12)
-                              : AppTheme.accentRose.withValues(alpha: isDark ? 0.25 : 0.12)),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: liveUser.isAdmin
-                            ? AppTheme.accentViolet.withValues(alpha: isDark ? 0.35 : 0.20)
-                            : (liveUser.isActive
-                                ? const Color(0xFF059669).withValues(alpha: isDark ? 0.35 : 0.20)
-                                : AppTheme.accentRose.withValues(alpha: isDark ? 0.35 : 0.20)),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Icon(
-                      liveUser.isAdmin
-                          ? Icons.admin_panel_settings_rounded
-                          : Icons.storefront_rounded,
-                      color: liveUser.isAdmin
-                          ? AppTheme.accentViolet
-                          : (liveUser.isActive
-                              ? const Color(0xFF059669)
-                              : const Color(0xFFDC2626)),
-                      size: 24,
-                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    fallbackIcon: liveUser.isAdmin
+                        ? Icons.admin_panel_settings_rounded
+                        : Icons.storefront_rounded,
+                    fallbackColor: liveUser.isAdmin
+                        ? AppTheme.accentViolet
+                        : (liveUser.isActive
+                            ? const Color(0xFF059669)
+                            : const Color(0xFFDC2626)),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -1831,6 +1799,7 @@ class _ProvisionAccountSheetState extends State<_ProvisionAccountSheet> {
   bool _obscurePassword = true;
   bool _submitting = false;
   String? _errorBanner;
+  String? _selectedImagePath;
 
   @override
   void dispose() {
@@ -1872,6 +1841,7 @@ class _ProvisionAccountSheetState extends State<_ProvisionAccountSheet> {
       email: email,
       pin: pin,
       role: _role,
+      imageFilePath: _selectedImagePath,
     );
 
     if (!mounted) return;
@@ -2009,6 +1979,25 @@ class _ProvisionAccountSheetState extends State<_ProvisionAccountSheet> {
                   ),
                   const SizedBox(height: 14),
                 ],
+
+                _StorePhotoPickerRow(
+                  imagePath: _selectedImagePath,
+                  hasImage: _selectedImagePath != null,
+                  title: isClient ? 'Store Logo / Photo' : 'Admin Profile Photo',
+                  subtitle: _selectedImagePath != null
+                      ? 'Photo attached • Ready to upload'
+                      : 'Optional • Choose from camera or gallery',
+                  onPickPressed: () {
+                    _showStorePhotoSourceDialog(
+                      context: context,
+                      hasImage: _selectedImagePath != null,
+                      onPicked: (path) => setState(() => _selectedImagePath = path),
+                      onRemove: () => setState(() => _selectedImagePath = null),
+                    );
+                  },
+                  onRemovePressed: () => setState(() => _selectedImagePath = null),
+                ),
+                const SizedBox(height: 14),
 
                 TextFormField(
                   controller: _fullNameCtrl,
@@ -2158,6 +2147,284 @@ class _ProvisionAccountSheetState extends State<_ProvisionAccountSheet> {
   }
 }
 
+/// Modal source picker dialog for choosing Camera, Gallery, or removing the store photo.
+Future<void> _showStorePhotoSourceDialog({
+  required BuildContext context,
+  required bool hasImage,
+  required ValueChanged<String?> onPicked,
+  required VoidCallback onRemove,
+}) async {
+  final picker = ImagePicker();
+  await showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (sheetCtx) => Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      decoration: BoxDecoration(
+        color: Theme.of(sheetCtx).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border.all(color: AppTheme.borderColor(sheetCtx)),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: AppTheme.borderColor(sheetCtx),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            Text(
+              'Store Photo & Logo',
+              style: Theme.of(sheetCtx).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Select a storefront photo or business logo from camera or gallery.',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppTheme.mutedText(sheetCtx),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _StoreImageSourceOption(
+                  icon: Icons.camera_alt_rounded,
+                  label: 'Camera',
+                  color: AppTheme.accentViolet,
+                  onTap: () async {
+                    Navigator.pop(sheetCtx);
+                    try {
+                      final file = await picker.pickImage(
+                        source: ImageSource.camera,
+                        maxWidth: 1024,
+                        maxHeight: 1024,
+                        imageQuality: 85,
+                      );
+                      if (file != null) onPicked(file.path);
+                    } catch (e) {
+                      debugPrint('Camera error: $e');
+                    }
+                  },
+                ),
+                _StoreImageSourceOption(
+                  icon: Icons.photo_library_rounded,
+                  label: 'Gallery',
+                  color: AppTheme.accentTeal,
+                  onTap: () async {
+                    Navigator.pop(sheetCtx);
+                    try {
+                      final file = await picker.pickImage(
+                        source: ImageSource.gallery,
+                        maxWidth: 1024,
+                        maxHeight: 1024,
+                        imageQuality: 85,
+                      );
+                      if (file != null) onPicked(file.path);
+                    } catch (e) {
+                      debugPrint('Gallery error: $e');
+                    }
+                  },
+                ),
+                if (hasImage)
+                  _StoreImageSourceOption(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Remove',
+                    color: AppTheme.accentRose,
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      onRemove();
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _StoreImageSourceOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  const _StoreImageSourceOption({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: color.withValues(alpha: 0.25),
+                  width: 1,
+                ),
+              ),
+              child: Icon(icon, color: color, size: 26),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StorePhotoPickerRow extends StatelessWidget {
+  final String? imagePath;
+  final bool hasImage;
+  final String title;
+  final String subtitle;
+  final VoidCallback onPickPressed;
+  final VoidCallback onRemovePressed;
+
+  const _StorePhotoPickerRow({
+    required this.imagePath,
+    required this.hasImage,
+    required this.title,
+    required this.subtitle,
+    required this.onPickPressed,
+    required this.onRemovePressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? AppTheme.cardDark : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.borderColor(context)),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: onPickPressed,
+            child: Stack(
+              children: [
+                StoreImageView(
+                  imagePath: imagePath,
+                  width: 56,
+                  height: 56,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentViolet,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt_rounded,
+                      size: 11,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: GestureDetector(
+              onTap: onPickPressed,
+              behavior: HitTestBehavior.opaque,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: AppTheme.mutedText(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              side: BorderSide(color: AppTheme.borderColor(context)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: onPickPressed,
+            child: Text(
+              hasImage ? 'Change' : 'Add Photo',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (hasImage) ...[
+            const SizedBox(width: 6),
+            IconButton(
+              tooltip: 'Remove photo',
+              iconSize: 18,
+              color: AppTheme.accentRose,
+              onPressed: onRemovePressed,
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 Future<void> _showEditAccountSheet(
   BuildContext context, {
   required User user,
@@ -2169,6 +2436,8 @@ Future<void> _showEditAccountSheet(
   String selectedRole = user.role;
   bool saving = false;
   String? errorText;
+  String? selectedLocalPhotoPath;
+  bool removePhoto = false;
 
   return showModalBottomSheet<void>(
     context: context,
@@ -2176,6 +2445,9 @@ Future<void> _showEditAccountSheet(
     backgroundColor: Colors.transparent,
     builder: (sheetCtx) => StatefulBuilder(
       builder: (modalCtx, setModalState) {
+        final currentPhotoPath = selectedLocalPhotoPath ?? (removePhoto ? null : user.imagePath);
+        final hasImage = (selectedLocalPhotoPath != null) || (!removePhoto && user.hasValidImage);
+
         return Container(
           padding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(modalCtx).bottom + 24,
@@ -2254,6 +2526,41 @@ Future<void> _showEditAccountSheet(
                     ),
                     const SizedBox(height: 12),
                   ],
+                  _StorePhotoPickerRow(
+                    imagePath: currentPhotoPath,
+                    hasImage: hasImage,
+                    title: selectedRole == 'client' ? 'Store Logo / Photo' : 'Admin Profile Photo',
+                    subtitle: hasImage
+                        ? (selectedLocalPhotoPath != null
+                            ? 'New photo ready to upload'
+                            : 'Store photo saved in cloud')
+                        : 'Default storefront icon',
+                    onPickPressed: () {
+                      _showStorePhotoSourceDialog(
+                        context: modalCtx,
+                        hasImage: hasImage,
+                        onPicked: (path) {
+                          setModalState(() {
+                            selectedLocalPhotoPath = path;
+                            removePhoto = false;
+                          });
+                        },
+                        onRemove: () {
+                          setModalState(() {
+                            selectedLocalPhotoPath = null;
+                            removePhoto = true;
+                          });
+                        },
+                      );
+                    },
+                    onRemovePressed: () {
+                      setModalState(() {
+                        selectedLocalPhotoPath = null;
+                        removePhoto = true;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 14),
                   TextFormField(
                     controller: fullNameCtrl,
                     decoration: const InputDecoration(
@@ -2297,6 +2604,8 @@ Future<void> _showEditAccountSheet(
                                   ? emailCtrl.text.trim()
                                   : null,
                               role: selectedRole,
+                              imageFilePath: selectedLocalPhotoPath,
+                              removeImage: removePhoto,
                             );
                             if (!modalCtx.mounted) return;
                             if (err != null) {

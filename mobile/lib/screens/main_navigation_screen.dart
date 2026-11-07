@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +13,7 @@ import 'product_list_screen.dart';
 import 'settings_screen.dart';
 import 'transaction_history_screen.dart';
 import '../services/sync_service.dart';
+import '../widgets/store_image_view.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -93,9 +93,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final lowStockCount =
         context.watch<ProductProvider>().lowStockProducts.length;
     final settings = context.watch<SettingsProvider>();
-    final storeName = settings.storeName;
-    final hasBusinessPhoto = settings.businessPhotoPath.isNotEmpty &&
-        File(settings.businessPhotoPath).existsSync();
+    final auth = context.watch<AuthProvider>();
+    final user = auth.currentUser;
+    final storeName = (user?.fullName.trim().isNotEmpty == true)
+        ? user!.fullName.trim()
+        : settings.storeName;
+    final effectiveStorePhoto = user?.imagePath ??
+        (settings.businessPhotoPath.isNotEmpty ? settings.businessPhotoPath : null);
 
     if (useRail) {
       return Listener(
@@ -126,18 +130,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           width: 192,
                           child: Row(
                             children: [
-                              Container(
+                              StoreImageView(
+                                imagePath: effectiveStorePhoto,
                                 width: 38,
                                 height: 38,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  image: DecorationImage(
-                                    image: hasBusinessPhoto
-                                        ? FileImage(File(settings.businessPhotoPath))
-                                        : const AssetImage(
-                                            'assets/images/app_icon.png',
-                                          ) as ImageProvider,
-                                    fit: BoxFit.cover,
+                                borderRadius: BorderRadius.circular(10),
+                                customPlaceholder: Container(
+                                  width: 38,
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    image: const DecorationImage(
+                                      image: AssetImage('assets/images/app_icon.png'),
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -170,17 +176,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                             ],
                           ),
                         )
-                      : Container(
+                      : StoreImageView(
+                          imagePath: effectiveStorePhoto,
                           width: 40,
                           height: 40,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            image: DecorationImage(
-                              image: hasBusinessPhoto
-                                  ? FileImage(File(settings.businessPhotoPath))
-                                  : const AssetImage('assets/images/app_icon.png')
-                                      as ImageProvider,
-                              fit: BoxFit.cover,
+                          borderRadius: BorderRadius.circular(12),
+                          customPlaceholder: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              image: const DecorationImage(
+                                image: AssetImage('assets/images/app_icon.png'),
+                                fit: BoxFit.cover,
+                              ),
                             ),
                           ),
                         ),

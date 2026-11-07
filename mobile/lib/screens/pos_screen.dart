@@ -775,6 +775,7 @@ class _PosScreenState extends State<PosScreen> {
         transaction: result['transaction'],
         items: result['items'],
         user: auth.currentUser,
+        customerName: customerName,
       );
 
       messenger.showSnackBar(
@@ -795,6 +796,7 @@ class _PosScreenState extends State<PosScreen> {
                 transaction: result['transaction'],
                 items: result['items'],
                 user: auth.currentUser,
+                customerName: customerName,
               );
             },
           ),
