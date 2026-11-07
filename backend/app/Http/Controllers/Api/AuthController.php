@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -111,8 +112,14 @@ class AuthController extends Controller
                 $matchedUser = $user;
                 // Seamlessly upgrade legacy plaintext PIN to bcrypt hash in database
                 if ($needsHashUpgrade) {
-                    $user->pin = Hash::make($validated['pin']);
-                    $user->save();
+                    // Non-fatal: a failed hash upgrade must never block a valid login
+                    try {
+                        $user->pin = Hash::make($validated['pin']);
+                        $user->save();
+                    } catch (\Throwable $e) {
+                        $user->pin = $validated['pin'];
+                        Log::warning("PIN hash upgrade failed for user {$user->id}: " . $e->getMessage());
+                    }
                 }
                 break;
             }

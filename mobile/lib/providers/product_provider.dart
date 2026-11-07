@@ -162,7 +162,9 @@ class ProductProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> addProduct(Product product) async {
+  /// Returns `true` when the product was saved to the cloud (Neon),
+  /// `false` when it was saved locally only and queued for background sync.
+  Future<bool> addProduct(Product product) async {
     if (_userId == null && product.userId > 0) {
       _userId = product.userId;
     }
@@ -194,7 +196,7 @@ class ProductProvider with ChangeNotifier {
           );
           await DatabaseHelper.instance.createProduct(serverProduct);
           await fetchProducts();
-          return;
+          return true;
         }
       } catch (e) {
         debugPrint('Online add product error: $e');
@@ -211,6 +213,7 @@ class ProductProvider with ChangeNotifier {
     if (targetUserId != null && ApiService.instance.isAuthenticated) {
       SyncService.instance.syncNow(targetUserId);
     }
+    return false;
   }
 
   Future<void> updateProduct(Product product) async {

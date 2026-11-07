@@ -1107,10 +1107,11 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           createdAt: widget.product?.createdAt ?? DateTime.now(),
         );
 
+        bool savedToCloud = true;
         if (isEditing) {
           await provider.updateProduct(product);
         } else {
-          await provider.addProduct(product);
+          savedToCloud = await provider.addProduct(product);
         }
 
         if (mounted) {
@@ -1120,16 +1121,26 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.check_circle_rounded, color: Colors.white),
+                  Icon(
+                    savedToCloud
+                        ? Icons.check_circle_rounded
+                        : Icons.cloud_off_rounded,
+                    color: Colors.white,
+                  ),
                   const SizedBox(width: 10),
-                  Text(
-                    isEditing
-                        ? 'Product updated successfully'
-                        : 'Product added to inventory',
+                  Expanded(
+                    child: Text(
+                      isEditing
+                          ? 'Product updated successfully'
+                          : savedToCloud
+                              ? 'Product added to inventory'
+                              : 'Saved on this device only. It will upload to the cloud automatically once signed in online.',
+                    ),
                   ),
                 ],
               ),
-              backgroundColor: AppTheme.accentTeal,
+              backgroundColor:
+                  savedToCloud ? AppTheme.accentTeal : AppTheme.accentAmber,
             ),
           );
         }
