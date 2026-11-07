@@ -120,7 +120,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
         : '09XX XXX XXXX';
     buffer.writeln('Tel: $phone');
     buffer.writeln(lineSep);
-    buffer.writeln('Order #: ${widget.transaction.id ?? 0}');
+    buffer.writeln('Receipt #: ${widget.transaction.id ?? 0}');
     buffer.writeln('Date: $dateStr');
     if (widget.user != null && widget.user!.fullName.trim().isNotEmpty) {
       buffer.writeln('Cashier: ${widget.user!.fullName.trim()}');
@@ -129,7 +129,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
       buffer.writeln('Customer: ${widget.customerName!.trim()}');
     }
     buffer.writeln(lineSep);
-    buffer.writeln('ITEM DESCRIPTION                 AMOUNT');
+    buffer.writeln('ITEM / QTY                       AMOUNT');
     buffer.writeln(lineSep);
 
     for (final item in widget.items) {
@@ -164,15 +164,10 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
       buffer.writeln('Deposit / Paid:       P${widget.transaction.cashReceived.toStringAsFixed(2).padLeft(9)}');
       buffer.writeln('Remaining Balance:    P${bal.toStringAsFixed(2).padLeft(9)}');
     } else {
-      buffer.writeln('Cash Received:        P${widget.transaction.cashReceived.toStringAsFixed(2).padLeft(9)}');
+      buffer.writeln('Cash Tendered:        P${widget.transaction.cashReceived.toStringAsFixed(2).padLeft(9)}');
       buffer.writeln('Change:               P${widget.transaction.change.toStringAsFixed(2).padLeft(9)}');
     }
 
-    final totalUnits = widget.items.fold<int>(
-      0,
-      (sum, i) => sum + ((i['quantity'] as num?)?.toInt() ?? 1),
-    );
-    buffer.writeln('Item Count: $totalUnits units (${widget.items.length} items)');
     buffer.writeln(lineSep);
     buffer.writeln(
       widget.receiptFooterNote?.trim().isNotEmpty == true
@@ -217,10 +212,6 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
     final isDebt = widget.transaction.paymentMethod.toLowerCase() == 'pending' ||
         widget.transaction.paymentMethod.toLowerCase() == 'debt';
     final is58 = _paperSize == '58mm';
-    final totalUnits = widget.items.fold<int>(
-      0,
-      (sum, i) => sum + ((i['quantity'] as num?)?.toInt() ?? 1),
-    );
 
     final monoStyle = TextStyle(
       fontFamily: 'monospace',
@@ -274,39 +265,45 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryDark.withValues(alpha: 0.94),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: AppTheme.accentTeal.withValues(alpha: 0.45),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryDark.withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: AppTheme.accentTeal.withValues(alpha: 0.45),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            size: 15,
+                            color: AppTheme.accentTeal,
+                          ),
+                          SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Official Cash Receipt',
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.check_circle_rounded,
-                          size: 15,
-                          color: AppTheme.accentTeal,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Cash Receipt',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
+                  const SizedBox(width: 6),
 
                   // Paper Size Toggle Pill
                   Container(
@@ -407,7 +404,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Order #${widget.transaction.id ?? 0}',
+                              'Receipt #${widget.transaction.id ?? 0}',
                               style: monoBold,
                             ),
                             Container(
@@ -489,7 +486,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                         const Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('ITEM DESCRIPTION', style: TextStyle(
+                            Text('ITEM / QTY', style: TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
@@ -507,7 +504,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                         const DashedDivider(),
                         const SizedBox(height: 6),
 
-                        // Itemized List (Anti-Collision Format)
+                        // Itemized List (Matching Authentic Layout)
                         ...widget.items.map((item) {
                           final name =
                               (item['product_name'] ?? 'Item').toString();
@@ -518,29 +515,27 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
 
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 3.5),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Item title (wraps full-width without crowding prices)
-                                Text(name, style: monoBold),
-                                const SizedBox(height: 2),
-                                // Qty x unit price and Subtotal
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 4),
-                                      child: Text(
-                                        '$qty x ₱${unitPrice.toStringAsFixed(2)}',
-                                        style: monoMuted,
-                                      ),
-                                    ),
-                                    Text(
-                                      '₱${subtotal.toStringAsFixed(2)}',
-                                      style: monoBold,
-                                    ),
-                                  ],
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(name, style: monoBold),
+                                      if (qty > 1)
+                                        Text(
+                                          '$qty x ₱${unitPrice.toStringAsFixed(2)}',
+                                          style: monoMuted,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '₱${subtotal.toStringAsFixed(2)}',
+                                  style: monoBold,
                                 ),
                               ],
                             ),
@@ -649,7 +644,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Cash Received', style: monoStyle),
+                              Text('Cash Tendered', style: monoStyle),
                               Text(
                                 '₱${widget.transaction.cashReceived.toStringAsFixed(2)}',
                                 style: monoStyle,
@@ -669,19 +664,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                           ),
                         ],
 
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Item Count', style: monoMuted),
-                            Text(
-                              '$totalUnits units (${widget.items.length} items)',
-                              style: monoMuted,
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
                         Center(
                           child: Text(
                             widget.receiptFooterNote?.trim().isNotEmpty == true
@@ -706,13 +689,13 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                 height: 38,
                                 child: CustomPaint(
                                   painter: BarcodePainter(
-                                    data: 'ORD-${widget.transaction.id ?? 0}',
+                                    data: 'ORDER-${widget.transaction.id ?? 0}',
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '* ORDER #${widget.transaction.id ?? 0} *',
+                                'ORDER #${widget.transaction.id ?? 0}',
                                 style: monoMuted.copyWith(
                                   fontSize: 10,
                                   letterSpacing: 1.2,
