@@ -13,7 +13,6 @@ import '../providers/settings_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
-import '../widgets/server_settings_dialog.dart';
 import '../widgets/store_image_view.dart';
 import 'client_management_screen.dart';
 
@@ -43,7 +42,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _addressController = TextEditingController(text: settings.storeAddress);
     _phoneController = TextEditingController(text: settings.storePhone);
     _gcashNumberController = TextEditingController(text: settings.gcashNumber);
-    _receiptFooterController = TextEditingController(text: settings.receiptFooterNote);
+    _receiptFooterController = TextEditingController(
+      text: settings.receiptFooterNote,
+    );
     _gcashQrPath = settings.gcashQrPath;
     _businessPhotoPath = settings.businessPhotoPath;
     _paperSize = settings.receiptPaperSize;
@@ -768,7 +769,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: AppTheme.accentTeal.withValues(alpha: 0.12),
+                              color: AppTheme.accentTeal.withValues(
+                                alpha: 0.12,
+                              ),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Icon(
@@ -808,7 +811,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         decoration: BoxDecoration(
                           color: AppTheme.subtleSurface(context),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.borderColor(context)),
+                          border: Border.all(
+                            color: AppTheme.borderColor(context),
+                          ),
                         ),
                         child: Row(
                           children: [
@@ -819,7 +824,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   setState(() => _paperSize = '58mm');
                                 },
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: _paperSize == '58mm'
                                         ? AppTheme.accentOrange
@@ -828,7 +835,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     boxShadow: _paperSize == '58mm'
                                         ? [
                                             BoxShadow(
-                                              color: AppTheme.accentOrange.withValues(alpha: 0.3),
+                                              color: AppTheme.accentOrange
+                                                  .withValues(alpha: 0.3),
                                               blurRadius: 6,
                                               offset: const Offset(0, 2),
                                             ),
@@ -844,7 +852,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           fontSize: 13,
                                           color: _paperSize == '58mm'
                                               ? Colors.white
-                                              : theme.textTheme.bodyMedium?.color,
+                                              : theme
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.color,
                                         ),
                                       ),
                                       const SizedBox(height: 2),
@@ -853,7 +864,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         style: TextStyle(
                                           fontSize: 10,
                                           color: _paperSize == '58mm'
-                                              ? Colors.white.withValues(alpha: 0.85)
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.85,
+                                                )
                                               : AppTheme.mutedText(context),
                                         ),
                                       ),
@@ -870,7 +883,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   setState(() => _paperSize = '80mm');
                                 },
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: _paperSize == '80mm'
                                         ? AppTheme.accentOrange
@@ -879,7 +894,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     boxShadow: _paperSize == '80mm'
                                         ? [
                                             BoxShadow(
-                                              color: AppTheme.accentOrange.withValues(alpha: 0.3),
+                                              color: AppTheme.accentOrange
+                                                  .withValues(alpha: 0.3),
                                               blurRadius: 6,
                                               offset: const Offset(0, 2),
                                             ),
@@ -895,7 +911,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           fontSize: 13,
                                           color: _paperSize == '80mm'
                                               ? Colors.white
-                                              : theme.textTheme.bodyMedium?.color,
+                                              : theme
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.color,
                                         ),
                                       ),
                                       const SizedBox(height: 2),
@@ -904,7 +923,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         style: TextStyle(
                                           fontSize: 10,
                                           color: _paperSize == '80mm'
-                                              ? Colors.white.withValues(alpha: 0.85)
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.85,
+                                                )
                                               : AppTheme.mutedText(context),
                                         ),
                                       ),
@@ -937,7 +958,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: AppTheme.accentTeal.withValues(alpha: 0.6),
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                            borderRadius: BorderRadius.circular(
+                              AppTheme.radiusMd,
+                            ),
                           ),
                         ),
                       ),
@@ -1047,7 +1070,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 // ── 4.5 Cloud Connection & Online API ──
                 _SettingsSectionLabel(
-                  isAdmin ? 'CLOUD CONNECTION & ONLINE BACKEND' : 'CLOUD CONNECTION',
+                  isAdmin
+                      ? 'CLOUD CONNECTION & ONLINE BACKEND'
+                      : 'CLOUD CONNECTION',
                 ),
                 const SizedBox(height: 8),
                 _SettingsGroupCard(
@@ -1090,9 +1115,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                             ),
                           ),
-                          onTap: isAdmin
-                              ? () => _showChangeServerUrlDialog(context)
-                              : null,
+                          onTap: null,
                         );
                       },
                     ),
@@ -1526,15 +1549,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
-  }
-
-  void _showChangeServerUrlDialog(BuildContext context) {
-    showServerSettingsDialog(
-      context,
-      onUrlChanged: () {
-        if (mounted) setState(() {});
-      },
-    );
   }
 }
 

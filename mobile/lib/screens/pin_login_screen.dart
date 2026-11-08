@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../providers/auth_provider.dart';
-import '../widgets/server_settings_dialog.dart';
 import '../widgets/store_image_view.dart';
 import 'login_screen.dart';
 
@@ -116,14 +115,6 @@ class _PinLoginScreenState extends State<PinLoginScreen>
           SnackBar(
             content: Text(errorMsg),
             backgroundColor: AppTheme.accentRose,
-            duration: Duration(seconds: isConnection ? 6 : 4),
-            action: isConnection
-                ? SnackBarAction(
-                    label: 'Server Settings',
-                    textColor: Colors.white,
-                    onPressed: () => showServerSettingsDialog(context),
-                  )
-                : null,
           ),
         );
       }
@@ -182,26 +173,7 @@ class _PinLoginScreenState extends State<PinLoginScreen>
             ),
 
             SafeArea(
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: IconButton(
-                      onPressed: () => showServerSettingsDialog(context),
-                      icon: const Icon(
-                        Icons.dns_rounded,
-                        color: AppTheme.textSecondaryDark,
-                        size: 20,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppTheme.cardDark,
-                        side: const BorderSide(color: AppTheme.borderDark),
-                      ),
-                      tooltip: 'Server Settings',
-                    ),
-                  ),
-                  LayoutBuilder(
+              child: LayoutBuilder(
                 builder: (context, constraints) {
                   final compact = constraints.maxHeight < 680;
                   final keySize = compact ? 58.0 : 68.0;
@@ -264,41 +236,26 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                               SizedBox(height: compact ? 14 : 20),
 
                               // Status Pill
-                              InkWell(
-                                onTap: () => showServerSettingsDialog(context),
-                                borderRadius: BorderRadius.circular(999),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.accentOrange.withValues(
+                                    alpha: 0.14,
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.accentOrange.withValues(
-                                      alpha: 0.14,
-                                    ),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        widget.isLockMode
-                                            ? 'REGISTER LOCKED'
-                                            : 'QUICK PIN ACCESS',
-                                        style: const TextStyle(
-                                          color: AppTheme.accentOrange,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      const Icon(
-                                        Icons.tune_rounded,
-                                        size: 12,
-                                        color: AppTheme.accentOrange,
-                                      ),
-                                    ],
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  widget.isLockMode
+                                      ? 'REGISTER LOCKED'
+                                      : 'QUICK PIN ACCESS',
+                                  style: const TextStyle(
+                                    color: AppTheme.accentOrange,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.2,
                                   ),
                                 ),
                               ),
@@ -504,43 +461,21 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                                   ],
                                 ),
                               ] else ...[
-                                Wrap(
-                                  alignment: WrapAlignment.center,
-                                  spacing: 8,
-                                  children: [
-                                    TextButton.icon(
-                                      onPressed: _usePasswordLogin,
-                                      icon: const Icon(
-                                        Icons.password_rounded,
-                                        size: 18,
-                                        color: AppTheme.textSecondaryDark,
-                                      ),
-                                      label: const Text(
-                                        'Use Password Login',
-                                        style: TextStyle(
-                                          color: AppTheme.textPrimaryDark,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
-                                      ),
+                                TextButton.icon(
+                                  onPressed: _usePasswordLogin,
+                                  icon: const Icon(
+                                    Icons.password_rounded,
+                                    size: 18,
+                                    color: AppTheme.textSecondaryDark,
+                                  ),
+                                  label: const Text(
+                                    'Use Password Login',
+                                    style: TextStyle(
+                                      color: AppTheme.textPrimaryDark,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
                                     ),
-                                    TextButton.icon(
-                                      onPressed: () => showServerSettingsDialog(context),
-                                      icon: const Icon(
-                                        Icons.dns_rounded,
-                                        size: 16,
-                                        color: AppTheme.textSecondaryDark,
-                                      ),
-                                      label: const Text(
-                                        'Server Settings',
-                                        style: TextStyle(
-                                          color: AppTheme.textSecondaryDark,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ],
                             ],
@@ -551,11 +486,9 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                   );
                 },
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
-    ),
       ),
     );
   }
