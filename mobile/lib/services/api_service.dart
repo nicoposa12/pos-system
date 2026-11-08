@@ -17,8 +17,8 @@ class ApiService {
   ApiService._init() {
     _dio = Dio(
       BaseOptions(
-        connectTimeout: const Duration(seconds: 35),
-        receiveTimeout: const Duration(seconds: 35),
+        connectTimeout: const Duration(seconds: 25),
+        receiveTimeout: const Duration(seconds: 25),
         headers: {
           'Accept': 'application/json',
         },
@@ -125,17 +125,28 @@ class ApiService {
   }
 
   /// Quick health check to see if server is online & reachable
-  Future<bool> checkConnection() async {
+  Future<bool> checkConnection([
+    String? customUrl,
+    Duration timeout = const Duration(seconds: 12),
+  ]) async {
     try {
+      String target = customUrl?.trim() ?? _baseUrl;
+      if (target.endsWith('/')) {
+        target = target.substring(0, target.length - 1);
+      }
+      final pingUrl = target.endsWith('/api')
+          ? '$target/auth/ping'
+          : (target.endsWith('/auth/ping') ? target : '$target/api/auth/ping');
+
       final response = await _dio.get(
-        '$_baseUrl/auth/ping',
+        pingUrl,
         options: Options(
           validateStatus: (status) => true,
-          sendTimeout: const Duration(seconds: 4),
-          receiveTimeout: const Duration(seconds: 4),
+          sendTimeout: timeout,
+          receiveTimeout: timeout,
         ),
       );
-      // Even a 404 on ping means the server responded!
+      // Even a 404 or auth challenge on ping means the server host responded!
       return response.statusCode != null && response.statusCode! < 500;
     } catch (_) {
       return false;

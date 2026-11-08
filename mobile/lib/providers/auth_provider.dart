@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/database_helper.dart';
@@ -137,6 +138,10 @@ class AuthProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
+    // Tracks whether the server was actually reached, so offline failures are not
+    // misreported as wrong credentials on devices that have never synced this account.
+    bool serverUnreachable = false;
+
     // 1. Try Online Login First
     try {
       final res = await ApiService.instance.login(username: username, password: password);
@@ -199,6 +204,7 @@ class AuthProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Online login attempt error (falling back to offline): $e');
+      serverUnreachable = e is! DioException || e.response == null;
     }
 
     // 2. Offline Fallback via SQLite
@@ -225,7 +231,11 @@ class AuthProvider extends ChangeNotifier {
       return true;
     }
 
-    _errorMessage = 'Invalid username or password.';
+    _errorMessage = serverUnreachable
+        ? 'Cannot reach server (${ApiService.instance.baseUrl}). '
+            'This account has not been synced to this device yet. '
+            'Check your internet or Server Settings and try again.'
+        : 'Invalid username or password.';
     _isLoading = false;
     notifyListeners();
     return false;
