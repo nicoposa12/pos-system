@@ -12,6 +12,7 @@ import '../providers/settings_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../widgets/product_image_view.dart';
 import '../widgets/receipt_dialog.dart';
+import '../widgets/order_details_modal.dart';
 import '../widgets/skeleton.dart';
 import 'scanner_screen.dart';
 
@@ -60,19 +61,24 @@ class _PosScreenState extends State<PosScreen> {
     return filtered.toList();
   }
 
-  Future<void> _scanBarcodeToCart(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final cartProvider = context.read<CartProvider>();
-    final productProvider = context.read<ProductProvider>();
-
+  Future<void> _scanBarcodeToCart([BuildContext? ctx]) async {
+    final navContext = ctx ?? context;
     final code = await Navigator.push<String>(
-      context,
+      navContext,
       MaterialPageRoute(
         builder: (_) => const ScannerScreen(title: 'Scan Item to Add'),
       ),
     );
 
     if (code == null || !mounted) return;
+
+    // Direct to order/transaction modal if receipt barcode was scanned
+    final isOrder = await handleOrderBarcodeScan(context, code);
+    if (isOrder || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final cartProvider = context.read<CartProvider>();
+    final productProvider = context.read<ProductProvider>();
 
     final product = productProvider.allProducts.cast<Product?>().firstWhere(
           (p) => p?.barcode == code,
@@ -397,6 +403,15 @@ class _PosScreenState extends State<PosScreen> {
                       controller: _searchController,
                       onChanged: (value) =>
                           setState(() => _searchQuery = value),
+                      onSubmitted: (value) async {
+                        if (parseOrderBarcode(value) != null) {
+                          final handled = await handleOrderBarcodeScan(context, value);
+                          if (handled && mounted) {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          }
+                        }
+                      },
                       decoration: InputDecoration(
                         hintText: 'Search product or barcode...',
                         prefixIcon: Icon(

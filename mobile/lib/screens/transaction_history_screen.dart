@@ -11,7 +11,9 @@ import '../providers/settings_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../services/pdf_service.dart';
 import '../widgets/receipt_dialog.dart';
+import '../widgets/order_details_modal.dart';
 import '../widgets/skeleton.dart';
+import 'scanner_screen.dart';
 
 enum TransactionFilter { all, daily, weekly, monthly, yearly }
 
@@ -81,6 +83,23 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     super.dispose();
   }
 
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ScannerScreen(title: 'Scan Receipt Barcode'),
+      ),
+    );
+    if (code == null || code.isEmpty || !mounted) return;
+    final handled = await handleOrderBarcodeScan(context, code);
+    if (!handled && mounted) {
+      setState(() {
+        _searchController.text = code;
+        _searchQuery = code;
+      });
+    }
+  }
+
   List<SaleTransaction> _getFilteredTransactions(List<SaleTransaction> all) {
     final now = DateTime.now();
     Iterable<SaleTransaction> list;
@@ -122,7 +141,14 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     }
 
     if (_searchQuery.trim().isNotEmpty) {
-      final q = _searchQuery.trim().toLowerCase().replaceAll('#', '');
+      var q = _searchQuery.trim().toLowerCase();
+      q = q
+          .replaceAll(
+            RegExp(r'^(?:order|tx|receipt|rec)[-\s#:]*', caseSensitive: false),
+            '',
+          )
+          .replaceAll('#', '')
+          .trim();
       list = list.where(
         (t) =>
             '${t.id ?? ''}'.contains(q) ||
@@ -286,6 +312,11 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 controller: _searchController,
                                 onChanged: (val) =>
                                     setState(() => _searchQuery = val),
+                                onSubmitted: (val) async {
+                                  if (parseOrderBarcode(val) != null) {
+                                    await handleOrderBarcodeScan(context, val);
+                                  }
+                                },
                                 decoration: InputDecoration(
                                   hintText: 'Search receipt # or amount...',
                                   prefixIcon: Icon(
@@ -309,7 +340,34 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: 8),
+                            Material(
+                              color: theme.cardTheme.color,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.radiusMd,
+                                ),
+                                side: BorderSide(
+                                  color: AppTheme.borderColor(context),
+                                ),
+                              ),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(
+                                  AppTheme.radiusMd,
+                                ),
+                                onTap: _scanBarcode,
+                                child: const SizedBox(
+                                  width: 50,
+                                  height: 50,
+                                  child: Icon(
+                                    Icons.qr_code_scanner_rounded,
+                                    color: AppTheme.accentOrange,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Material(
                               color: theme.cardTheme.color,
                               shape: RoundedRectangleBorder(
@@ -423,11 +481,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 isSelected: _paymentFilter == 'pending',
                                 color: AppTheme.accentAmber,
                                 onTap: () => setState(
-                                  () =>
-                                      _paymentFilter =
-                                          _paymentFilter == 'pending'
-                                              ? 'all'
-                                              : 'pending',
+                                  () => _paymentFilter =
+                                      _paymentFilter == 'pending'
+                                      ? 'all'
+                                      : 'pending',
                                 ),
                               ),
                             ],
@@ -652,8 +709,13 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     if (!context.mounted) return;
     final theme = Theme.of(context);
     final customerName = debt?['customer_name'] as String?;
-    final isPending = tx.paymentMethod.toLowerCase() == 'pending' || tx.paymentMethod.toLowerCase() == 'debt';
-    final remainingBalance = (tx.totalAmount - tx.cashReceived).clamp(0.0, tx.totalAmount);
+    final isPending =
+        tx.paymentMethod.toLowerCase() == 'pending' ||
+        tx.paymentMethod.toLowerCase() == 'debt';
+    final remainingBalance = (tx.totalAmount - tx.cashReceived).clamp(
+      0.0,
+      tx.totalAmount,
+    );
 
     showModalBottomSheet(
       context: context,
@@ -716,7 +778,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
-                            if (customerName != null && customerName.isNotEmpty) ...[
+                            if (customerName != null &&
+                                customerName.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Row(
                                 children: [
@@ -1479,8 +1542,8 @@ class _TransactionCard extends StatelessWidget {
                     isPending
                         ? Icons.pending_actions_rounded
                         : (isGcash
-                            ? Icons.account_balance_wallet_rounded
-                            : Icons.payments_rounded),
+                              ? Icons.account_balance_wallet_rounded
+                              : Icons.payments_rounded),
                     color: methodColor,
                     size: 22,
                   ),
@@ -1627,7 +1690,8 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
     final baseList = [50.0, 100.0, 200.0, 500.0, 1000.0];
     final valid = baseList.where((d) => d > widget.remainingBalance).toList();
     if (valid.isEmpty) {
-      final nextRound = ((widget.remainingBalance / 500).ceil() * 500).toDouble();
+      final nextRound = ((widget.remainingBalance / 500).ceil() * 500)
+          .toDouble();
       if (nextRound > widget.remainingBalance) {
         valid.add(nextRound);
       }
@@ -1657,7 +1721,8 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
         : widget.remainingBalance;
 
     final isFullyPaid = paymentAmount >= widget.remainingBalance;
-    final change = (_selectedMethod == 'cash' && paymentAmount > widget.remainingBalance)
+    final change =
+        (_selectedMethod == 'cash' && paymentAmount > widget.remainingBalance)
         ? (paymentAmount - widget.remainingBalance)
         : 0.0;
 
@@ -1667,12 +1732,14 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
 
     final newPaymentMethod = isFullyPaid ? _selectedMethod : 'pending';
 
-    final success = await context.read<TransactionProvider>().markTransactionPaid(
-      transactionId: widget.tx.id!,
-      newPaymentMethod: newPaymentMethod,
-      cashReceived: totalCashReceived,
-      changeAmount: change,
-    );
+    final success = await context
+        .read<TransactionProvider>()
+        .markTransactionPaid(
+          transactionId: widget.tx.id!,
+          newPaymentMethod: newPaymentMethod,
+          cashReceived: totalCashReceived,
+          changeAmount: change,
+        );
 
     if (!mounted) return;
     setState(() => _isSubmitting = false);
@@ -1683,7 +1750,11 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -1714,7 +1785,10 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isCash = _selectedMethod == 'cash';
-    final changeDue = (_cashTendered - widget.remainingBalance).clamp(0.0, double.infinity);
+    final changeDue = (_cashTendered - widget.remainingBalance).clamp(
+      0.0,
+      double.infinity,
+    );
 
     return Padding(
       padding: EdgeInsets.only(
@@ -1726,7 +1800,9 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
           child: Container(
             decoration: BoxDecoration(
               color: theme.cardTheme.color,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
               border: Border.all(color: AppTheme.borderColor(context)),
             ),
             child: SafeArea(
@@ -1784,11 +1860,16 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                     // Unpaid Balance Card
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
                       decoration: BoxDecoration(
                         color: AppTheme.subtleSurface(context),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppTheme.borderColor(context)),
+                        border: Border.all(
+                          color: AppTheme.borderColor(context),
+                        ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1818,9 +1899,14 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                             ],
                           ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
-                              color: AppTheme.accentAmber.withValues(alpha: 0.15),
+                              color: AppTheme.accentAmber.withValues(
+                                alpha: 0.15,
+                              ),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: const Text(
@@ -1855,7 +1941,8 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                             label: 'Cash',
                             icon: Icons.payments_rounded,
                             isSelected: isCash,
-                            onTap: () => setState(() => _selectedMethod = 'cash'),
+                            onTap: () =>
+                                setState(() => _selectedMethod = 'cash'),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1864,7 +1951,8 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                             label: 'GCash',
                             icon: Icons.account_balance_wallet_rounded,
                             isSelected: !isCash,
-                            onTap: () => setState(() => _selectedMethod = 'gcash'),
+                            onTap: () =>
+                                setState(() => _selectedMethod = 'gcash'),
                           ),
                         ),
                       ],
@@ -1885,7 +1973,9 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _cashController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
@@ -1902,7 +1992,10 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                               ),
                             ),
                           ),
-                          prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                          prefixIconConstraints: const BoxConstraints(
+                            minWidth: 0,
+                            minHeight: 0,
+                          ),
                           hintText: '0.00 (Enter full or partial amount)',
                         ),
                         onChanged: (val) {
@@ -1919,33 +2012,45 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                         child: Row(
                           children: [
                             ActionChip(
-                              label: Text('Exact ₱${widget.remainingBalance.toStringAsFixed(2)}'),
+                              label: Text(
+                                'Exact ₱${widget.remainingBalance.toStringAsFixed(2)}',
+                              ),
                               onPressed: _setExact,
                               backgroundColor: AppTheme.subtleSurface(context),
                             ),
                             const SizedBox(width: 8),
-                            ..._quickDenominations.map((denom) => Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: ActionChip(
-                                    label: Text('₱${denom.toStringAsFixed(0)}'),
-                                    onPressed: () => _setDenomination(denom),
-                                    backgroundColor: AppTheme.subtleSurface(context),
+                            ..._quickDenominations.map(
+                              (denom) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ActionChip(
+                                  label: Text('₱${denom.toStringAsFixed(0)}'),
+                                  onPressed: () => _setDenomination(denom),
+                                  backgroundColor: AppTheme.subtleSurface(
+                                    context,
                                   ),
-                                )),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 16),
 
                       // Partial Downpayment Balance or Change Due Banner
-                      if (_cashTendered > 0 && _cashTendered < widget.remainingBalance) ...[
+                      if (_cashTendered > 0 &&
+                          _cashTendered < widget.remainingBalance) ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                           decoration: BoxDecoration(
                             color: AppTheme.accentAmber.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: AppTheme.accentAmber.withValues(alpha: 0.35),
+                              color: AppTheme.accentAmber.withValues(
+                                alpha: 0.35,
+                              ),
                             ),
                           ),
                           child: Row(
@@ -1985,7 +2090,10 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                         ),
                       ] else ...[
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
                           decoration: BoxDecoration(
                             color: AppTheme.accentTeal.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
@@ -2025,7 +2133,9 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                           color: AppTheme.accentIndigo.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: AppTheme.accentIndigo.withValues(alpha: 0.25),
+                            color: AppTheme.accentIndigo.withValues(
+                              alpha: 0.25,
+                            ),
                           ),
                         ),
                         child: Row(
@@ -2033,7 +2143,9 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: AppTheme.accentIndigo.withValues(alpha: 0.15),
+                                color: AppTheme.accentIndigo.withValues(
+                                  alpha: 0.15,
+                                ),
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
@@ -2099,17 +2211,18 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                           _isSubmitting
                               ? 'Saving Payment...'
                               : ((_selectedMethod == 'cash' &&
-                                      _cashTendered > 0 &&
-                                      _cashTendered < widget.remainingBalance)
-                                  ? 'Save Downpayment (₱${_cashTendered.toStringAsFixed(2)})'
-                                  : 'Confirm & Mark as Paid'),
+                                        _cashTendered > 0 &&
+                                        _cashTendered < widget.remainingBalance)
+                                    ? 'Save Downpayment (₱${_cashTendered.toStringAsFixed(2)})'
+                                    : 'Confirm & Mark as Paid'),
                           style: const TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 15,
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: (_selectedMethod == 'cash' &&
+                          backgroundColor:
+                              (_selectedMethod == 'cash' &&
                                   _cashTendered > 0 &&
                                   _cashTendered < widget.remainingBalance)
                               ? AppTheme.accentAmber

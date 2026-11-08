@@ -6,6 +6,7 @@ import '../models/product.dart';
 import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
 import '../widgets/product_image_view.dart';
+import '../widgets/order_details_modal.dart';
 import '../widgets/skeleton.dart';
 import 'add_edit_product_screen.dart';
 import 'scanner_screen.dart';
@@ -72,6 +73,22 @@ class _ProductListScreenState extends State<ProductListScreen> {
     widget.filterRequest?.removeListener(_handleExternalFilter);
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ScannerScreen(title: 'Scan Product'),
+      ),
+    );
+    if (code == null || code.isEmpty || !mounted) return;
+    final handled = await handleOrderBarcodeScan(context, code);
+    if (handled || !mounted) return;
+    setState(() {
+      _searchController.text = code;
+      _searchQuery = code;
+    });
   }
 
   List<Product> _filterAndSort(List<Product> all) {
@@ -310,6 +327,15 @@ class _ProductListScreenState extends State<ProductListScreen> {
                             onChanged: (value) {
                               setState(() => _searchQuery = value);
                             },
+                            onSubmitted: (value) async {
+                              if (parseOrderBarcode(value) != null) {
+                                final handled = await handleOrderBarcodeScan(context, value);
+                                if (handled && mounted) {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                }
+                              }
+                            },
                             decoration: InputDecoration(
                               hintText: 'Search product, category, or barcode...',
                               prefixIcon: Icon(
@@ -339,21 +365,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                           ),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                            onTap: () async {
-                              final code = await Navigator.push<String>(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const ScannerScreen(title: 'Scan Product'),
-                                ),
-                              );
-                              if (code != null && code.isNotEmpty && mounted) {
-                                setState(() {
-                                  _searchController.text = code;
-                                  _searchQuery = code;
-                                });
-                              }
-                            },
+                            onTap: _scanBarcode,
                             child: const SizedBox(
                               width: 50,
                               height: 50,

@@ -724,6 +724,18 @@ class DatabaseHelper {
     return result.map((json) => SaleTransaction.fromMap(json)).toList();
   }
 
+  Future<SaleTransaction?> getTransactionById(int id) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return SaleTransaction.fromMap(result.first);
+  }
+
   Future<List<Map<String, dynamic>>> readTransactionItems(
     int transactionId,
   ) async {
