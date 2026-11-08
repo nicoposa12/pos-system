@@ -78,12 +78,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final settings = context.read<SettingsProvider>();
       final newStoreName = _nameController.text.trim();
 
-      final hasLocalPhotoSelected = _businessPhotoPath != null &&
+      final isAdmin = auth.isAdmin;
+      final hasLocalPhotoSelected = isAdmin &&
+          _businessPhotoPath != null &&
           _businessPhotoPath!.isNotEmpty &&
           File(_businessPhotoPath!).existsSync();
-      final photoRemoved = _businessPhotoPath == '';
+      final photoRemoved = isAdmin && _businessPhotoPath == '';
 
-      // Sync store name and business photo to live cloud if user is signed in
+      // Sync store name (and photo if admin) to live cloud if user is signed in
       if (auth.currentUser != null) {
         final err = await auth.updateProfile(
           fullName: newStoreName.isNotEmpty ? newStoreName : null,
@@ -239,71 +241,103 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     child: Row(
                       children: [
-                        GestureDetector(
-                          onTap: _showBusinessPhotoPickerSheet,
-                          child: Tooltip(
-                            message: 'Change Business Photo',
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                StoreImageView(
-                                  imagePath: effectiveBusinessPhoto,
-                                  width: 56,
-                                  height: 56,
-                                  borderRadius: BorderRadius.circular(16),
-                                  fallbackIcon: user.isAdmin
-                                      ? Icons.admin_panel_settings_rounded
-                                      : Icons.storefront_rounded,
-                                  customPlaceholder: Container(
+                        if (isAdmin)
+                          GestureDetector(
+                            onTap: _showBusinessPhotoPickerSheet,
+                            child: Tooltip(
+                              message: 'Change Admin Photo',
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  StoreImageView(
+                                    imagePath: effectiveBusinessPhoto,
                                     width: 56,
                                     height: 56,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      gradient: AppTheme.orangeGradient,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.2,
+                                    borderRadius: BorderRadius.circular(16),
+                                    fallbackIcon: Icons.admin_panel_settings_rounded,
+                                    customPlaceholder: Container(
+                                      width: 56,
+                                      height: 56,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        gradient: AppTheme.orangeGradient,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.2,
+                                          ),
+                                          width: 1.5,
                                         ),
-                                        width: 1.5,
+                                      ),
+                                      child: Text(
+                                        user.fullName.isNotEmpty
+                                            ? user.fullName[0].toUpperCase()
+                                            : 'A',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                       ),
                                     ),
-                                    child: Text(
-                                      user.fullName.isNotEmpty
-                                          ? user.fullName[0].toUpperCase()
-                                          : 'T',
-                                      style: const TextStyle(
+                                  ),
+                                  Positioned(
+                                    right: -2,
+                                    bottom: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.accentOrange,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: const Color(0xFF1E222D),
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.camera_alt_rounded,
+                                        size: 11,
                                         color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w800,
                                       ),
                                     ),
                                   ),
-                                ),
-                                Positioned(
-                                  right: -2,
-                                  bottom: -2,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.accentOrange,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: const Color(0xFF1E222D),
-                                        width: 2,
-                                      ),
-                                    ),
-                                    child: const Icon(
-                                      Icons.camera_alt_rounded,
-                                      size: 11,
-                                      color: Colors.white,
-                                    ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          StoreImageView(
+                            imagePath: effectiveBusinessPhoto,
+                            width: 56,
+                            height: 56,
+                            borderRadius: BorderRadius.circular(16),
+                            fallbackIcon: Icons.storefront_rounded,
+                            customPlaceholder: Container(
+                              width: 56,
+                              height: 56,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                gradient: AppTheme.orangeGradient,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.white.withValues(
+                                    alpha: 0.2,
                                   ),
+                                  width: 1.5,
                                 ),
-                              ],
+                              ),
+                              child: Text(
+                                user.fullName.isNotEmpty
+                                    ? user.fullName[0].toUpperCase()
+                                    : 'T',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: Column(
@@ -460,179 +494,261 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // ── Business Photo Picker ──
-                            Row(
-                              children: [
-                                GestureDetector(
-                                  onTap: _showBusinessPhotoPickerSheet,
-                                  child: Stack(
-                                    clipBehavior: Clip.none,
-                                    children: [
-                                      Container(
-                                        height: 88,
-                                        width: 88,
-                                        clipBehavior: Clip.antiAlias,
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.subtleSurface(
-                                            context,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
-                                          border: Border.all(
-                                            color: AppTheme.borderColor(
+                            // ── Business Photo Section ──
+                            if (isAdmin) ...[
+                              Row(
+                                children: [
+                                  GestureDetector(
+                                    onTap: _showBusinessPhotoPickerSheet,
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Container(
+                                          height: 88,
+                                          width: 88,
+                                          clipBehavior: Clip.antiAlias,
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.subtleSurface(
                                               context,
                                             ),
-                                          ),
-                                        ),
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            StoreImageView(
-                                              imagePath: effectiveBusinessPhoto,
-                                              width: 88,
-                                              height: 88,
-                                              borderRadius: BorderRadius.circular(
-                                                16,
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                            border: Border.all(
+                                              color: AppTheme.borderColor(
+                                                context,
                                               ),
-                                              fallbackIcon:
-                                                  Icons.storefront_outlined,
-                                              customPlaceholder: Column(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Icon(
+                                            ),
+                                          ),
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              StoreImageView(
+                                                imagePath: effectiveBusinessPhoto,
+                                                width: 88,
+                                                height: 88,
+                                                borderRadius: BorderRadius.circular(
+                                                  16,
+                                                ),
+                                                fallbackIcon:
                                                     Icons.storefront_outlined,
-                                                    size: 32,
-                                                    color: AppTheme.mutedText(
-                                                      context,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    'Add Photo',
-                                                    style: TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w600,
+                                                customPlaceholder: Column(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.storefront_outlined,
+                                                      size: 32,
                                                       color: AppTheme.mutedText(
                                                         context,
                                                       ),
                                                     ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      'Add Photo',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w600,
+                                                        color: AppTheme.mutedText(
+                                                          context,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              if (_isUploadingPhoto)
+                                                Container(
+                                                  color: Colors.black54,
+                                                  alignment: Alignment.center,
+                                                  child: const SizedBox(
+                                                    width: 24,
+                                                    height: 24,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 2.5,
+                                                      color: Colors.white,
+                                                    ),
                                                   ),
-                                                ],
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        Positioned(
+                                          right: 4,
+                                          bottom: 4,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.accentOrange,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color:
+                                                    theme.cardTheme.color ??
+                                                    Colors.white,
+                                                width: 1.5,
                                               ),
                                             ),
-                                            if (_isUploadingPhoto)
-                                              Container(
-                                                color: Colors.black54,
-                                                alignment: Alignment.center,
-                                                child: const SizedBox(
-                                                  width: 24,
-                                                  height: 24,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2.5,
-                                                    color: Colors.white,
-                                                  ),
+                                            child: const Icon(
+                                              Icons.camera_alt_rounded,
+                                              size: 12,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Business Photo',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Logo or storefront image displayed on POS headers and receipts.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            height: 1.4,
+                                            color: AppTheme.mutedText(context),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: [
+                                            OutlinedButton.icon(
+                                              onPressed:
+                                                  _showBusinessPhotoPickerSheet,
+                                              style: OutlinedButton.styleFrom(
+                                                minimumSize: const Size(0, 36),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                    ),
+                                              ),
+                                              icon: const Icon(
+                                                Icons.upload_outlined,
+                                                size: 16,
+                                              ),
+                                              label: Text(
+                                                hasValidBusinessPhoto
+                                                    ? 'Replace'
+                                                    : 'Upload',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
+                                            if (hasValidBusinessPhoto)
+                                              TextButton(
+                                                onPressed: _removeBusinessPhoto,
+                                                style: TextButton.styleFrom(
+                                                  foregroundColor:
+                                                      AppTheme.accentRose,
+                                                  minimumSize: const Size(0, 36),
+                                                ),
+                                                child: const Text(
+                                                  'Remove',
+                                                  style: TextStyle(fontSize: 12),
                                                 ),
                                               ),
                                           ],
                                         ),
-                                      ),
-                                      Positioned(
-                                        right: 4,
-                                        bottom: 4,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: BoxDecoration(
-                                            color: AppTheme.accentOrange,
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color:
-                                                  theme.cardTheme.color ??
-                                                  Colors.white,
-                                              width: 1.5,
-                                            ),
-                                          ),
-                                          child: const Icon(
-                                            Icons.camera_alt_rounded,
-                                            size: 12,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Business Photo',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14,
-                                        ),
+                                ],
+                              ),
+                            ] else ...[
+                              // Store Owner: Read-only business photo configured by Platform Administrator
+                              Row(
+                                children: [
+                                  StoreImageView(
+                                    imagePath: effectiveBusinessPhoto,
+                                    width: 56,
+                                    height: 56,
+                                    borderRadius: BorderRadius.circular(14),
+                                    fallbackIcon: Icons.storefront_outlined,
+                                    customPlaceholder: Container(
+                                      width: 56,
+                                      height: 56,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.subtleSurface(context),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: AppTheme.borderColor(context)),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Logo or storefront image displayed on POS headers and receipts.',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          height: 1.4,
-                                          color: AppTheme.mutedText(context),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          OutlinedButton.icon(
-                                            onPressed:
-                                                _showBusinessPhotoPickerSheet,
-                                            style: OutlinedButton.styleFrom(
-                                              minimumSize: const Size(0, 36),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 12,
-                                                  ),
-                                            ),
-                                            icon: const Icon(
-                                              Icons.upload_outlined,
-                                              size: 16,
-                                            ),
-                                            label: Text(
-                                              hasValidBusinessPhoto
-                                                  ? 'Replace'
-                                                  : 'Upload',
-                                              style: const TextStyle(
-                                                fontSize: 12,
+                                      child: Icon(Icons.storefront_outlined, size: 28, color: AppTheme.mutedText(context)),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Wrap(
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            const Text(
+                                              'Store Logo / Photo',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14,
                                               ),
                                             ),
-                                          ),
-                                          if (hasValidBusinessPhoto)
-                                            TextButton(
-                                              onPressed: _removeBusinessPhoto,
-                                              style: TextButton.styleFrom(
-                                                foregroundColor:
-                                                    AppTheme.accentRose,
-                                                minimumSize: const Size(0, 36),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 7,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: AppTheme.accentTeal.withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: AppTheme.accentTeal.withValues(alpha: 0.3),
+                                                  width: 0.8,
+                                                ),
                                               ),
                                               child: const Text(
-                                                'Remove',
-                                                style: TextStyle(fontSize: 12),
+                                                'Admin Managed',
+                                                style: TextStyle(
+                                                  color: AppTheme.accentTeal,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w700,
+                                                  letterSpacing: 0.3,
+                                                ),
                                               ),
                                             ),
-                                        ],
-                                      ),
-                                    ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          hasValidBusinessPhoto
+                                              ? 'Storefront photo configured by Platform Administrator. Displayed on POS headers and printed receipts.'
+                                              : 'Your business logo is managed exclusively by Platform Administrators. Contact admin to assign or update your photo.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            height: 1.4,
+                                            color: AppTheme.mutedText(context),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 16),
                             Divider(
                               height: 1,

@@ -187,13 +187,17 @@ class AuthController extends Controller
             'remove_image' => 'nullable|boolean',
         ]);
 
-        if ($request->boolean('remove_image')) {
-            $this->deleteStorePhotoIfExists($user->image_path);
-            $user->image_path = null;
-        } elseif ($request->hasFile('image')) {
-            $newPath = $this->handleStorePhotoUpload($request, $user->image_path);
-            if ($newPath) {
-                $user->image_path = $newPath;
+        // Only platform administrators can upload or remove store/profile photos.
+        // Client store photos are managed exclusively by administrators via the Admin Console.
+        if (($user->role ?? 'client') === 'admin') {
+            if ($request->boolean('remove_image')) {
+                $this->deleteStorePhotoIfExists($user->image_path);
+                $user->image_path = null;
+            } elseif ($request->hasFile('image')) {
+                $newPath = $this->handleStorePhotoUpload($request, $user->image_path);
+                if ($newPath) {
+                    $user->image_path = $newPath;
+                }
             }
         }
 
