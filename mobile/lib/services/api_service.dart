@@ -629,7 +629,7 @@ class ApiService {
       'full_name': fullName,
       'password': password,
       'role': role,
-      'is_active': isActive,
+      'is_active': isActive ? 1 : 0,
     };
     if (email != null && email.isNotEmpty) map['email'] = email;
     if (pin != null && pin.isNotEmpty) map['pin'] = pin;
@@ -669,7 +669,7 @@ class ApiService {
     if (fullName != null) map['full_name'] = fullName;
     if (email != null) map['email'] = email;
     if (role != null) map['role'] = role;
-    if (isActive != null) map['is_active'] = isActive;
+    if (isActive != null) map['is_active'] = isActive ? 1 : 0;
     if (removeImage) {
       map['remove_image'] = 1;
     } else if (imageFilePath != null && File(imageFilePath).existsSync()) {

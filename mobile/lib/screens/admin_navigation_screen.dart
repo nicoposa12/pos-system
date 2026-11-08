@@ -1993,12 +1993,13 @@ class _AdminSettingsGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.cardBackground(context),
+    return Material(
+      color: AppTheme.cardBackground(context),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.borderColor(context)),
+        side: BorderSide(color: AppTheme.borderColor(context)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(children: children),
     );
   }

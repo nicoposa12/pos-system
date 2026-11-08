@@ -95,6 +95,12 @@ class AdminController extends Controller
      */
     public function store(Request $request)
     {
+        if ($request->has('is_active')) {
+            $request->merge([
+                'is_active' => filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $request->input('is_active'),
+            ]);
+        }
+
         $validated = $request->validate([
             'username' => 'required|string|max:50|unique:users,username',
             'full_name' => 'required|string|max:100',
@@ -195,6 +201,17 @@ class AdminController extends Controller
     public function update(Request $request, int $id)
     {
         $user = User::findOrFail($id);
+
+        if ($request->has('is_active')) {
+            $request->merge([
+                'is_active' => filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $request->input('is_active'),
+            ]);
+        }
+        if ($request->has('remove_image')) {
+            $request->merge([
+                'remove_image' => filter_var($request->input('remove_image'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $request->input('remove_image'),
+            ]);
+        }
 
         $validated = $request->validate([
             'full_name' => 'sometimes|required|string|max:100',
