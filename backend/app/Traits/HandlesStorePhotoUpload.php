@@ -81,7 +81,12 @@ trait HandlesStorePhotoUpload
                 'disk' => $disk,
             ]);
 
-            return url('/api/media/' . ltrim($path, '/'));
+            $url = url('/api/media/' . ltrim($path, '/'));
+            if (str_starts_with($url, 'http://') && (!app()->environment('local', 'testing') || str_contains($url, 'onrender.com'))) {
+                $url = 'https://' . substr($url, 7);
+            }
+
+            return $url;
         } catch (\Throwable $e) {
             Log::error("Store photo upload to disk [{$disk}] failed: " . $e->getMessage());
 
@@ -123,6 +128,18 @@ trait HandlesStorePhotoUpload
         } catch (\Throwable $e) {
             Log::warning("deleteStorePhotoIfExists error: " . $e->getMessage());
         }
+    }
+
+    /**
+     * Normalize image path to ensure https scheme when served through Render/CDN.
+     */
+    public function normalizeImagePath(?string $path): ?string
+    {
+        if (!$path) return null;
+        if (str_starts_with($path, 'http://pos-system-1-y58u.onrender.com')) {
+            return 'https://' . substr($path, 7);
+        }
+        return $path;
     }
 }
 

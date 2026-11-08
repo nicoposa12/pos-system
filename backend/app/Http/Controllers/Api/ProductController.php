@@ -234,7 +234,11 @@ class ProductController extends Controller
             ]);
 
             // Return media proxy URL so images are accessible across all mobile and ISP networks
-            return url('/api/media/' . ltrim($path, '/'));
+            $url = url('/api/media/' . ltrim($path, '/'));
+            if (str_starts_with($url, 'http://') && (!app()->environment('local', 'testing') || str_contains($url, 'onrender.com'))) {
+                $url = 'https://' . substr($url, 7);
+            }
+            return $url;
         } catch (\Throwable $e) {
             Log::error("Product image upload to disk [{$disk}] failed: " . $e->getMessage(), [
                 'exception' => $e,
@@ -246,7 +250,11 @@ class ProductController extends Controller
                     $fallbackFilename = Str::random(32) . '.' . $extension;
                     $fallbackPath = $file->storeAs('products', $fallbackFilename, 'public');
                     Log::info("Fallback product image upload to [public] succeeded: {$fallbackPath}");
-                    return url('/api/media/' . ltrim($fallbackPath, '/'));
+                    $fallbackUrl = url('/api/media/' . ltrim($fallbackPath, '/'));
+                    if (str_starts_with($fallbackUrl, 'http://') && (!app()->environment('local', 'testing') || str_contains($fallbackUrl, 'onrender.com'))) {
+                        $fallbackUrl = 'https://' . substr($fallbackUrl, 7);
+                    }
+                    return $fallbackUrl;
                 } catch (\Throwable $fallbackErr) {
                     Log::error('Local fallback upload also failed: ' . $fallbackErr->getMessage());
                 }

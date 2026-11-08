@@ -101,10 +101,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ? user!.fullName.trim()
         : settings.storeName;
     final effectiveStorePhoto =
-        user?.imagePath ??
-        (settings.businessPhotoPath.isNotEmpty
-            ? settings.businessPhotoPath
-            : null);
+        (user?.imagePath != null && user!.imagePath!.isNotEmpty)
+            ? user.imagePath
+            : (settings.businessPhotoPath.isNotEmpty
+                ? settings.businessPhotoPath
+                : null);
 
     if (useRail) {
       return Listener(

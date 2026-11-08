@@ -33,7 +33,11 @@ class ProductImageView extends StatelessWidget {
   /// Automatically redirect blocked *.r2.dev or /storage/ URLs through API proxy
   String? get _resolvedNetworkUrl {
     if (!_isNetworkUrl) return null;
-    final trimmed = imagePath!.trim();
+    var trimmed = imagePath!.trim();
+
+    if (trimmed.startsWith('http://') && (trimmed.contains('onrender.com') || trimmed.contains('pos-system'))) {
+      trimmed = trimmed.replaceFirst('http://', 'https://');
+    }
 
     if (trimmed.contains('.r2.dev/products/') || trimmed.contains('/storage/products/')) {
       final filename = trimmed.split('/products/').last;

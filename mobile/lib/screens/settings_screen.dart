@@ -40,7 +40,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     final settings = context.read<SettingsProvider>();
-    _nameController = TextEditingController(text: settings.storeName);
+    final auth = context.read<AuthProvider>();
+    final user = auth.currentUser;
+    final initialName = (settings.storeName.isNotEmpty && settings.storeName != 'Mini-Store')
+        ? settings.storeName
+        : (user?.fullName.isNotEmpty == true ? user!.fullName : settings.storeName);
+    _nameController = TextEditingController(text: initialName);
     _addressController = TextEditingController(text: settings.storeAddress);
     _phoneController = TextEditingController(text: settings.storePhone);
     _gcashNumberController = TextEditingController(text: settings.gcashNumber);
@@ -48,7 +53,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       text: settings.receiptFooterNote,
     );
     _gcashQrPath = settings.gcashQrPath;
-    _businessPhotoPath = settings.businessPhotoPath;
+    _businessPhotoPath = settings.businessPhotoPath.isNotEmpty
+        ? settings.businessPhotoPath
+        : (user?.imagePath ?? '');
     _paperSize = settings.receiptPaperSize;
   }
 

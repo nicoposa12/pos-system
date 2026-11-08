@@ -143,9 +143,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                   title: Row(
                     children: [
                       StoreImageView(
-                        imagePath:
-                            user?.imagePath ??
-                            (settings.businessPhotoPath.isNotEmpty
+                        imagePath: (user?.imagePath != null && user!.imagePath!.isNotEmpty)
+                            ? user.imagePath
+                            : (settings.businessPhotoPath.isNotEmpty
                                 ? settings.businessPhotoPath
                                 : null),
                         width: 40,

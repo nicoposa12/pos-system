@@ -48,12 +48,16 @@ class StoreImageView extends StatelessWidget {
     final trimmed = imagePath!.trim();
 
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      if (trimmed.contains('.r2.dev/stores/') ||
-          trimmed.contains('/storage/stores/')) {
-        final filename = trimmed.split('/stores/').last;
+      var url = trimmed;
+      if (url.startsWith('http://') && (url.contains('onrender.com') || url.contains('pos-system'))) {
+        url = url.replaceFirst('http://', 'https://');
+      }
+      if (url.contains('.r2.dev/stores/') ||
+          url.contains('/storage/stores/')) {
+        final filename = url.split('/stores/').last;
         return '${ApiService.instance.baseUrl}/media/stores/$filename';
       }
-      return trimmed;
+      return url;
     }
 
     // Relative path handling
