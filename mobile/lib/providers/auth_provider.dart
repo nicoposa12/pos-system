@@ -329,6 +329,37 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Updates authenticated store owner/user profile (business name and/or store photo)
+  Future<String?> updateProfile({
+    String? fullName,
+    String? email,
+    String? imageFilePath,
+    bool removeImage = false,
+  }) async {
+    if (_currentUser == null) return 'No active session';
+    try {
+      final res = await ApiService.instance.updateProfile(
+        fullName: fullName,
+        email: email,
+        imageFilePath: imageFilePath,
+        removeImage: removeImage,
+      );
+      final rawUser = res['user'];
+      if (rawUser is Map) {
+        final user = User.fromJson(Map<String, dynamic>.from(rawUser));
+        _currentUser = user;
+        await _saveSession(user);
+        notifyListeners();
+      }
+      return null;
+    } catch (e) {
+      final err = ApiService.describeError(e, 'Failed to update store profile.');
+      _errorMessage = err;
+      notifyListeners();
+      return err;
+    }
+  }
+
   Future<bool> register(
     String username,
     String password,

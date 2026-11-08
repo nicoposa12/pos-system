@@ -284,6 +284,37 @@ class ApiService {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Updates authenticated store owner/user profile (business name and/or photo)
+  Future<Map<String, dynamic>> updateProfile({
+    String? fullName,
+    String? email,
+    String? imageFilePath,
+    bool removeImage = false,
+  }) async {
+    final map = <String, dynamic>{};
+    if (fullName != null && fullName.isNotEmpty) {
+      map['full_name'] = fullName;
+    }
+    if (email != null && email.isNotEmpty) {
+      map['email'] = email;
+    }
+    if (removeImage) {
+      map['remove_image'] = 1;
+    } else if (imageFilePath != null && File(imageFilePath).existsSync()) {
+      map['image'] = await MultipartFile.fromFile(imageFilePath);
+    }
+
+    final formData = FormData.fromMap(map);
+    final response = await _dio.post(
+      '/auth/profile',
+      data: formData,
+    );
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Invalid server response format');
+  }
+
   Future<void> logout() async {
     try {
       await _dio.post('/auth/logout');

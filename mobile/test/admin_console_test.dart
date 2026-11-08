@@ -60,6 +60,13 @@ class _StubAdminAuthProvider extends ChangeNotifier implements AuthProvider {
   @override
   Future<void> reloadCurrentUser() async {}
   @override
+  Future<String?> updateProfile({
+    String? fullName,
+    String? email,
+    String? imageFilePath,
+    bool removeImage = false,
+  }) async => null;
+  @override
   Future<bool> login(String username, String password) async => true;
   @override
   Future<bool> loginWithPin(String pin) async => true;

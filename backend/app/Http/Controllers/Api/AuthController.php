@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Traits\HandlesStorePhotoUpload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    use HandlesStorePhotoUpload;
     /**
      * Public self-registration is disabled. Client accounts must be created by an administrator.
      */
@@ -151,6 +154,60 @@ class AuthController extends Controller
         $user = $request->user();
 
         return response()->json([
+            'user' => [
+                'id' => $user->id,
+                'username' => $user->username,
+                'full_name' => $user->full_name,
+                'email' => $user->email,
+                'image_path' => $user->image_path,
+                'role' => $user->role ?? 'client',
+                'is_active' => (bool) $user->is_active,
+                'has_pin' => !empty($user->pin),
+            ],
+        ]);
+    }
+
+    /**
+     * Update current authenticated user profile (business name and/or store photo).
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        if ($request->has('remove_image')) {
+            $request->merge([
+                'remove_image' => filter_var($request->input('remove_image'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $request->input('remove_image'),
+            ]);
+        }
+
+        $validated = $request->validate([
+            'full_name' => 'sometimes|string|max:100',
+            'email' => ['nullable', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:4096',
+            'remove_image' => 'nullable|boolean',
+        ]);
+
+        if ($request->boolean('remove_image')) {
+            $this->deleteStorePhotoIfExists($user->image_path);
+            $user->image_path = null;
+        } elseif ($request->hasFile('image')) {
+            $newPath = $this->handleStorePhotoUpload($request, $user->image_path);
+            if ($newPath) {
+                $user->image_path = $newPath;
+            }
+        }
+
+        if (!empty($validated['full_name'])) {
+            $user->full_name = $validated['full_name'];
+        }
+        if (array_key_exists('email', $validated)) {
+            $user->email = $validated['email'];
+        }
+
+        $user->save();
+
+        return response()->json([
+            'message' => 'Profile updated successfully',
             'user' => [
                 'id' => $user->id,
                 'username' => $user->username,

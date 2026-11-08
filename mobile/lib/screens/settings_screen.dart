@@ -33,6 +33,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _gcashQrPath;
   String? _businessPhotoPath;
   String _paperSize = '58mm';
+  bool _isUploadingPhoto = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -60,32 +62,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.dispose();
   }
 
-  void _saveSettings() {
+  Future<void> _saveSettings() async {
     if (_formKey.currentState!.validate()) {
       HapticFeedback.mediumImpact();
+      setState(() => _isSaving = true);
+
+      final auth = context.read<AuthProvider>();
       final settings = context.read<SettingsProvider>();
+      final newStoreName = _nameController.text.trim();
+
+      final hasLocalPhotoSelected = _businessPhotoPath != null &&
+          _businessPhotoPath!.isNotEmpty &&
+          File(_businessPhotoPath!).existsSync();
+      final photoRemoved = _businessPhotoPath == '';
+
+      // Sync store name and business photo to live cloud if user is signed in
+      if (auth.currentUser != null) {
+        final err = await auth.updateProfile(
+          fullName: newStoreName.isNotEmpty ? newStoreName : null,
+          imageFilePath: hasLocalPhotoSelected ? _businessPhotoPath : null,
+          removeImage: photoRemoved,
+        );
+        if (err != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(err),
+              backgroundColor: AppTheme.accentRose,
+            ),
+          );
+        }
+      }
+
+      final effectiveCloudPhoto = auth.currentUser?.imagePath;
       settings.updateStoreInfo(
-        name: _nameController.text.trim(),
+        name: newStoreName,
         address: _addressController.text.trim(),
         phone: _phoneController.text.trim(),
         gcashNumber: _gcashNumberController.text.trim(),
         gcashQrPath: _gcashQrPath ?? '',
-        businessPhotoPath: _businessPhotoPath ?? settings.businessPhotoPath,
+        businessPhotoPath: (effectiveCloudPhoto != null && effectiveCloudPhoto.isNotEmpty)
+            ? effectiveCloudPhoto
+            : (_businessPhotoPath ?? settings.businessPhotoPath),
         receiptPaperSize: _paperSize,
         receiptFooterNote: _receiptFooterController.text.trim(),
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              SizedBox(width: 10),
-              Text('Store & printer settings saved'),
-            ],
+
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 10),
+                Text('Store & business profile updated successfully'),
+              ],
+            ),
+            backgroundColor: AppTheme.accentTeal,
           ),
-          backgroundColor: AppTheme.accentTeal,
-        ),
-      );
+        );
+      }
     }
   }
 
@@ -163,8 +199,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: TextButton(
-              onPressed: _saveSettings,
-              child: const Text('Save'),
+              onPressed: _isSaving ? null : _saveSettings,
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save'),
             ),
           ),
         ],
@@ -436,39 +478,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             ),
                                           ),
                                         ),
-                                        child: StoreImageView(
-                                          imagePath: effectiveBusinessPhoto,
-                                          width: 88,
-                                          height: 88,
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
-                                          fallbackIcon:
-                                              Icons.storefront_outlined,
-                                          customPlaceholder: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              Icon(
-                                                Icons.storefront_outlined,
-                                                size: 32,
-                                                color: AppTheme.mutedText(
-                                                  context,
-                                                ),
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            StoreImageView(
+                                              imagePath: effectiveBusinessPhoto,
+                                              width: 88,
+                                              height: 88,
+                                              borderRadius: BorderRadius.circular(
+                                                16,
                                               ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                'Add Photo',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: AppTheme.mutedText(
-                                                    context,
+                                              fallbackIcon:
+                                                  Icons.storefront_outlined,
+                                              customPlaceholder: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(
+                                                    Icons.storefront_outlined,
+                                                    size: 32,
+                                                    color: AppTheme.mutedText(
+                                                      context,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Add Photo',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: AppTheme.mutedText(
+                                                        context,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            if (_isUploadingPhoto)
+                                              Container(
+                                                color: Colors.black54,
+                                                alignment: Alignment.center,
+                                                child: const SizedBox(
+                                                  width: 24,
+                                                  height: 24,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2.5,
+                                                    color: Colors.white,
                                                   ),
                                                 ),
                                               ),
-                                            ],
-                                          ),
+                                          ],
                                         ),
                                       ),
                                       Positioned(
@@ -740,9 +800,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
-                        onPressed: _saveSettings,
-                        icon: const Icon(Icons.check_rounded, size: 20),
-                        label: const Text('Save Store & Payment Info'),
+                        onPressed: _isSaving ? null : _saveSettings,
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_rounded, size: 20),
+                        label: Text(_isSaving
+                            ? 'Saving to Cloud...'
+                            : 'Save Store & Payment Info'),
                       ),
                     ],
                   ),
@@ -1217,12 +1288,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
           finalPath = savedFile.path;
         } catch (_) {}
 
+        if (!mounted) return;
         setState(() {
           _businessPhotoPath = finalPath;
+          _isUploadingPhoto = true;
         });
 
-        if (mounted) {
-          context.read<SettingsProvider>().updateBusinessPhoto(finalPath);
+        context.read<SettingsProvider>().updateBusinessPhoto(finalPath);
+
+        // Upload to cloud backend immediately if authenticated
+        final auth = context.read<AuthProvider>();
+        if (auth.currentUser != null) {
+          final err = await auth.updateProfile(imageFilePath: finalPath);
+          if (mounted) {
+            setState(() => _isUploadingPhoto = false);
+            if (err == null) {
+              final cloudUrl = auth.currentUser?.imagePath;
+              if (cloudUrl != null && cloudUrl.isNotEmpty) {
+                _businessPhotoPath = cloudUrl;
+                context.read<SettingsProvider>().updateBusinessPhoto(cloudUrl);
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Row(
+                    children: [
+                      Icon(Icons.cloud_done_rounded, color: Colors.white, size: 20),
+                      SizedBox(width: 10),
+                      Text('Business photo uploaded to cloud successfully!'),
+                    ],
+                  ),
+                  backgroundColor: AppTheme.accentTeal,
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(err),
+                  backgroundColor: AppTheme.accentRose,
+                ),
+              );
+            }
+          }
+        } else {
+          if (mounted) setState(() => _isUploadingPhoto = false);
         }
       }
     } catch (_) {
@@ -1231,19 +1339,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final path = result.files.single.path!;
         setState(() {
           _businessPhotoPath = path;
+          _isUploadingPhoto = true;
         });
-        if (mounted) {
-          context.read<SettingsProvider>().updateBusinessPhoto(path);
+        context.read<SettingsProvider>().updateBusinessPhoto(path);
+
+        final auth = context.read<AuthProvider>();
+        if (auth.currentUser != null) {
+          final err = await auth.updateProfile(imageFilePath: path);
+          if (mounted) {
+            setState(() => _isUploadingPhoto = false);
+            if (err == null) {
+              final cloudUrl = auth.currentUser?.imagePath;
+              if (cloudUrl != null && cloudUrl.isNotEmpty) {
+                _businessPhotoPath = cloudUrl;
+                context.read<SettingsProvider>().updateBusinessPhoto(cloudUrl);
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Row(
+                    children: [
+                      Icon(Icons.cloud_done_rounded, color: Colors.white, size: 20),
+                      SizedBox(width: 10),
+                      Text('Business photo uploaded to cloud successfully!'),
+                    ],
+                  ),
+                  backgroundColor: AppTheme.accentTeal,
+                ),
+              );
+            }
+          }
+        } else {
+          if (mounted) setState(() => _isUploadingPhoto = false);
         }
       }
     }
   }
 
-  void _removeBusinessPhoto() {
+  Future<void> _removeBusinessPhoto() async {
     setState(() {
       _businessPhotoPath = '';
+      _isUploadingPhoto = true;
     });
     context.read<SettingsProvider>().updateBusinessPhoto('');
+
+    final auth = context.read<AuthProvider>();
+    if (auth.currentUser != null) {
+      await auth.updateProfile(removeImage: true);
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Business photo removed from cloud.'),
+            backgroundColor: AppTheme.accentOrange,
+          ),
+        );
+      }
+    } else {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
   }
 
   void _showBusinessPhotoPickerSheet() {

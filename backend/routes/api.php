@@ -28,6 +28,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Auth & Profile
     Route::prefix('auth')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
+        Route::post('/profile', [AuthController::class, 'updateProfile']);
         Route::post('/pin', [AuthController::class, 'updatePin']);
         Route::post('/verify-pin', [AuthController::class, 'verifyPin'])->middleware('throttle:auth-limiter');
         Route::post('/password', [AuthController::class, 'changePassword'])->middleware('throttle:auth-limiter');
