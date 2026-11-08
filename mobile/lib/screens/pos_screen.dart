@@ -821,12 +821,16 @@ class _PosScreenState extends State<PosScreen> {
     } else {
       HapticFeedback.vibrate();
       messenger.showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Row(
             children: [
-              Icon(Icons.error_rounded, color: Colors.white, size: 20),
-              SizedBox(width: 10),
-              Text('Transaction failed. Please try again.'),
+              const Icon(Icons.error_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  cart.lastError ?? 'Transaction failed. Please try again.',
+                ),
+              ),
             ],
           ),
           backgroundColor: AppTheme.accentRose,

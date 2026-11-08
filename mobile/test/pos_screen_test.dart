@@ -15,7 +15,6 @@ class _StubAuthProvider extends ChangeNotifier implements AuthProvider {
   final User _user = User(
     id: 1,
     username: 'cashier',
-    password: 'pw',
     fullName: 'Test Cashier',
     createdAt: DateTime(2026, 10, 29),
   );
@@ -48,6 +47,8 @@ class _StubAuthProvider extends ChangeNotifier implements AuthProvider {
   bool get isPinLockedOut => false;
   @override
   int get pinLockoutSecondsRemaining => 0;
+  @override
+  bool get isLastPinErrorConnection => false;
 
   @override
   void setPreferPinLogin(bool value) {}
@@ -59,6 +60,8 @@ class _StubAuthProvider extends ChangeNotifier implements AuthProvider {
   Future<bool> login(String username, String password) async => true;
   @override
   Future<bool> loginWithPin(String pin) async => true;
+  @override
+  Future<bool> verifyPin(String pin) async => true;
   @override
   Future<bool> updatePin(String newPin) async => true;
   @override
@@ -224,4 +227,3 @@ void main() {
     expect(find.text('₱20.00'), findsWidgets);
   });
 }
-

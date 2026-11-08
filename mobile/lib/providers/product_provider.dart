@@ -1,288 +1,252 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../data/database_helper.dart';
 import '../models/product.dart';
 import '../services/api_service.dart';
-import '../services/sync_service.dart';
+import '../services/realtime_service.dart';
 
+/// Store inventory, loaded from the cloud API and held in memory.
+///
+/// Mutations go straight to the API and the returned server record is applied
+/// in place, so the list never needs a full reload after a local change.
 class ProductProvider with ChangeNotifier {
   List<Product> _products = [];
   bool _isLoading = false;
+  bool _hasLoaded = false;
+  String? _errorMessage;
   String _searchQuery = '';
   String _selectedCategory = 'All';
   int? _userId;
+  Future<void>? _inFlight;
+
+  // Memoized derived views (recomputed only when inputs change)
+  List<Product>? _filteredCache;
+  List<String>? _categoriesCache;
+  List<Product>? _lowStockCache;
 
   ProductProvider() {
-    SyncService.instance.addProductUpdateListener(_onRealtimeProductUpdate);
+    RealtimeService.instance.addProductListener(_onRemoteChange);
   }
 
   @override
   void dispose() {
-    SyncService.instance.removeProductUpdateListener(_onRealtimeProductUpdate);
+    RealtimeService.instance.removeProductListener(_onRemoteChange);
     super.dispose();
   }
 
-  void _onRealtimeProductUpdate() {
-    if (_userId != null) {
-      _reloadFromLocalCache();
-    }
+  void _onRemoteChange() {
+    if (_userId != null) fetchProducts(silent: true);
   }
 
-  Future<void> _reloadFromLocalCache() async {
-    if (_userId == null) return;
-    _products = await DatabaseHelper.instance.readAllProducts(userId: _userId!);
-    notifyListeners();
+  void _setProducts(List<Product> products) {
+    _products = products;
+    _invalidate();
+  }
+
+  void _invalidate() {
+    _filteredCache = null;
+    _categoriesCache = null;
+    _lowStockCache = null;
   }
 
   List<Product> get allProducts => List.unmodifiable(_products);
 
   List<Product> get products {
-    List<Product> filtered = _products;
+    return _filteredCache ??= List.unmodifiable(() {
+      Iterable<Product> filtered = _products;
 
-    if (_selectedCategory != 'All') {
-      filtered = filtered
-          .where((p) => p.category == _selectedCategory)
-          .toList();
-    }
+      if (_selectedCategory != 'All') {
+        filtered = filtered.where((p) => p.category == _selectedCategory);
+      }
 
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      filtered = filtered
-          .where(
-            (p) =>
-                p.name.toLowerCase().contains(query) ||
-                (p.barcode != null && p.barcode!.toLowerCase().contains(query)),
-          )
-          .toList();
-    }
+      if (_searchQuery.isNotEmpty) {
+        final query = _searchQuery.toLowerCase();
+        filtered = filtered.where(
+          (p) =>
+              p.name.toLowerCase().contains(query) ||
+              (p.barcode != null && p.barcode!.toLowerCase().contains(query)),
+        );
+      }
 
-    return filtered;
+      return filtered.toList();
+    }());
   }
 
   String get selectedCategory => _selectedCategory;
 
   List<String> get categories {
-    final Set<String> cats = {'All'};
-    for (var p in _products) {
-      if (p.category != null && p.category!.isNotEmpty) {
-        cats.add(p.category!);
+    return _categoriesCache ??= () {
+      final Set<String> cats = {'All'};
+      for (var p in _products) {
+        if (p.category != null && p.category!.isNotEmpty) {
+          cats.add(p.category!);
+        }
       }
-    }
-    return cats.toList()
-      ..sort((a, b) => a == 'All' ? -1 : (b == 'All' ? 1 : a.compareTo(b)));
+      return cats.toList()
+        ..sort((a, b) => a == 'All' ? -1 : (b == 'All' ? 1 : a.compareTo(b)));
+    }();
   }
 
   bool get isLoading => _isLoading;
 
+  /// Last load error (e.g. no internet), or `null` when the data is current.
+  String? get errorMessage => _errorMessage;
+
   void setUserId(int userId) {
     if (_userId != userId) {
       _userId = userId;
-      _products = [];
+      _hasLoaded = false;
+      _setProducts([]);
       fetchProducts();
     }
   }
 
-  Future<void> fetchProducts({bool silent = false}) async {
-    if (_userId == null) return;
+  /// Loads the catalog from the API. Concurrent calls share one request, and
+  /// once data is loaded refreshes run silently (stale-while-revalidate).
+  Future<void> fetchProducts({bool silent = false}) {
+    if (_userId == null) return Future.value();
+    return _inFlight ??= _load(silent: silent || _hasLoaded).whenComplete(() {
+      _inFlight = null;
+    });
+  }
 
+  Future<void> _load({required bool silent}) async {
     if (!silent) {
       _isLoading = true;
       notifyListeners();
     }
 
-    // 1. Try fetching from Cloud API if authenticated
-    if (ApiService.instance.isAuthenticated) {
-      try {
-        final remote = await ApiService.instance.getProducts();
-        if (remote.isNotEmpty) {
-          final Set<int> remoteIds = {};
-          for (var item in remote) {
-            final remoteId = item['id'] as int;
-            remoteIds.add(remoteId);
-            final local = await DatabaseHelper.instance.readProduct(remoteId);
-
-            final remoteImagePath = item['image_path'] as String?;
-            final String? finalImagePath = (remoteImagePath != null && remoteImagePath.trim().isNotEmpty)
-                ? remoteImagePath.trim()
-                : local?.imagePath;
-
-            final p = Product(
-              id: remoteId,
-              userId: _userId!,
-              name: item['name'] ?? '',
-              category: item['category'],
-              price: (item['price'] as num?)?.toDouble() ?? 0.0,
-              stock: item['stock'] ?? 0,
-              barcode: item['barcode'],
-              imagePath: finalImagePath,
-              isSynced: true,
-              variants: item['variants'] != null
-                  ? (item['variants'] as List)
-                      .map((v) => ProductVariant.fromMap(v))
-                      .toList()
-                  : (local?.variants ?? const []),
-              createdAt: item['created_at'] != null ? DateTime.parse(item['created_at']) : DateTime.now(),
-            );
-            if (local == null) {
-              await DatabaseHelper.instance.createProduct(p);
-            } else {
-              await DatabaseHelper.instance.updateProduct(p);
-            }
-          }
-
-          // Clean up any stale local orphan duplicates in SQLite that don't exist on server (only if previously synced)
-          final localProducts = await DatabaseHelper.instance.readAllProducts(userId: _userId!);
-          for (var lp in localProducts) {
-            if (lp.id != null && lp.isSynced && !remoteIds.contains(lp.id)) {
-              await DatabaseHelper.instance.deleteProduct(lp.id!);
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('Online product fetch error: $e');
-      }
-    }
-
-    // 2. Read from SQLite (reliable local cache)
-    _products = await DatabaseHelper.instance.readAllProducts(userId: _userId!);
-
-    if (!silent) {
+    final requestedFor = _userId;
+    try {
+      final remote = await ApiService.instance.getProducts();
+      if (requestedFor != _userId) return; // session changed mid-request
+      final list = remote
+          .whereType<Map>()
+          .map((p) => Product.fromJson(Map<String, dynamic>.from(p)))
+          .toList()
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      _setProducts(list);
+      _hasLoaded = true;
+      _errorMessage = null;
+    } catch (e) {
+      debugPrint('[ProductProvider] fetch error: $e');
+      _errorMessage = ApiService.describeError(e, 'Unable to load products.');
+    } finally {
       _isLoading = false;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   void setSearchQuery(String query) {
+    if (_searchQuery == query) return;
     _searchQuery = query;
+    _filteredCache = null;
     notifyListeners();
   }
 
   void setCategory(String category) {
+    if (_selectedCategory == category) return;
     _selectedCategory = category;
+    _filteredCache = null;
     notifyListeners();
   }
 
-  /// Returns `true` when the product was saved to the cloud (Neon),
-  /// `false` when it was saved locally only and queued for background sync.
-  Future<bool> addProduct(Product product) async {
-    if (_userId == null && product.userId > 0) {
-      _userId = product.userId;
+  Product _fromResponse(Map<String, dynamic> res, Product fallback) {
+    final raw = res['product'];
+    if (raw is Map) {
+      return Product.fromJson(Map<String, dynamic>.from(raw));
     }
-
-    // 1. If online, create on server first to get authoritative server ID and prevent local duplicates
-    if (ApiService.instance.isAuthenticated) {
-      try {
-        final res = await ApiService.instance.createProduct(
-          name: product.name,
-          price: product.price,
-          stock: product.stock,
-          category: product.category,
-          barcode: product.barcode,
-          variants: product.variants.isNotEmpty
-              ? jsonEncode(product.variants.map((v) => v.toMap()).toList())
-              : null,
-          imageFilePath: product.imagePath,
-        );
-        if (res['product'] != null) {
-          final serverProd = res['product'];
-          final serverId = serverProd['id'] as int?;
-          final serverImagePath = serverProd['image_path']?.toString().trim();
-          final serverProduct = product.copyWith(
-            id: serverId,
-            isSynced: true,
-            imagePath: (serverImagePath != null && serverImagePath.isNotEmpty)
-                ? serverImagePath
-                : product.imagePath,
-          );
-          await DatabaseHelper.instance.createProduct(serverProduct);
-          await fetchProducts();
-          return true;
-        }
-      } catch (e) {
-        debugPrint('Online add product error: $e');
-      }
-    }
-
-    // 2. Offline fallback: save locally with isSynced = false if disconnected or server request failed
-    final localProduct = product.copyWith(isSynced: false);
-    await DatabaseHelper.instance.createProduct(localProduct);
-    await fetchProducts();
-
-    // 3. Trigger background sync so pending product uploads to cloud as soon as reachable
-    final targetUserId = _userId ?? (product.userId > 0 ? product.userId : null);
-    if (targetUserId != null && ApiService.instance.isAuthenticated) {
-      SyncService.instance.syncNow(targetUserId);
-    }
-    return false;
+    return fallback;
   }
 
-  Future<void> updateProduct(Product product) async {
-    await DatabaseHelper.instance.updateProduct(product);
-
-    if (product.id != null && ApiService.instance.isAuthenticated) {
-      try {
-        final res = await ApiService.instance.updateProduct(
-          product.id!,
-          name: product.name,
-          price: product.price,
-          stock: product.stock,
-          category: product.category,
-          barcode: product.barcode,
-          variants: product.variants.isNotEmpty
-              ? jsonEncode(product.variants.map((v) => v.toMap()).toList())
-              : null,
-          imageFilePath: product.imagePath,
-        );
-        if (res['product'] != null && res['product']['image_path'] != null) {
-          final serverImagePath = res['product']['image_path'].toString().trim();
-          if (serverImagePath.isNotEmpty) {
-            await DatabaseHelper.instance.updateProduct(
-              product.copyWith(imagePath: serverImagePath, isSynced: true),
-            );
-          } else {
-            await DatabaseHelper.instance.updateProduct(
-              product.copyWith(isSynced: true),
-            );
-          }
-        } else {
-          await DatabaseHelper.instance.updateProduct(
-            product.copyWith(isSynced: true),
-          );
-        }
-      } catch (e) {
-        debugPrint('Online update product error: $e');
-      }
+  void _upsert(Product product) {
+    final updated = List<Product>.of(_products);
+    final index = updated.indexWhere((p) => p.id == product.id);
+    if (index >= 0) {
+      updated[index] = product;
     } else {
-      // Offline edit: mark as unsynced so next sync pushes changes
-      await DatabaseHelper.instance.updateProduct(
-        product.copyWith(isSynced: false),
-      );
+      updated.add(product);
     }
-
-    await fetchProducts();
+    updated.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    _setProducts(updated);
+    notifyListeners();
   }
 
-  Future<void> deleteProduct(int id) async {
-    await DatabaseHelper.instance.deleteProduct(id);
-
-    if (ApiService.instance.isAuthenticated) {
-      try {
-        await ApiService.instance.deleteProduct(id);
-      } catch (e) {
-        debugPrint('Online delete product error: $e');
-      }
+  /// Creates the product on the server. Throws with a readable message on failure.
+  /// Returns `true` once the product is saved to the cloud.
+  Future<bool> addProduct(Product product) async {
+    try {
+      final res = await ApiService.instance.createProduct(
+        name: product.name,
+        price: product.price,
+        stock: product.stock,
+        category: product.category,
+        barcode: product.barcode,
+        variants: product.variantsPayload,
+        imageFilePath: product.imagePath,
+      );
+      _upsert(_fromResponse(res, product));
+      return true;
+    } catch (e) {
+      throw Exception(ApiService.describeError(e, 'Failed to save product.'));
     }
+  }
 
-    await fetchProducts();
+  /// Updates the product on the server. Throws with a readable message on failure.
+  Future<void> updateProduct(Product product) async {
+    if (product.id == null) return;
+    try {
+      final res = await ApiService.instance.updateProduct(
+        product.id!,
+        name: product.name,
+        price: product.price,
+        stock: product.stock,
+        category: product.category,
+        barcode: product.barcode,
+        variants: product.variantsPayload,
+        imageFilePath: product.imagePath,
+      );
+      _upsert(_fromResponse(res, product));
+    } catch (e) {
+      throw Exception(ApiService.describeError(e, 'Failed to update product.'));
+    }
+  }
+
+  /// Deletes the product on the server. Throws with a readable message on failure.
+  Future<void> deleteProduct(int id) async {
+    try {
+      await ApiService.instance.deleteProduct(id);
+      _setProducts(_products.where((p) => p.id != id).toList());
+      notifyListeners();
+    } catch (e) {
+      throw Exception(ApiService.describeError(e, 'Failed to delete product.'));
+    }
+  }
+
+  /// Applies authoritative stock levels returned by the server (after a sale
+  /// or return) without reloading the whole catalog.
+  void applyStockLevels(Map<int, int> stockByProductId) {
+    if (stockByProductId.isEmpty) return;
+    var changed = false;
+    final updated = _products.map((p) {
+      final stock = p.id != null ? stockByProductId[p.id] : null;
+      if (stock == null || stock == p.stock) return p;
+      changed = true;
+      return p.copyWith(stock: stock);
+    }).toList();
+    if (!changed) return;
+    _setProducts(updated);
+    notifyListeners();
   }
 
   List<Product> get lowStockProducts {
-    return _products.where((p) => p.stock <= 5).toList();
+    return _lowStockCache ??=
+        List.unmodifiable(_products.where((p) => p.stock <= 5));
   }
 
   void clearData() {
-    _products = [];
+    _setProducts([]);
     _userId = null;
+    _hasLoaded = false;
+    _errorMessage = null;
     _selectedCategory = 'All';
     _searchQuery = '';
     notifyListeners();

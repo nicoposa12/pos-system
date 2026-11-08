@@ -43,7 +43,6 @@ class Product {
   final String? barcode;
   final String? imagePath;
   final List<ProductVariant> variants;
-  final bool isSynced;
   final DateTime createdAt;
 
   Product({
@@ -56,56 +55,48 @@ class Product {
     this.barcode,
     this.imagePath,
     this.variants = const [],
-    this.isSynced = false,
     required this.createdAt,
   });
 
   bool get hasValidImage => imagePath != null && imagePath!.isNotEmpty;
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'user_id': userId,
-      'name': name,
-      'category': category,
-      'price': price,
-      'stock': stock,
-      'barcode': barcode,
-      'image_path': imagePath,
-      'variants': jsonEncode(variants.map((v) => v.toMap()).toList()),
-      'is_synced': isSynced ? 1 : 0,
-      'created_at': createdAt.toIso8601String(),
-    };
-  }
+  /// JSON-encoded variants for API create/update requests, or `null` when empty.
+  String? get variantsPayload => variants.isNotEmpty
+      ? jsonEncode(variants.map((v) => v.toMap()).toList())
+      : null;
 
-  factory Product.fromMap(Map<String, dynamic> map) {
-    DateTime parsedDate;
-    try {
-      parsedDate = DateTime.parse(map['created_at']);
-    } catch (_) {
-      parsedDate = DateTime.now();
-    }
-
-    List<ProductVariant> parsedVariants = [];
-    if (map['variants'] != null && map['variants'] is String) {
+  /// Builds a product from the API payload (`/products`).
+  factory Product.fromJson(Map<String, dynamic> json) {
+    final rawVariants = json['variants'];
+    List<dynamic> variantList = const [];
+    if (rawVariants is List) {
+      variantList = rawVariants;
+    } else if (rawVariants is String && rawVariants.isNotEmpty) {
       try {
-        final List<dynamic> list = jsonDecode(map['variants']);
-        parsedVariants = list.map((v) => ProductVariant.fromMap(v)).toList();
+        final decoded = jsonDecode(rawVariants);
+        if (decoded is List) variantList = decoded;
       } catch (_) {}
     }
 
+    final image = json['image_path']?.toString().trim();
+
     return Product(
-      id: map['id'],
-      userId: map['user_id'] ?? 0,
-      name: map['name'],
-      category: map['category'],
-      price: map['price'],
-      stock: map['stock'],
-      barcode: map['barcode'],
-      imagePath: map['image_path'],
-      variants: parsedVariants,
-      isSynced: (map['is_synced'] == 1 || map['is_synced'] == true),
-      createdAt: parsedDate,
+      id: (json['id'] as num?)?.toInt(),
+      userId: (json['user_id'] as num?)?.toInt() ?? 0,
+      name: json['name']?.toString() ?? '',
+      category: json['category']?.toString(),
+      price: (json['price'] as num?)?.toDouble() ??
+          double.tryParse(json['price']?.toString() ?? '') ??
+          0.0,
+      stock: (json['stock'] as num?)?.toInt() ?? 0,
+      barcode: json['barcode']?.toString(),
+      imagePath: (image != null && image.isNotEmpty) ? image : null,
+      variants: variantList
+          .whereType<Map>()
+          .map((v) => ProductVariant.fromMap(Map<String, dynamic>.from(v)))
+          .toList(),
+      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.now(),
     );
   }
 
@@ -119,7 +110,6 @@ class Product {
     String? barcode,
     String? imagePath,
     List<ProductVariant>? variants,
-    bool? isSynced,
     DateTime? createdAt,
   }) {
     return Product(
@@ -132,7 +122,6 @@ class Product {
       barcode: barcode ?? this.barcode,
       imagePath: imagePath ?? this.imagePath,
       variants: variants ?? this.variants,
-      isSynced: isSynced ?? this.isSynced,
       createdAt: createdAt ?? this.createdAt,
     );
   }

@@ -10,6 +10,14 @@ class ApiService {
 
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
+  /// Live reachability of the cloud API, derived from real request outcomes
+  /// (no extra pings). `false` only after a network-level failure.
+  final ValueNotifier<bool> isOnline = ValueNotifier<bool>(true);
+
+  /// Invoked when an authenticated request is rejected with 401 (token revoked
+  /// or expired) so the session can be closed.
+  VoidCallback? onUnauthorized;
+
   late Dio _dio;
   String _baseUrl = '';
   String? _token;
@@ -17,8 +25,8 @@ class ApiService {
   ApiService._init() {
     _dio = Dio(
       BaseOptions(
-        connectTimeout: const Duration(seconds: 25),
-        receiveTimeout: const Duration(seconds: 25),
+        connectTimeout: const Duration(seconds: 45),
+        receiveTimeout: const Duration(seconds: 45),
         headers: {
           'Accept': 'application/json',
         },
@@ -34,12 +42,76 @@ class ApiService {
           }
           return handler.next(options);
         },
+        onResponse: (response, handler) {
+          isOnline.value = true;
+          return handler.next(response);
+        },
         onError: (DioException e, handler) {
           debugPrint('API Error [${e.response?.statusCode}]: ${e.message}');
+          isOnline.value = !isConnectionError(e);
+          if (e.response?.statusCode == 401 &&
+              e.requestOptions.headers['Authorization'] != null &&
+              _isSessionEndpoint(e.requestOptions.path)) {
+            onUnauthorized?.call();
+          }
           return handler.next(e);
         },
       ),
     );
+  }
+
+  /// 401s from credential checks (login, PIN, password) mean "wrong secret",
+  /// not "session expired".
+  static bool _isSessionEndpoint(String path) {
+    return !path.contains('/auth/') || path.endsWith('/auth/me');
+  }
+
+  /// True when the request never reached the server (offline, DNS, timeout).
+  static bool isConnectionError(Object error) {
+    if (error is DioException) {
+      return error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          (error.type == DioExceptionType.unknown && error.response == null);
+    }
+    return false;
+  }
+
+  /// Human-readable message for an API failure (validation errors, server
+  /// message, or connectivity problems).
+  static String describeError(Object error, [String fallback = 'Something went wrong. Please try again.']) {
+    if (error is DioException) {
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.receiveTimeout) {
+        return 'Server took too long to respond. The cloud service may be waking up or busy. Please try again in a moment.';
+      }
+      if (error.type == DioExceptionType.connectionError ||
+          (error.type == DioExceptionType.unknown && error.response == null)) {
+        final host = instance._baseUrl.isEmpty ? 'server' : instance._baseUrl;
+        return 'Unable to reach $host. Please check your network or Server Settings.';
+      }
+      final data = error.response?.data;
+      if (data is Map) {
+        final errors = data['errors'];
+        if (errors is Map) {
+          for (final entry in errors.values) {
+            if (entry is List && entry.isNotEmpty) return entry.first.toString();
+          }
+        }
+        final message = data['message']?.toString();
+        if (message != null && message.trim().isNotEmpty) return message;
+      }
+      if (error.response?.statusCode != null) {
+        final code = error.response!.statusCode;
+        if (code == 401) return 'Invalid credentials or session expired.';
+        if (code == 403) return 'You do not have permission to perform this action.';
+        if (code == 404) return 'The requested resource was not found on the server.';
+        if (code != null && code >= 500) return 'Server error ($code). Please try again shortly.';
+      }
+    }
+    return fallback;
   }
 
   String get baseUrl => _baseUrl;
@@ -157,29 +229,6 @@ class ApiService {
   // AUTH
   // ==========================================
 
-  Future<Map<String, dynamic>> register({
-    required String username,
-    required String fullName,
-    required String password,
-    String? pin,
-    String? email,
-  }) async {
-    final data = <String, dynamic>{
-      'username': username,
-      'full_name': fullName,
-      'password': password,
-    };
-    if (pin != null && pin.isNotEmpty) data['pin'] = pin;
-    if (email != null && email.isNotEmpty) data['email'] = email;
-
-    final response = await _dio.post('/auth/register', data: data);
-    final resData = response.data as Map<String, dynamic>;
-    if (resData['token'] != null) {
-      await setToken(resData['token']);
-    }
-    return resData;
-  }
-
   Future<Map<String, dynamic>> login({
     required String username,
     required String password,
@@ -212,6 +261,21 @@ class ApiService {
 
   Future<void> updatePin(String newPin) async {
     await _dio.post('/auth/pin', data: {'pin': newPin});
+  }
+
+  /// Verifies the signed-in user's PIN on the server without issuing a new token.
+  Future<void> verifyPin(String pin) async {
+    await _dio.post('/auth/verify-pin', data: {'pin': pin});
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _dio.post(
+      '/auth/password',
+      data: {'current_password': currentPassword, 'password': newPassword},
+    );
   }
 
   /// Fetches current authenticated user profile including cloud image_path
@@ -439,6 +503,39 @@ class ApiService {
     );
   }
 
+  Future<Map<String, dynamic>> getTransaction(int id) async {
+    final response = await _dio.get('/transactions/$id');
+    return Map<String, dynamic>.from(response.data['transaction'] as Map);
+  }
+
+  // ==========================================
+  // RETURNS
+  // ==========================================
+
+  Future<List<dynamic>> getReturns() async {
+    final response = await _dio.get('/returns');
+    return (response.data['returns'] as List? ?? []);
+  }
+
+  /// Records a return and restores stock server-side. Returns the API payload
+  /// including the product's updated `product_stock`.
+  Future<Map<String, dynamic>> createReturn(
+    int transactionId, {
+    required int productId,
+    required int quantity,
+    String? reason,
+  }) async {
+    final response = await _dio.post(
+      '/transactions/$transactionId/returns',
+      data: {
+        'product_id': productId,
+        'quantity': quantity,
+        'reason': reason,
+      },
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   // ==========================================
   // DEBTS
   // ==========================================
@@ -456,7 +553,7 @@ class ApiService {
   }
 
   // ==========================================
-  // OFFLINE SYNC & REALTIME STATUS
+  // REALTIME STATUS & LEGACY OFFLINE DATA UPLOAD
   // ==========================================
 
   Future<Map<String, dynamic>?> getSyncStatus() async {

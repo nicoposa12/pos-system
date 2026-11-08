@@ -12,8 +12,9 @@ import 'screens/get_started_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'screens/pin_login_screen.dart';
+import 'data/legacy_offline_migration.dart';
 import 'services/api_service.dart';
-import 'services/sync_service.dart';
+import 'services/realtime_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -79,7 +80,7 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
     _idleTimer?.cancel();
     _idleTimer = Timer(const Duration(seconds: idleTimeoutSeconds), () {
       final auth = context.read<AuthProvider>();
-      if (auth.isLoggedIn && !auth.isLocked && auth.currentUser?.pin != null) {
+      if (auth.isLoggedIn && !auth.isLocked && auth.currentUser?.hasPin == true) {
         auth.lock();
       }
     });
@@ -99,7 +100,13 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
       if (userId != null && _lastSyncedUserId != userId) {
         _lastSyncedUserId = userId;
         if (!auth.isAdmin) {
-          SyncService.instance.init(userId);
+          RealtimeService.instance.start();
+          unawaited(LegacyOfflineMigration.run(userId).then((uploaded) {
+            if (uploaded && mounted) {
+              context.read<ProductProvider>().fetchProducts(silent: true);
+              context.read<TransactionProvider>().fetchTransactions(silent: true);
+            }
+          }));
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             context.read<ProductProvider>().setUserId(userId);
@@ -108,8 +115,7 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
             context.read<SettingsProvider>().setUserId(userId);
           });
         } else {
-          // Initialize network connectivity monitoring for admin sessions without triggering cashier syncs
-          SyncService.instance.init(null);
+          RealtimeService.instance.stop();
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             context.read<SettingsProvider>().setUserId(userId);
@@ -118,7 +124,7 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
       }
     } else if (_lastSyncedUserId != null) {
       _lastSyncedUserId = null;
-      SyncService.instance.init(null);
+      RealtimeService.instance.stop();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         context.read<ProductProvider>().clearData();

@@ -143,7 +143,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   title: Row(
                     children: [
                       StoreImageView(
-                        imagePath: user?.imagePath ??
+                        imagePath:
+                            user?.imagePath ??
                             (settings.businessPhotoPath.isNotEmpty
                                 ? settings.businessPhotoPath
                                 : null),
@@ -203,7 +204,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                   actions: [
                     if (user?.isAdmin == true)
                       IconButton(
-                        icon: Icon(Icons.admin_panel_settings_rounded, size: 22, color: AppTheme.accentPurple),
+                        icon: Icon(
+                          Icons.admin_panel_settings_rounded,
+                          size: 22,
+                          color: AppTheme.accentPurple,
+                        ),
                         tooltip: 'Client Management',
                         onPressed: () => Navigator.push(
                           context,
@@ -212,15 +217,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ),
                         ),
                       ),
-                    if (user?.pin != null)
-                      IconButton(
-                        icon: const Icon(Icons.lock_outline_rounded, size: 22),
-                        tooltip: 'Lock Terminal',
-                        onPressed: () {
-                          HapticFeedback.mediumImpact();
-                          context.read<AuthProvider>().lock();
-                        },
-                      ),
+                      if (user?.hasPin == true)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.lock_outline_rounded,
+                            size: 22,
+                          ),
+                          tooltip: 'Lock Terminal',
+                          onPressed: () {
+                            HapticFeedback.mediumImpact();
+                            context.read<AuthProvider>().lock();
+                          },
+                        ),
                     IconButton(
                       icon: const Icon(Icons.tune_rounded, size: 22),
                       tooltip: 'Settings',
@@ -444,7 +452,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                           value:
                                               '${productProvider.lowStockProducts.length}',
                                           icon: Icons.warning_amber_rounded,
-                                          color: productProvider
+                                          color:
+                                              productProvider
                                                   .lowStockProducts
                                                   .isEmpty
                                               ? AppTheme.accentTeal
@@ -726,8 +735,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               itemBuilder: (context, index) {
                 final product = lowStock[index];
                 final isOut = product.stock <= 0;
-                final badgeColor =
-                    isOut ? AppTheme.accentRose : AppTheme.accentAmber;
+                final badgeColor = isOut
+                    ? AppTheme.accentRose
+                    : AppTheme.accentAmber;
                 return InkWell(
                   onTap: () {
                     Navigator.push(
@@ -912,7 +922,10 @@ class _HeroRevenueCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF131D2E),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.09), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.09),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.22),
@@ -948,7 +961,9 @@ class _HeroRevenueCard extends StatelessWidget {
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppTheme.accentTeal.withValues(alpha: 0.5),
+                                  color: AppTheme.accentTeal.withValues(
+                                    alpha: 0.5,
+                                  ),
                                   blurRadius: 6,
                                   spreadRadius: 1,
                                 ),
@@ -1045,7 +1060,8 @@ class _HeroRevenueCard extends StatelessWidget {
                       children: [
                         _HeroStatBadge(
                           icon: Icons.receipt_long_outlined,
-                          text: '$dailyOrders ${dailyOrders == 1 ? 'order' : 'orders'}',
+                          text:
+                              '$dailyOrders ${dailyOrders == 1 ? 'order' : 'orders'}',
                         ),
                         _HeroStatBadge(
                           icon: Icons.query_stats_rounded,
@@ -1074,10 +1090,7 @@ class _HeroRevenueCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        icon: const Icon(
-                          Icons.point_of_sale_rounded,
-                          size: 15,
-                        ),
+                        icon: const Icon(Icons.point_of_sale_rounded, size: 15),
                         label: const Text(
                           'Open POS',
                           style: TextStyle(
@@ -1116,9 +1129,7 @@ class _HeroStatBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.07),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1358,7 +1369,9 @@ class _WeeklySalesChart extends StatelessWidget {
               getTooltipColor: (_) => AppTheme.primaryDark,
               getTooltipItem: (group, groupIndex, rod, rodIndex) {
                 final val = rod.toY;
-                final percent = totalWeekly > 0 ? (val / totalWeekly * 100) : 0.0;
+                final percent = totalWeekly > 0
+                    ? (val / totalWeekly * 100)
+                    : 0.0;
                 return BarTooltipItem(
                   '₱${val.toStringAsFixed(2)}\n${percent.toStringAsFixed(1)}% of week',
                   const TextStyle(
@@ -1420,8 +1433,9 @@ class _WeeklySalesChart extends StatelessWidget {
                         isToday ? 'Today' : DateFormat('E').format(date),
                         style: TextStyle(
                           fontSize: 11,
-                          fontWeight:
-                              isToday ? FontWeight.w800 : FontWeight.w500,
+                          fontWeight: isToday
+                              ? FontWeight.w800
+                              : FontWeight.w500,
                           color: isToday
                               ? AppTheme.accentOrange
                               : AppTheme.mutedText(context),
@@ -1433,17 +1447,21 @@ class _WeeklySalesChart extends StatelessWidget {
                 },
               ),
             ),
-            leftTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
             horizontalInterval: maxVal / 3 > 0 ? maxVal / 3 : 250,
             getDrawingHorizontalLine: (_) => FlLine(
-              color: theme.dividerTheme.color ?? Colors.grey.withValues(alpha: 0.1),
+              color:
+                  theme.dividerTheme.color ??
+                  Colors.grey.withValues(alpha: 0.1),
               strokeWidth: 1,
               dashArray: [4, 4],
             ),
@@ -1490,10 +1508,7 @@ class _TopProductsChart extends StatelessWidget {
       return Center(
         child: Text(
           'Complete sales to see top-selling products',
-          style: TextStyle(
-            fontSize: 13,
-            color: AppTheme.mutedText(context),
-          ),
+          style: TextStyle(fontSize: 13, color: AppTheme.mutedText(context)),
         ),
       );
     }
@@ -1583,9 +1598,7 @@ class _TopProductsChart extends StatelessWidget {
                 value: ratio,
                 minHeight: 6,
                 backgroundColor: AppTheme.subtleSurface(context),
-                color: index == 0
-                    ? AppTheme.accentOrange
-                    : AppTheme.accentTeal,
+                color: index == 0 ? AppTheme.accentOrange : AppTheme.accentTeal,
               ),
             ),
           ],
@@ -1606,10 +1619,7 @@ class _CategorySalesChart extends StatelessWidget {
       return Center(
         child: Text(
           'Categorize products to view revenue mix',
-          style: TextStyle(
-            fontSize: 13,
-            color: AppTheme.mutedText(context),
-          ),
+          style: TextStyle(fontSize: 13, color: AppTheme.mutedText(context)),
         ),
       );
     }

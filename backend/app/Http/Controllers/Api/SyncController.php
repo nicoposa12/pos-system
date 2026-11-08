@@ -8,7 +8,6 @@ use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\TransactionItem;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class SyncController extends Controller
@@ -16,35 +15,31 @@ class SyncController extends Controller
     /**
      * Fast lightweight sync status & change-detection hashes.
      * Allows mobile clients to detect changes in real-time with near-zero latency and bandwidth.
-     * Cached for 5s to eliminate redundant queries against Neon serverless Postgres on free-tier.
+     * Uses one indexed aggregate query per table (user_id, updated_at) instead of a
+     * database-backed cache, which cost more round-trips to Neon than it saved.
      */
     public function status(Request $request)
     {
         $userId = $request->user()->id;
 
-        $data = Cache::remember("sync_status_{$userId}", 5, function () use ($userId) {
-            $latestProduct = Product::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
-            $productCount = Product::where('user_id', $userId)->count();
-
-            $latestTx = Transaction::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
-            $txCount = Transaction::where('user_id', $userId)->count();
-
-            $latestDebt = Debt::where('user_id', $userId)->latest('updated_at')->first(['updated_at']);
-            $debtCount = Debt::where('user_id', $userId)->count();
-
-            return [
-                'products_version' => md5(($latestProduct?->updated_at?->toIso8601String() ?? '') . '|' . $productCount),
-                'transactions_version' => md5(($latestTx?->updated_at?->toIso8601String() ?? '') . '|' . $txCount),
-                'debts_version' => md5(($latestDebt?->updated_at?->toIso8601String() ?? '') . '|' . $debtCount),
-            ];
-        });
-
-        Cache::forget("sync_status_{$userId}");
-
         return response()->json([
-            ...$data,
+            'products_version' => $this->versionHash(Product::where('user_id', $userId)),
+            'transactions_version' => $this->versionHash(Transaction::where('user_id', $userId)),
+            'debts_version' => $this->versionHash(Debt::where('user_id', $userId)),
             'timestamp' => now()->toIso8601String(),
         ]);
+    }
+
+    /**
+     * Hash of the latest modification time and row count for a scoped query.
+     */
+    private function versionHash($query): string
+    {
+        $row = $query->toBase()
+            ->selectRaw('MAX(updated_at) as latest, COUNT(*) as total')
+            ->first();
+
+        return md5(($row->latest ?? '') . '|' . ($row->total ?? 0));
     }
 
     /**
@@ -138,8 +133,6 @@ class SyncController extends Controller
             }
         });
 
-        Cache::forget("sync_status_{$userId}");
-
         return response()->json([
             'message' => 'Batch sync completed successfully',
             'synced' => $syncedMapping,
@@ -216,8 +209,6 @@ class SyncController extends Controller
                 }
             }
         });
-
-        Cache::forget("sync_status_{$userId}");
 
         return response()->json([
             'message' => 'Products batch synced successfully',

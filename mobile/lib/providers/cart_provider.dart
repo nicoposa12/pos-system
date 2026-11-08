@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/product.dart';
 import '../models/transaction.dart';
-import '../models/transaction_item.dart';
-import '../data/database_helper.dart';
 import '../services/api_service.dart';
 
 class CartItem {
@@ -18,17 +16,19 @@ class CartItem {
     this.quantity = 1,
   });
 
-  String get displayName => variantName != null ? '${product.name} ($variantName)' : product.name;
+  String get displayName =>
+      variantName != null ? '${product.name} ($variantName)' : product.name;
   double get subtotal => price * quantity;
 }
 
 class CartProvider with ChangeNotifier {
   final Map<String, CartItem> _items = {}; // Key: "productId_variantName"
   int? _userId;
+  String? _lastError;
 
   Map<String, CartItem> get items => {..._items};
-
   int get itemCount => _items.values.fold(0, (sum, item) => sum + item.quantity);
+  String? get lastError => _lastError;
 
   void setUserId(int userId) {
     _userId = userId;
@@ -43,7 +43,9 @@ class CartProvider with ChangeNotifier {
   }
 
   void addItem(Product product, {ProductVariant? variant}) {
-    final String variantKey = variant != null ? '${product.id}_${variant.name}' : '${product.id}_base';
+    final String variantKey = variant != null
+        ? '${product.id}_${variant.name}'
+        : '${product.id}_base';
     final double price = variant?.price ?? product.price;
     final int itemStock = variant?.stock ?? product.stock;
 
@@ -165,105 +167,46 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Processes checkout directly on the server API.
+  /// Returns a map with completed [SaleTransaction] and receipt items, or null on failure.
   Future<Map<String, dynamic>?> checkout({
-    double discount = 0.0, 
+    double discount = 0.0,
     double cashReceived = 0.0,
     String paymentMethod = 'cash',
     String? customerName,
   }) async {
+    _lastError = null;
     if (_items.isEmpty || _userId == null) return null;
 
     final finalTotal = totalAmount - discount;
     final change = cashReceived > 0 ? cashReceived - finalTotal : 0.0;
-
-    final transaction = SaleTransaction(
-      userId: _userId!,
-      totalAmount: finalTotal,
-      discount: discount,
-      cashReceived: cashReceived,
-      change: change > 0 ? change : 0.0,
-      paymentMethod: paymentMethod,
-      date: DateTime.now(),
-    );
-
     final cartItemsList = _items.values.toList();
-    final transactionItems = cartItemsList.map((cartItem) {
-      return TransactionItem(
-        transactionId: 0,
-        productId: cartItem.product.id!,
-        quantity: cartItem.quantity,
-        subtotal: cartItem.subtotal,
-      );
+
+    final payloadItems = cartItemsList.map((cartItem) {
+      return {
+        'product_id': cartItem.product.id!,
+        'quantity': cartItem.quantity,
+        'subtotal': cartItem.subtotal,
+      };
     }).toList();
 
     try {
-      final transactionId = await DatabaseHelper.instance.createTransaction(transaction, transactionItems);
-      
-      // If pending payment or debt, record in local debts table
-      if (paymentMethod == 'pending' || paymentMethod == 'debt') {
-        try {
-          final db = await DatabaseHelper.instance.database;
-          await db.insert('debts', {
-            'user_id': _userId!,
-            'transaction_id': transactionId,
-            'customer_name': (customerName != null && customerName.trim().isNotEmpty)
-                ? customerName.trim()
-                : 'Walk-in Customer',
-            'amount': transaction.totalAmount,
-            'paid_amount': cashReceived,
-            'date': transaction.date.toIso8601String(),
-            'status': (cashReceived >= transaction.totalAmount) ? 'paid' : 'pending',
-          });
-        } catch (e) {
-          debugPrint('Local debt record insert error: $e');
-        }
-      }
-      
-      int? serverTxId;
-      // Attempt immediate online push
-      if (ApiService.instance.isAuthenticated) {
-        try {
-          final res = await ApiService.instance.createTransaction({
-            'total_amount': transaction.totalAmount,
-            'discount': transaction.discount,
-            'cash_received': transaction.cashReceived,
-            'change_amount': transaction.change,
-            'payment_method': transaction.paymentMethod,
-            'customer_name': customerName,
-            'date': transaction.date.toIso8601String(),
-            'items': transactionItems.map((ti) => {
-              'product_id': ti.productId,
-              'quantity': ti.quantity,
-              'subtotal': ti.subtotal,
-            }).toList(),
-          });
+      final res = await ApiService.instance.createTransaction({
+        'total_amount': finalTotal,
+        'discount': discount,
+        'cash_received': cashReceived,
+        'change_amount': change > 0 ? change : 0.0,
+        'payment_method': paymentMethod,
+        'customer_name': customerName,
+        'date': DateTime.now().toIso8601String(),
+        'items': payloadItems,
+      });
 
-          if (res['transaction'] is Map && res['transaction']['id'] != null) {
-            serverTxId = int.tryParse(res['transaction']['id'].toString());
-          }
+      final txJson = res['transaction'] is Map
+          ? Map<String, dynamic>.from(res['transaction'] as Map)
+          : <String, dynamic>{};
 
-          if (serverTxId != null && serverTxId != transactionId) {
-            await DatabaseHelper.instance.replaceTransactionId(transactionId, serverTxId);
-          } else {
-            await DatabaseHelper.instance.markTransactionsSynced([transactionId]);
-          }
-        } catch (e) {
-          debugPrint('Online checkout push skipped (will sync later via SyncService): $e');
-        }
-      }
-
-      final finalTxId = (serverTxId != null && serverTxId > 0) ? serverTxId : transactionId;
-      final completedTransaction = SaleTransaction(
-        id: finalTxId,
-        userId: transaction.userId,
-        totalAmount: transaction.totalAmount,
-        discount: transaction.discount,
-        cashReceived: transaction.cashReceived,
-        change: transaction.change,
-        paymentMethod: transaction.paymentMethod,
-        date: transaction.date,
-        isSynced: serverTxId != null,
-      );
+      final completedTransaction = SaleTransaction.fromJson(txJson);
 
       final itemsForPdf = cartItemsList.map((item) => {
         'product_name': item.displayName,
@@ -277,7 +220,8 @@ class CartProvider with ChangeNotifier {
         'items': itemsForPdf,
       };
     } catch (e) {
-      debugPrint('Checkout error: $e');
+      debugPrint('[CartProvider] Checkout error: $e');
+      _lastError = ApiService.describeError(e, 'Transaction failed. Please try again.');
       return null;
     }
   }

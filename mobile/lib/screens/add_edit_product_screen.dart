@@ -1107,11 +1107,10 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           createdAt: widget.product?.createdAt ?? DateTime.now(),
         );
 
-        bool savedToCloud = true;
         if (isEditing) {
           await provider.updateProduct(product);
         } else {
-          savedToCloud = await provider.addProduct(product);
+          await provider.addProduct(product);
         }
 
         if (mounted) {
@@ -1121,10 +1120,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
             SnackBar(
               content: Row(
                 children: [
-                  Icon(
-                    savedToCloud
-                        ? Icons.check_circle_rounded
-                        : Icons.cloud_off_rounded,
+                  const Icon(
+                    Icons.check_circle_rounded,
                     color: Colors.white,
                   ),
                   const SizedBox(width: 10),
@@ -1132,15 +1129,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                     child: Text(
                       isEditing
                           ? 'Product updated successfully'
-                          : savedToCloud
-                              ? 'Product added to inventory'
-                              : 'Saved on this device only. It will upload to the cloud automatically once signed in online.',
+                          : 'Product added to inventory',
                     ),
                   ),
                 ],
               ),
-              backgroundColor:
-                  savedToCloud ? AppTheme.accentTeal : AppTheme.accentAmber,
+              backgroundColor: AppTheme.accentTeal,
             ),
           );
         }
@@ -1148,7 +1142,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to save product: $e'),
+              content: Text(e.toString().replaceFirst('Exception: ', '')),
               backgroundColor: AppTheme.accentRose,
             ),
           );

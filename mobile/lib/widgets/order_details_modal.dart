@@ -3,12 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
-import '../data/database_helper.dart';
 import '../models/transaction.dart';
 import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/transaction_provider.dart';
-import '../services/sync_service.dart';
 import 'receipt_dialog.dart';
 
 /// Parses an order/receipt barcode or text string.
@@ -51,42 +49,8 @@ Future<bool> handleOrderBarcodeScan(
   final orderId = parseOrderBarcode(rawBarcode);
   if (orderId == null) return false;
 
-  SaleTransaction? transaction;
-
-  // 1. Check local SQLite database
-  try {
-    transaction = await DatabaseHelper.instance.getTransactionById(orderId);
-  } catch (e) {
-    debugPrint('[handleOrderBarcodeScan] SQLite lookup error: $e');
-  }
-
-  // 2. Fallback: check in-memory transactions if available
-  if (transaction == null && context.mounted) {
-    try {
-      final txs = context.read<TransactionProvider>().transactions;
-      for (final t in txs) {
-        if (t.id == orderId) {
-          transaction = t;
-          break;
-        }
-      }
-    } catch (_) {}
-  }
-
-  // 3. Fallback: sync from cloud if online and not found locally
-  if (transaction == null && context.mounted) {
-    try {
-      final userId = context.read<AuthProvider>().currentUser?.id;
-      if (userId != null) {
-        final synced = await SyncService.instance.syncTransactions(userId);
-        if (synced) {
-          transaction = await DatabaseHelper.instance.getTransactionById(orderId);
-        }
-      }
-    } catch (e) {
-      debugPrint('[handleOrderBarcodeScan] Sync fallback error: $e');
-    }
-  }
+  final txProvider = context.read<TransactionProvider>();
+  final transaction = await txProvider.findTransaction(orderId);
 
   if (!context.mounted) return true;
 
@@ -123,12 +87,14 @@ Future<void> showOrderDetailsModal(
   BuildContext context,
   SaleTransaction tx,
 ) async {
-  final items = await DatabaseHelper.instance.readTransactionItems(tx.id!);
-  final debt = await DatabaseHelper.instance.getDebtByTransactionId(tx.id!);
+  List<Map<String, dynamic>> items = tx.items;
+  if (items.isEmpty && tx.id != null) {
+    items = await context.read<TransactionProvider>().getTransactionItems(tx.id!);
+  }
   if (!context.mounted) return;
 
   final theme = Theme.of(context);
-  final customerName = debt?['customer_name'] as String?;
+  final customerName = tx.customerName;
   final isPending =
       tx.paymentMethod.toLowerCase() == 'pending' || tx.paymentMethod.toLowerCase() == 'debt';
   final remainingBalance = (tx.totalAmount - tx.cashReceived).clamp(0.0, tx.totalAmount);
@@ -612,20 +578,33 @@ void _showReturnDialog(
   );
 
   if (confirmed == true && context.mounted) {
-    final success = await context.read<TransactionProvider>().processReturn(
+    final newStock = await context.read<TransactionProvider>().processReturn(
       transactionId: tx.id!,
       productId: item['product_id'],
       quantity: int.parse(quantityController.text),
       reason: reasonController.text.trim(),
     );
 
-    if (success && context.mounted) {
-      context.read<ProductProvider>().fetchProducts();
+    if (newStock != null && context.mounted) {
+      if (newStock >= 0) {
+        context.read<ProductProvider>().applyStockLevels({item['product_id']: newStock});
+      } else {
+        context.read<ProductProvider>().fetchProducts(silent: true);
+      }
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Return processed and stock restored'),
           backgroundColor: AppTheme.accentTeal,
+        ),
+      );
+    } else if (context.mounted) {
+      final err = context.read<TransactionProvider>().lastActionError ??
+          'Failed to process return';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(err),
+          backgroundColor: AppTheme.accentRose,
         ),
       );
     }

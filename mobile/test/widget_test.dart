@@ -65,6 +65,8 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   bool get isPinLockedOut => false;
   @override
   int get pinLockoutSecondsRemaining => 0;
+  @override
+  bool get isLastPinErrorConnection => false;
 
   @override
   void setPreferPinLogin(bool value) {
@@ -84,9 +86,12 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   bool loginSuccessResult = true;
 
   @override
-  Future<bool> login(String username, String password) async => loginSuccessResult;
+  Future<bool> login(String username, String password) async =>
+      loginSuccessResult;
   @override
   Future<bool> loginWithPin(String pin) async => pin == '1234';
+  @override
+  Future<bool> verifyPin(String pin) async => pin == '1234';
   @override
   Future<bool> updatePin(String newPin) async => true;
   @override
@@ -193,8 +198,7 @@ Widget _buildTestHarness({
   final testUser = User(
     id: 1,
     username: 'owner',
-    password: 'hashed_password',
-    pin: '1234',
+    hasPin: true,
     fullName: 'Maria Santos',
     createdAt: now,
   );
@@ -386,68 +390,69 @@ void main() {
     expect(find.text('Done'), findsOneWidget);
   });
 
-  testWidgets('PinLoginScreen toggles preferPinLogin when tapping Use Password Login', (
-    tester,
-  ) async {
-    final auth = _TestAuthProvider(
-      loggedIn: false,
-      hasUsers: true,
-      preferPin: true,
-    );
+  testWidgets(
+    'PinLoginScreen toggles preferPinLogin when tapping Use Password Login',
+    (tester) async {
+      final auth = _TestAuthProvider(
+        loggedIn: false,
+        hasUsers: true,
+        preferPin: true,
+      );
 
-    await tester.pumpWidget(
-      _buildTestHarness(
-        child: const PinLoginScreen(isLockMode: false),
-        authProvider: auth,
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildTestHarness(
+          child: const PinLoginScreen(isLockMode: false),
+          authProvider: auth,
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Use Password Login'), findsOneWidget);
-    expect(auth.preferPinLogin, isTrue);
+      expect(find.text('Use Password Login'), findsOneWidget);
+      expect(auth.preferPinLogin, isTrue);
 
-    await tester.tap(find.text('Use Password Login'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Use Password Login'));
+      await tester.pumpAndSettle();
 
-    expect(auth.preferPinLogin, isFalse);
-  });
+      expect(auth.preferPinLogin, isFalse);
+    },
+  );
 
-  testWidgets('PinLoginScreen in lock mode displays registered lock UI and sign out option', (
-    tester,
-  ) async {
-    final now = DateTime.now();
-    final testUser = User(
-      id: 1,
-      username: 'admin',
-      password: 'password',
-      pin: '1234',
-      fullName: 'Super Admin',
-      createdAt: now,
-    );
-    final auth = _TestAuthProvider(
-      user: testUser,
-      loggedIn: true,
-      locked: true,
-      preferPin: true,
-    );
+  testWidgets(
+    'PinLoginScreen in lock mode displays registered lock UI and sign out option',
+    (tester) async {
+      final now = DateTime.now();
+      final testUser = User(
+        id: 1,
+        username: 'admin',
+        hasPin: true,
+        fullName: 'Super Admin',
+        createdAt: now,
+      );
+      final auth = _TestAuthProvider(
+        user: testUser,
+        loggedIn: true,
+        locked: true,
+        preferPin: true,
+      );
 
-    await tester.pumpWidget(
-      _buildTestHarness(
-        child: const PinLoginScreen(isLockMode: true),
-        authProvider: auth,
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildTestHarness(
+          child: const PinLoginScreen(isLockMode: true),
+          authProvider: auth,
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('REGISTER LOCKED'), findsOneWidget);
-    expect(find.text('Super Admin'), findsOneWidget);
-    expect(find.text('Use Password Login'), findsOneWidget);
-    expect(find.text('Sign Out'), findsOneWidget);
+      expect(find.text('REGISTER LOCKED'), findsOneWidget);
+      expect(find.text('Super Admin'), findsOneWidget);
+      expect(find.text('Use Password Login'), findsOneWidget);
+      expect(find.text('Sign Out'), findsOneWidget);
 
-    await tester.tap(find.text('Use Password Login'));
-    await tester.pumpAndSettle();
-    expect(auth.preferPinLogin, isFalse);
-  });
+      await tester.tap(find.text('Use Password Login'));
+      await tester.pumpAndSettle();
+      expect(auth.preferPinLogin, isFalse);
+    },
+  );
 
   testWidgets(
     'LoginScreen retains entered username and password without clearing on failed login',
@@ -459,10 +464,7 @@ void main() {
       )..loginSuccessResult = false;
 
       await tester.pumpWidget(
-        _buildTestHarness(
-          child: const LoginScreen(),
-          authProvider: auth,
-        ),
+        _buildTestHarness(child: const LoginScreen(), authProvider: auth),
       );
       await tester.pumpAndSettle();
 

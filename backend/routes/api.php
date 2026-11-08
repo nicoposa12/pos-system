@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DebtController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ReturnController;
 use App\Http\Controllers\Api\SyncController;
 use App\Http\Controllers\Api\TransactionController;
 use Illuminate\Support\Facades\Route;
@@ -28,6 +29,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('auth')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/pin', [AuthController::class, 'updatePin']);
+        Route::post('/verify-pin', [AuthController::class, 'verifyPin'])->middleware('throttle:auth-limiter');
+        Route::post('/password', [AuthController::class, 'changePassword'])->middleware('throttle:auth-limiter');
         Route::post('/logout', [AuthController::class, 'logout']);
     });
 
@@ -37,14 +40,18 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Transactions (POS Checkout)
     Route::post('/transactions/{transaction}/mark-paid', [TransactionController::class, 'markPaid']);
+    Route::post('/transactions/{transaction}/returns', [ReturnController::class, 'store']);
     Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'show']);
+
+    // Product Returns
+    Route::get('/returns', [ReturnController::class, 'index']);
 
     // Debts
     Route::get('/debts', [DebtController::class, 'index']);
     Route::post('/debts', [DebtController::class, 'store']);
     Route::post('/debts/{debt}/pay', [DebtController::class, 'pay']);
 
-    // Offline Batch Sync & Real-Time Sync Status
+    // Real-Time Sync Status & one-time upload of legacy offline (SQLite) data
     Route::get('/sync/status', [SyncController::class, 'status']);
     Route::post('/sync', [SyncController::class, 'syncOfflineTransactions']);
     Route::post('/sync/products', [SyncController::class, 'syncOfflineProducts']);

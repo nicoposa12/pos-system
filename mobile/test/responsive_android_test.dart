@@ -53,6 +53,8 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   bool get isPinLockedOut => false;
   @override
   int get pinLockoutSecondsRemaining => 0;
+  @override
+  bool get isLastPinErrorConnection => false;
 
   @override
   void setPreferPinLogin(bool value) {}
@@ -65,9 +67,14 @@ class _TestAuthProvider extends ChangeNotifier implements AuthProvider {
   @override
   Future<bool> loginWithPin(String pin) async => true;
   @override
+  Future<bool> verifyPin(String pin) async => true;
+  @override
   Future<bool> updatePin(String newPin) async => true;
   @override
-  Future<bool> changePassword(String currentPassword, String newPassword) async => true;
+  Future<bool> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async => true;
   @override
   Future<bool> register(
     String username,
@@ -90,7 +97,8 @@ class _TestProductProvider extends ProductProvider {
   @override
   List<Product> get products => List.unmodifiable(_seed);
   @override
-  List<Product> get lowStockProducts => _seed.where((p) => p.stock <= 5).toList();
+  List<Product> get lowStockProducts =>
+      _seed.where((p) => p.stock <= 5).toList();
   @override
   List<String> get categories => const ['All', 'Beverages', 'Noodles'];
   @override
@@ -128,10 +136,15 @@ class _TestTransactionProvider extends TransactionProvider {
     final now = DateTime.now();
     return {
       for (int i = 6; i >= 0; i--)
-        DateTime(now.year, now.month, now.day).subtract(Duration(days: i)).toIso8601String().split('T')[0]:
+        DateTime(
+              now.year,
+              now.month,
+              now.day,
+            ).subtract(Duration(days: i)).toIso8601String().split('T')[0]:
             (i + 1) * 350.0,
     };
   }
+
   @override
   Future<void> fetchTransactions({bool silent = false}) async {}
 }
@@ -141,8 +154,7 @@ Widget _wrap(Widget child, {bool isAdmin = false}) {
   final user = User(
     id: 1,
     username: isAdmin ? 'admin' : 'cashier1',
-    password: 'password',
-    pin: '1234',
+    hasPin: true,
     fullName: isAdmin ? 'Admin User' : 'Cashier One',
     role: isAdmin ? 'admin' : 'client',
     createdAt: now,
@@ -217,56 +229,56 @@ void main() {
   };
 
   for (final entry in androidScreenSizes.entries) {
-    testWidgets(
-      'All primary screens render overflow-free on ${entry.key}',
-      (tester) async {
-        tester.view.physicalSize = entry.value;
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
+    testWidgets('All primary screens render overflow-free on ${entry.key}', (
+      tester,
+    ) async {
+      tester.view.physicalSize = entry.value;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-        final screens = <Widget>[
-          const GetStartedScreen(),
-          const LoginScreen(),
-          const PinLoginScreen(isLockMode: true),
-          const SettingsScreen(),
-          const AddEditProductScreen(),
-          DashboardScreen(
-            onOpenPos: () {},
-            onOpenHistory: (_) {},
-            onOpenInventory: (_) {},
-          ),
-          const PosScreen(),
-          ProductListScreen(),
-          const TransactionHistoryScreen(),
-          const MainNavigationScreen(),
-        ];
+      final screens = <Widget>[
+        const GetStartedScreen(),
+        const LoginScreen(),
+        const PinLoginScreen(isLockMode: true),
+        const SettingsScreen(),
+        const AddEditProductScreen(),
+        DashboardScreen(
+          onOpenPos: () {},
+          onOpenHistory: (_) {},
+          onOpenInventory: (_) {},
+        ),
+        const PosScreen(),
+        ProductListScreen(),
+        const TransactionHistoryScreen(),
+        const MainNavigationScreen(),
+      ];
 
-        for (final screen in screens) {
-          FlutterErrorDetails? caughtDetails;
-          final prevOnError = FlutterError.onError;
-          FlutterError.onError = (details) {
-            caughtDetails = details;
-            prevOnError?.call(details);
-          };
+      for (final screen in screens) {
+        FlutterErrorDetails? caughtDetails;
+        final prevOnError = FlutterError.onError;
+        FlutterError.onError = (details) {
+          caughtDetails = details;
+          prevOnError?.call(details);
+        };
 
-          await tester.pumpWidget(_wrap(screen));
-          await tester.pumpAndSettle();
+        await tester.pumpWidget(_wrap(screen));
+        await tester.pumpAndSettle();
 
-          FlutterError.onError = prevOnError;
+        FlutterError.onError = prevOnError;
 
-          if (caughtDetails != null) {
-            debugPrint('=== DETAILED OVERFLOW FOR ${screen.runtimeType} ===');
-            debugPrint(caughtDetails!.toString());
-          }
-
-          final err = tester.takeException();
-          expect(
-            err,
-            isNull,
-            reason: 'Screen ${screen.runtimeType} threw an exception on ${entry.key}',
-          );
+        if (caughtDetails != null) {
+          debugPrint('=== DETAILED OVERFLOW FOR ${screen.runtimeType} ===');
+          debugPrint(caughtDetails!.toString());
         }
-      },
-    );
+
+        final err = tester.takeException();
+        expect(
+          err,
+          isNull,
+          reason:
+              'Screen ${screen.runtimeType} threw an exception on ${entry.key}',
+        );
+      }
+    });
   }
 }

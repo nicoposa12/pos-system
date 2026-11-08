@@ -14,8 +14,7 @@ class _StubAdminAuthProvider extends ChangeNotifier implements AuthProvider {
   final User _admin = User(
     id: 2,
     username: 'admin',
-    password: 'hashed_password',
-    pin: '9999',
+    hasPin: true,
     fullName: 'System Administrator',
     email: 'admin@tindakopos.local',
     role: 'admin',
@@ -51,6 +50,8 @@ class _StubAdminAuthProvider extends ChangeNotifier implements AuthProvider {
   bool get isPinLockedOut => false;
   @override
   int get pinLockoutSecondsRemaining => 0;
+  @override
+  bool get isLastPinErrorConnection => false;
 
   @override
   void setPreferPinLogin(bool value) {}
@@ -62,6 +63,8 @@ class _StubAdminAuthProvider extends ChangeNotifier implements AuthProvider {
   Future<bool> login(String username, String password) async => true;
   @override
   Future<bool> loginWithPin(String pin) async => true;
+  @override
+  Future<bool> verifyPin(String pin) async => true;
   @override
   Future<bool> updatePin(String newPin) async => true;
   @override
@@ -92,9 +95,7 @@ class _TestAdminStoreController extends AdminStoreController {
   Future<Map<String, dynamic>?> fetchStoreLiveDetails(int userId) async {
     return {
       'id': userId,
-      'stats': {
-        'today_sales': 1850.0,
-      },
+      'stats': {'today_sales': 1850.0},
       'recent_transactions': [
         {
           'id': 501,
@@ -117,8 +118,7 @@ AdminStoreController _buildSeededController() {
     User(
       id: 2,
       username: 'admin',
-      password: '',
-      pin: '9999',
+      hasPin: true,
       fullName: 'System Administrator',
       email: 'admin@tindakopos.local',
       role: 'admin',
@@ -128,8 +128,7 @@ AdminStoreController _buildSeededController() {
     User(
       id: 10,
       username: 'santos_mart',
-      password: '',
-      pin: '1234',
+      hasPin: true,
       fullName: 'Santos Mini Mart',
       email: 'santos@store.ph',
       role: 'client',
@@ -139,8 +138,7 @@ AdminStoreController _buildSeededController() {
     User(
       id: 11,
       username: 'reyes_store',
-      password: '',
-      pin: null,
+      hasPin: false,
       fullName: 'Reyes Sari-Sari Store',
       email: 'reyes@store.ph',
       role: 'client',
@@ -167,10 +165,7 @@ AdminStoreController _buildSeededController() {
     ),
   };
 
-  return _TestAdminStoreController(
-    seedUsers: users,
-    seedMetrics: metrics,
-  );
+  return _TestAdminStoreController(seedUsers: users, seedMetrics: metrics);
 }
 
 Widget _wrapAdminConsole({
@@ -268,7 +263,10 @@ void main() {
 
       expect(find.byType(StoreInspectorPanel), findsOneWidget);
       expect(find.text('STORE GOVERNANCE & ACCESS'), findsOneWidget);
-      expect(find.text('₱1,850.00'), findsOneWidget); // Today's Sales from live detail
+      expect(
+        find.text('₱1,850.00'),
+        findsOneWidget,
+      ); // Today's Sales from live detail
       expect(find.text('Order #501'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

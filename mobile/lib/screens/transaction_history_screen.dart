@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
-import '../data/database_helper.dart';
 import '../models/transaction.dart';
 import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
@@ -702,13 +701,13 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   }
 
   void _showTransactionDetails(BuildContext context, SaleTransaction tx) async {
-    final items = await context.read<TransactionProvider>().getTransactionItems(
-      tx.id!,
-    );
-    final debt = await DatabaseHelper.instance.getDebtByTransactionId(tx.id!);
+    final txProvider = context.read<TransactionProvider>();
+    final items = tx.items.isNotEmpty
+        ? tx.items
+        : await txProvider.getTransactionItems(tx.id!);
     if (!context.mounted) return;
     final theme = Theme.of(context);
-    final customerName = debt?['customer_name'] as String?;
+    final customerName = tx.customerName;
     final isPending =
         tx.paymentMethod.toLowerCase() == 'pending' ||
         tx.paymentMethod.toLowerCase() == 'debt';
@@ -1192,20 +1191,33 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     );
 
     if (confirmed == true && context.mounted) {
-      final success = await context.read<TransactionProvider>().processReturn(
+      final newStock = await context.read<TransactionProvider>().processReturn(
         transactionId: tx.id!,
         productId: item['product_id'],
         quantity: int.parse(quantityController.text),
         reason: reasonController.text.trim(),
       );
 
-      if (success && context.mounted) {
-        context.read<ProductProvider>().fetchProducts();
+      if (newStock != null && context.mounted) {
+        if (newStock >= 0) {
+          context.read<ProductProvider>().applyStockLevels({item['product_id']: newStock});
+        } else {
+          context.read<ProductProvider>().fetchProducts(silent: true);
+        }
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Return processed and stock restored'),
             backgroundColor: AppTheme.accentTeal,
+          ),
+        );
+      } else if (context.mounted) {
+        final err = context.read<TransactionProvider>().lastActionError ??
+            'Failed to process return';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(err),
+            backgroundColor: AppTheme.accentRose,
           ),
         );
       }
@@ -1216,7 +1228,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     final userId = context.read<AuthProvider>().currentUser?.id;
     if (userId == null) return;
 
-    final returns = await DatabaseHelper.instance.getReturns(userId);
+    final returns = await context.read<TransactionProvider>().fetchReturns();
     if (!context.mounted) return;
     final theme = Theme.of(context);
 

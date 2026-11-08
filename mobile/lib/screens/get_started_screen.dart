@@ -37,12 +37,12 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
     ),
     _SlideData(
       badge: 'CLEAR INSIGHTS',
-      title: '100% offline sales & thermal receipts',
+      title: 'Real-time sales & thermal receipts',
       description:
-          'Review daily revenue trends, print or share itemized receipts, and back up your store database anytime.',
+      'Review live revenue trends, print or share itemized receipts, and track store performance anytime.',
       icon: Icons.insights_rounded,
       accent: AppTheme.accentIndigo,
-      highlights: ['Revenue analytics', 'Receipt printing', 'Local backup'],
+      highlights: ['Revenue analytics', 'Receipt printing', 'Live cloud'],
     ),
   ];
 
@@ -219,13 +219,13 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Icon(
-                                            Icons.offline_bolt_rounded,
+                                            Icons.cloud_done_rounded,
                                             size: 14,
                                             color: AppTheme.accentTeal,
                                           ),
                                           SizedBox(width: 4),
                                           Text(
-                                            'Offline-Ready',
+                                            'Cloud-Connected',
                                             style: TextStyle(
                                               color: AppTheme.accentTeal,
                                               fontSize: 11,

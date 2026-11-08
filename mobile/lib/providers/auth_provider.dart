@@ -1,12 +1,13 @@
-import 'package:dio/dio.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../data/database_helper.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
-import '../services/sync_service.dart';
 
 class AuthProvider extends ChangeNotifier {
+  static const _snapshotKey = 'user_session_snapshot_v2';
+  static const _deviceUsernameKey = 'device_account_username';
+
   User? _currentUser;
   bool _isLoggedIn = false;
   bool _isLoading = false;
@@ -18,6 +19,7 @@ class AuthProvider extends ChangeNotifier {
   String? _deviceAccountUsername;
   int _failedPinAttempts = 0;
   DateTime? _pinLockoutUntil;
+  bool _isLastPinErrorConnection = false;
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _isLoggedIn;
@@ -29,12 +31,15 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isAdmin => _currentUser?.isAdmin ?? false;
   String? get deviceAccountUsername => _deviceAccountUsername;
-  bool get isDeviceConfigured => _deviceAccountUsername != null && _deviceAccountUsername!.isNotEmpty;
+  bool get isDeviceConfigured =>
+      _deviceAccountUsername != null && _deviceAccountUsername!.isNotEmpty;
   int get failedPinAttempts => _failedPinAttempts;
   bool get isPinLockedOut =>
       _pinLockoutUntil != null && DateTime.now().isBefore(_pinLockoutUntil!);
-  int get pinLockoutSecondsRemaining =>
-      isPinLockedOut ? _pinLockoutUntil!.difference(DateTime.now()).inSeconds + 1 : 0;
+  int get pinLockoutSecondsRemaining => isPinLockedOut
+      ? _pinLockoutUntil!.difference(DateTime.now()).inSeconds + 1
+      : 0;
+  bool get isLastPinErrorConnection => _isLastPinErrorConnection;
 
   void setPreferPinLogin(bool value) {
     _preferPinLogin = value;
@@ -42,27 +47,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   AuthProvider() {
-    SyncService.instance.addProfileUpdateListener(_onRealtimeProfileUpdate);
+    ApiService.instance.onUnauthorized = _onSessionExpired;
     _checkLoginStatus();
   }
 
-  void _onRealtimeProfileUpdate() {
-    if (_currentUser != null) {
-      DatabaseHelper.instance.getUser(_currentUser!.username).then((user) {
-        if (user != null &&
-            (_currentUser?.imagePath != user.imagePath ||
-                _currentUser?.fullName != user.fullName)) {
-          _currentUser = user;
-          notifyListeners();
-        }
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    SyncService.instance.removeProfileUpdateListener(_onRealtimeProfileUpdate);
-    super.dispose();
+  void _onSessionExpired() {
+    debugPrint('[AuthProvider] Active session was revoked or expired on server.');
+    logout();
   }
 
   void lock() {
@@ -79,51 +70,52 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Ensure default local admin account exists
-      await DatabaseHelper.instance.ensureDefaultAdmin();
-
-      _hasRegisteredUsers = await DatabaseHelper.instance.hasUsers();
       final prefs = await SharedPreferences.getInstance();
-      _deviceAccountUsername = prefs.getString('device_account_username');
+      _deviceAccountUsername = prefs.getString(_deviceUsernameKey);
       if (_deviceAccountUsername == 'developer') {
-        await prefs.remove('device_account_username');
+        await prefs.remove(_deviceUsernameKey);
         _deviceAccountUsername = null;
       }
-      final username = prefs.getString('logged_in_username');
 
-      if (username == 'developer') {
-        await prefs.remove('logged_in_username');
-        _currentUser = null;
-        _isLoggedIn = false;
-        _isLocked = false;
-      } else if (username != null) {
-        _currentUser = await DatabaseHelper.instance.getUser(username);
-        if (_currentUser != null) {
-          if (!_currentUser!.isActive) {
-            // Deactivated user logged out automatically
-            await prefs.remove('logged_in_username');
-            _currentUser = null;
-            _isLoggedIn = false;
-          } else {
+      final rawSnapshot = prefs.getString(_snapshotKey);
+      if (rawSnapshot != null && rawSnapshot.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawSnapshot);
+          if (decoded is Map<String, dynamic>) {
+            _currentUser = User.fromJson(decoded);
             _isLoggedIn = true;
-            if (_currentUser!.pin != null) {
+            if (_currentUser!.hasPin) {
               _isLocked = true;
               _preferPinLogin = true;
             }
-            // Asynchronously sync latest cloud profile (including store photo)
-            if (ApiService.instance.isAuthenticated) {
-              reloadCurrentUser();
-            }
           }
-        }
+        } catch (_) {}
+      }
+
+      _hasRegisteredUsers =
+          isDeviceConfigured || _currentUser != null || prefs.containsKey('logged_in_username');
+
+      // Re-validate against authoritative server if token is present
+      if (ApiService.instance.isAuthenticated) {
+        reloadCurrentUser();
       }
     } catch (e) {
-      debugPrint('Error checking login status: $e');
+      debugPrint('[AuthProvider] checkLoginStatus error: $e');
+    } finally {
+      _isLoading = false;
+      _isInitializing = false;
+      notifyListeners();
     }
+  }
 
-    _isLoading = false;
-    _isInitializing = false;
-    notifyListeners();
+  Future<void> _saveSession(User user) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_snapshotKey, jsonEncode(user.toJson()));
+    await prefs.setString('logged_in_username', user.username);
+    if (!user.isAdmin) {
+      await prefs.setString(_deviceUsernameKey, user.username);
+      _deviceAccountUsername = user.username;
+    }
   }
 
   Future<bool> login(String username, String password) async {
@@ -138,272 +130,139 @@ class AuthProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    // Tracks whether the server was actually reached, so offline failures are not
-    // misreported as wrong credentials on devices that have never synced this account.
-    bool serverUnreachable = false;
-
-    // 1. Try Online Login First
     try {
-      final res = await ApiService.instance.login(username: username, password: password);
-      if (res['user'] != null) {
-        final userData = res['user'];
+      final res = await ApiService.instance.login(
+        username: username.trim(),
+        password: password,
+      );
 
-        // Check if deactivated
-        if (userData['is_active'] == false) {
-          _errorMessage = 'This account has been deactivated. Please contact an administrator.';
+      final rawUser = res['user'];
+      if (rawUser is Map) {
+        final user = User.fromJson(Map<String, dynamic>.from(rawUser));
+        if (!user.isActive) {
+          _errorMessage =
+              'This account has been deactivated. Please contact an administrator.';
           _isLoading = false;
           notifyListeners();
           return false;
         }
 
-        // Cache or sync into SQLite
-        var localUser = await DatabaseHelper.instance.getUser(username);
-        final defaultRole = (username == 'admin') ? 'admin' : 'client';
-        final cloudImagePath = userData['image_path']?.toString();
-        if (localUser == null) {
-          final newUser = User(
-            id: userData['id'],
-            username: userData['username'],
-            password: password,
-            fullName: userData['full_name'] ?? username,
-            email: userData['email'],
-            role: userData['role'] ?? defaultRole,
-            isActive: userData['is_active'] ?? true,
-            pin: null,
-            imagePath: cloudImagePath,
-            createdAt: DateTime.now(),
-          );
-          await DatabaseHelper.instance.createUser(newUser);
-          localUser = newUser;
-        } else {
-          // Update cached role & status
-          final updated = localUser.copyWith(
-            id: userData['id'] ?? localUser.id,
-            fullName: userData['full_name'] ?? localUser.fullName,
-            email: userData['email'] ?? localUser.email,
-            role: userData['role'] ?? (localUser.role == 'client' && defaultRole == 'admin' ? 'admin' : localUser.role),
-            isActive: userData['is_active'] ?? localUser.isActive,
-            imagePath: userData.containsKey('image_path') ? cloudImagePath : localUser.imagePath,
-          );
-          await DatabaseHelper.instance.updateUser(updated);
-          localUser = updated;
-        }
-
-        _currentUser = localUser;
+        _currentUser = user;
         _isLoggedIn = true;
         _isLocked = false;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('logged_in_username', username);
-        if (username != 'admin') {
-          await prefs.setString('device_account_username', username);
-          _deviceAccountUsername = username;
-        }
+        _hasRegisteredUsers = true;
+        await _saveSession(user);
+
         _isLoading = false;
         notifyListeners();
         return true;
       }
+      throw Exception('Unexpected server response format');
     } catch (e) {
-      debugPrint('Online login attempt error (falling back to offline): $e');
-      serverUnreachable = e is! DioException || e.response == null;
-    }
-
-    // 2. Offline Fallback via SQLite
-    final user = await DatabaseHelper.instance.loginUser(username, password);
-    if (user != null) {
-      if (!user.isActive) {
-        _errorMessage = 'This account has been deactivated. Please contact an administrator.';
-        _isLoading = false;
-        notifyListeners();
-        return false;
-      }
-
-      _currentUser = user;
-      _isLoggedIn = true;
-      _isLocked = false;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('logged_in_username', username);
-      if (username != 'admin') {
-        await prefs.setString('device_account_username', username);
-        _deviceAccountUsername = username;
-      }
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    }
-
-    _errorMessage = serverUnreachable
-        ? 'Cannot reach server (${ApiService.instance.baseUrl}). '
-            'This account has not been synced to this device yet. '
-            'Check your internet or Server Settings and try again.'
-        : 'Invalid username or password.';
-    _isLoading = false;
-    notifyListeners();
-    return false;
-  }
-
-  Future<bool> loginWithPin(String pin) async {
-    if (isPinLockedOut) {
-      _errorMessage = 'Too many failed attempts. Device locked for $pinLockoutSecondsRemaining seconds.';
+      _errorMessage = ApiService.describeError(e, 'Invalid username or password.');
       _isLoading = false;
       notifyListeners();
       return false;
     }
+  }
 
-    if (pin == '0000') {
-      _recordFailedPinAttempt();
+  Future<bool> loginWithPin(String pin) async {
+    if (isPinLockedOut) {
+      _errorMessage =
+          'Too many failed attempts. Device locked for $pinLockoutSecondsRemaining seconds.';
+      _isLoading = false;
+      notifyListeners();
       return false;
     }
 
     _isLoading = true;
     _errorMessage = null;
+    _isLastPinErrorConnection = false;
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
-    final scopedUsername = _currentUser?.username ?? _deviceAccountUsername ?? prefs.getString('device_account_username');
+    final scopedUsername = _currentUser?.username ??
+        _deviceAccountUsername ??
+        prefs.getString(_deviceUsernameKey);
 
-    // If locked locally
+    // 1. If currently in lock-screen mode for an active session
     if (_isLoggedIn && _currentUser != null) {
-      if (_currentUser!.pin == pin) {
-        if (!_currentUser!.isActive) {
-          _errorMessage = 'This account has been deactivated. Please contact an administrator.';
-          _isLoading = false;
-          notifyListeners();
-          return false;
-        }
+      try {
+        await ApiService.instance.verifyPin(pin);
         _failedPinAttempts = 0;
         _pinLockoutUntil = null;
         _isLocked = false;
         _isLoading = false;
+        _isLastPinErrorConnection = false;
         notifyListeners();
-
-        // Restore active cloud API token if not currently authenticated
-        if (!ApiService.instance.isAuthenticated) {
-          _reauthOnlineWithPin(pin, _currentUser!.username);
-        }
-
         return true;
+      } catch (e) {
+        if (ApiService.isConnectionError(e)) {
+          _isLastPinErrorConnection = true;
+          _errorMessage = ApiService.describeError(e);
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+        _isLastPinErrorConnection = false;
+        _recordFailedPinAttempt('Incorrect PIN for this register.');
+        return false;
       }
-
-      _recordFailedPinAttempt('Incorrect PIN for this register.');
-      return false;
     }
 
-    // 1. Try Online PIN Login (strictly scoped to this device's account)
+    // 2. PIN login on register start
     try {
-      final res = await ApiService.instance.pinLogin(pin: pin, username: scopedUsername);
-      if (res['user'] != null) {
-        final userData = res['user'];
+      final res = await ApiService.instance.pinLogin(
+        pin: pin,
+        username: scopedUsername,
+      );
 
-        if (userData['is_active'] == false) {
-          _errorMessage = 'This account has been deactivated. Please contact an administrator.';
+      final rawUser = res['user'];
+      if (rawUser is Map) {
+        final user = User.fromJson(Map<String, dynamic>.from(rawUser));
+        if (!user.isActive) {
+          _errorMessage =
+              'This account has been deactivated. Please contact an administrator.';
           _isLoading = false;
           notifyListeners();
           return false;
         }
 
-        final uname = userData['username'] ?? '';
-        final defaultPinRole = (uname == 'admin') ? 'admin' : 'client';
-        final cloudImagePath = userData['image_path']?.toString();
-        var localUser = await DatabaseHelper.instance.getUser(uname);
-        if (localUser != null) {
-          final updated = localUser.copyWith(
-            id: userData['id'] ?? localUser.id,
-            fullName: userData['full_name'] ?? localUser.fullName,
-            email: userData['email'] ?? localUser.email,
-            role: userData['role'] ?? (localUser.role == 'client' && defaultPinRole == 'admin' ? 'admin' : localUser.role),
-            isActive: userData['is_active'] ?? localUser.isActive,
-            imagePath: userData.containsKey('image_path') ? cloudImagePath : localUser.imagePath,
-          );
-          await DatabaseHelper.instance.updateUser(updated);
-          _currentUser = updated;
-        } else {
-          final newUser = User(
-            id: userData['id'],
-            username: uname,
-            password: '',
-            fullName: userData['full_name'] ?? uname,
-            email: userData['email'],
-            role: userData['role'] ?? defaultPinRole,
-            isActive: userData['is_active'] ?? true,
-            pin: pin,
-            imagePath: cloudImagePath,
-            createdAt: DateTime.now(),
-          );
-          await DatabaseHelper.instance.createUser(newUser);
-          _currentUser = newUser;
-        }
-        _failedPinAttempts = 0;
-        _pinLockoutUntil = null;
+        _currentUser = user;
         _isLoggedIn = true;
         _isLocked = false;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('logged_in_username', _currentUser!.username);
+        _hasRegisteredUsers = true;
+        _failedPinAttempts = 0;
+        _pinLockoutUntil = null;
+        _isLastPinErrorConnection = false;
+        await _saveSession(user);
+
         _isLoading = false;
         notifyListeners();
         return true;
       }
+      throw Exception('Unexpected server response format');
     } catch (e) {
-      debugPrint('Online PIN login error (falling back to offline): $e');
-    }
-
-    // 2. Offline PIN Login via SQLite (scoped to this device's account)
-    final user = await DatabaseHelper.instance.loginWithPin(pin, scopedUsername: scopedUsername);
-    if (user != null) {
-      if (!user.isActive) {
-        _errorMessage = 'This account has been deactivated. Please contact an administrator.';
+      if (ApiService.isConnectionError(e)) {
+        _isLastPinErrorConnection = true;
+        _errorMessage = ApiService.describeError(e);
         _isLoading = false;
         notifyListeners();
         return false;
       }
-
-      _failedPinAttempts = 0;
-      _pinLockoutUntil = null;
-      _currentUser = user;
-      _isLoggedIn = true;
-      _isLocked = false;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('logged_in_username', user.username);
-      _isLoading = false;
-      notifyListeners();
-
-      // Automatically restore active cloud token in background if not authenticated
-      if (!ApiService.instance.isAuthenticated && scopedUsername != null) {
-        _reauthOnlineWithPin(pin, scopedUsername);
-      }
-
-      return true;
+      _isLastPinErrorConnection = false;
+      _recordFailedPinAttempt(ApiService.describeError(e, 'Invalid PIN.'));
+      return false;
     }
-
-    _recordFailedPinAttempt('Invalid PIN.');
-    return false;
   }
 
-  Future<void> _reauthOnlineWithPin(String pin, String username) async {
+  /// Verifies the current user's PIN on the server (e.g. before deleting a product).
+  Future<bool> verifyPin(String pin) async {
     try {
-      final res = await ApiService.instance.pinLogin(pin: pin, username: username);
-      if (res['token'] != null) {
-        debugPrint('[AuthProvider] Successfully restored active API token on PIN unlock');
-        if (res['user'] != null && res['user'] is Map) {
-          final userData = res['user'] as Map;
-          final local = await DatabaseHelper.instance.getUser(username);
-          if (local != null) {
-            final cloudImage = userData['image_path']?.toString();
-            final updated = local.copyWith(
-              id: userData['id'] ?? local.id,
-              fullName: userData['full_name']?.toString() ?? local.fullName,
-              email: userData['email']?.toString() ?? local.email,
-              imagePath: userData.containsKey('image_path') ? cloudImage : local.imagePath,
-              role: userData['role']?.toString() ?? local.role,
-              isActive: userData['is_active'] ?? local.isActive,
-            );
-            await DatabaseHelper.instance.updateUser(updated);
-            _currentUser = updated;
-            notifyListeners();
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[AuthProvider] Background PIN re-authentication failed (offline or network error): $e');
+      await ApiService.instance.verifyPin(pin);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -422,27 +281,52 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> updatePin(String newPin) async {
     if (_currentUser == null) return false;
-
-    // Try online
     try {
       await ApiService.instance.updatePin(newPin);
-    } catch (_) {}
-
-    // Update local SQLite
-    final db = await DatabaseHelper.instance.database;
-    final result = await db.update(
-      'users',
-      {'pin': newPin},
-      where: 'id = ?',
-      whereArgs: [_currentUser!.id],
-    );
-
-    if (result > 0) {
-      _currentUser = _currentUser!.copyWith(pin: newPin);
+      _currentUser = _currentUser!.copyWith(hasPin: true);
+      await _saveSession(_currentUser!);
       notifyListeners();
       return true;
+    } catch (e) {
+      _errorMessage = ApiService.describeError(e, 'Failed to update PIN.');
+      notifyListeners();
+      return false;
     }
-    return false;
+  }
+
+  Future<bool> changePassword(String currentPassword, String newPassword) async {
+    if (_currentUser == null) return false;
+    try {
+      await ApiService.instance.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      return true;
+    } catch (e) {
+      _errorMessage = ApiService.describeError(e, 'Failed to change password.');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> reloadCurrentUser() async {
+    if (!ApiService.instance.isAuthenticated) return;
+    try {
+      final res = await ApiService.instance.getCurrentUser();
+      final rawUser = res['user'];
+      if (rawUser is Map) {
+        final user = User.fromJson(Map<String, dynamic>.from(rawUser));
+        if (!user.isActive) {
+          logout();
+          return;
+        }
+        _currentUser = user;
+        await _saveSession(user);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[AuthProvider] reloadCurrentUser error: $e');
+    }
   }
 
   Future<bool> register(
@@ -453,123 +337,26 @@ class AuthProvider extends ChangeNotifier {
     String? email,
     String role = 'client',
   }) async {
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    int? onlineUserId;
-
-    // 1. Try Online Register First
-    try {
-      final res = await ApiService.instance.register(
-        username: username,
-        fullName: fullName,
-        password: password,
-        pin: pin,
-        email: email,
-      );
-      if (res['user'] != null) {
-        onlineUserId = res['user']['id'];
-      }
-    } catch (e) {
-      debugPrint('Online register attempt failed (continuing local cache): $e');
-    }
-
-    // 2. Save in local SQLite
-    final existingUser = await DatabaseHelper.instance.getUser(username);
-    if (existingUser != null) {
-      _errorMessage = 'Username already exists.';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-
-    final newUser = User(
-      id: onlineUserId,
-      username: username,
-      password: password,
-      fullName: fullName,
-      email: email,
-      pin: pin,
-      role: role,
-      isActive: true,
-      createdAt: DateTime.now(),
-    );
-
-    final result = await DatabaseHelper.instance.createUser(newUser);
-
-    if (result > 0) {
-      _hasRegisteredUsers = true;
-      _isLoading = false;
-      notifyListeners();
-      return true;
-    }
-
-    _isLoading = false;
+    _errorMessage =
+        'Self-registration is disabled. Client accounts must be created by an administrator.';
     notifyListeners();
     return false;
-  }
-
-  Future<void> reloadCurrentUser() async {
-    if (_currentUser != null) {
-      final updated = await DatabaseHelper.instance.getUser(_currentUser!.username);
-      if (updated != null) {
-        _currentUser = updated;
-        notifyListeners();
-      }
-
-      // If online and authenticated, refresh profile from cloud
-      if (ApiService.instance.isAuthenticated) {
-        try {
-          final res = await ApiService.instance.getCurrentUser();
-          final userData = res['user'];
-          if (userData is Map && updated != null) {
-            final cloudImage = userData['image_path']?.toString();
-            final cloudUser = updated.copyWith(
-              id: userData['id'] ?? updated.id,
-              fullName: userData['full_name']?.toString() ?? updated.fullName,
-              email: userData['email']?.toString() ?? updated.email,
-              imagePath: userData.containsKey('image_path') ? cloudImage : updated.imagePath,
-              role: userData['role']?.toString() ?? updated.role,
-              isActive: userData['is_active'] ?? updated.isActive,
-            );
-            await DatabaseHelper.instance.updateUser(cloudUser);
-            _currentUser = cloudUser;
-            notifyListeners();
-          }
-        } catch (e) {
-          debugPrint('[AuthProvider] Online profile reload failed: $e');
-        }
-      }
-    }
   }
 
   Future<void> logout() async {
     try {
       await ApiService.instance.logout();
     } catch (_) {}
+
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_snapshotKey);
     await prefs.remove('logged_in_username');
+
     _currentUser = null;
     _isLoggedIn = false;
     _isLocked = false;
     _preferPinLogin = true;
-    _hasRegisteredUsers = await DatabaseHelper.instance.hasUsers();
+    _hasRegisteredUsers = isDeviceConfigured;
     notifyListeners();
-  }
-
-  Future<bool> changePassword(String currentPassword, String newPassword) async {
-    if (_currentUser == null) return false;
-
-    final user = await DatabaseHelper.instance.loginUser(_currentUser!.username, currentPassword);
-    if (user == null) return false;
-
-    final result = await DatabaseHelper.instance.updateUserPassword(_currentUser!.id!, newPassword);
-    if (result > 0) {
-      _currentUser = await DatabaseHelper.instance.getUser(_currentUser!.username);
-      notifyListeners();
-      return true;
-    }
-    return false;
   }
 }

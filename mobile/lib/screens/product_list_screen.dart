@@ -592,23 +592,34 @@ class _ProductListScreenState extends State<ProductListScreen> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
+                final authProvider = context.read<AuthProvider>();
+                final prodProvider = context.read<ProductProvider>();
+                final messenger = ScaffoldMessenger.of(context);
+
                 if (auth.currentUser?.hasPin == true) {
                   final entered = pinController.text.trim();
                   if (entered.isEmpty) {
                     setDialogState(() => pinError = 'PIN required');
                     return;
                   }
-                  if (auth.currentUser!.pin != entered) {
+                  final ok = await authProvider.verifyPin(entered);
+                  if (!ok) {
                     setDialogState(() => pinError = 'Incorrect PIN');
                     return;
                   }
                 }
-                context.read<ProductProvider>().deleteProduct(product.id!);
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Removed "${product.name}"')),
-                );
+                try {
+                  await prodProvider.deleteProduct(product.id!);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  messenger.showSnackBar(
+                    SnackBar(content: Text('Removed "${product.name}"')),
+                  );
+                } catch (e) {
+                  if (ctx.mounted) {
+                    setDialogState(() => pinError = e.toString().replaceFirst('Exception: ', ''));
+                  }
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accentRose,

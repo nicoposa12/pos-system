@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/server_settings_dialog.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -42,8 +43,23 @@ class _LoginScreenState extends State<LoginScreen> {
       final errorMsg =
           context.read<AuthProvider>().errorMessage ??
           'Invalid username or password';
+      final isConnectionIssue =
+          errorMsg.contains('server') ||
+          errorMsg.contains('timed out') ||
+          errorMsg.contains('reach');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMsg), backgroundColor: AppTheme.accentRose),
+        SnackBar(
+          content: Text(errorMsg),
+          backgroundColor: AppTheme.accentRose,
+          duration: Duration(seconds: isConnectionIssue ? 6 : 4),
+          action: isConnectionIssue
+              ? SnackBarAction(
+                  label: 'Server Settings',
+                  textColor: Colors.white,
+                  onPressed: () => showServerSettingsDialog(context),
+                )
+              : null,
+        ),
       );
     }
   }
@@ -165,6 +181,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ],
                             ),
+                          ),
+                          IconButton(
+                            onPressed: () => showServerSettingsDialog(context),
+                            icon: const Icon(
+                              Icons.dns_rounded,
+                              color: AppTheme.textSecondaryDark,
+                              size: 20,
+                            ),
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppTheme.cardDark,
+                              side: const BorderSide(
+                                color: AppTheme.borderDark,
+                              ),
+                            ),
+                            tooltip: 'Server Settings',
                           ),
                         ],
                       ),

@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import '../data/database_helper.dart';
 import '../models/user.dart';
 import '../services/api_service.dart';
-import '../services/sync_service.dart';
 
 /// Aggregated store telemetry for a single client business or admin account.
 class StoreMetrics {
@@ -37,8 +35,7 @@ class StoreMetrics {
 }
 
 /// Shared state controller for the Executive Admin Console.
-/// Uses Neon PostgreSQL (via Laravel API) as the primary source of truth
-/// and gracefully falls back to local SQLite cache when offline.
+/// Uses the cloud API as the sole source of truth and holds telemetry in memory.
 class AdminStoreController extends ChangeNotifier {
   List<User> _users = [];
   Map<int, StoreMetrics> _metrics = {};
@@ -68,7 +65,7 @@ class AdminStoreController extends ChangeNotifier {
       _lastSyncedAt = DateTime.now();
     }
 
-    SyncService.instance.isOnline.addListener(_onNetworkOnlineChanged);
+    ApiService.instance.isOnline.addListener(_onNetworkOnlineChanged);
 
     if (!skipInitialRefresh) {
       refresh();
@@ -77,7 +74,7 @@ class AdminStoreController extends ChangeNotifier {
   }
 
   void _onNetworkOnlineChanged() {
-    if (SyncService.instance.isOnline.value) {
+    if (ApiService.instance.isOnline.value) {
       debugPrint(
         '[AdminStoreController] Connectivity online: refreshing live store telemetry...',
       );
@@ -95,7 +92,7 @@ class AdminStoreController extends ChangeNotifier {
 
   void startRealtimePolling() {
     _realtimeTimer?.cancel();
-    // Silently fetch store metrics every 25 seconds for executive dashboard (free-tier optimized)
+    // Silently fetch store metrics every 25 seconds for executive dashboard
     _realtimeTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       final idleMins = DateTime.now().difference(_lastActivity).inMinutes;
       if (idleMins >= 15) {
@@ -122,7 +119,7 @@ class AdminStoreController extends ChangeNotifier {
 
   @override
   void dispose() {
-    SyncService.instance.isOnline.removeListener(_onNetworkOnlineChanged);
+    ApiService.instance.isOnline.removeListener(_onNetworkOnlineChanged);
     stopRealtimePolling();
     super.dispose();
   }
@@ -166,10 +163,9 @@ class AdminStoreController extends ChangeNotifier {
 
   StoreMetrics metricsFor(User user) {
     if (user.id == null) {
-      return StoreMetrics(hasPin: user.pin != null && user.pin!.isNotEmpty);
+      return StoreMetrics(hasPin: user.hasPin);
     }
-    return _metrics[user.id!] ??
-        StoreMetrics(hasPin: user.pin != null && user.pin!.isNotEmpty);
+    return _metrics[user.id!] ?? StoreMetrics(hasPin: user.hasPin);
   }
 
   /// Client businesses ranked by lifetime sales descending.
@@ -206,42 +202,7 @@ class AdminStoreController extends ChangeNotifier {
     _networkProducts = products;
   }
 
-  bool _isConnectionFailure(Object error) {
-    if (error is DioException) {
-      return error.type == DioExceptionType.connectionError ||
-          error.type == DioExceptionType.connectionTimeout ||
-          error.type == DioExceptionType.sendTimeout ||
-          error.type == DioExceptionType.receiveTimeout ||
-          error.response == null;
-    }
-    return false;
-  }
-
-  String _extractErrorMessage(Object error, String fallback) {
-    if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map) {
-        if (data['errors'] is Map) {
-          final errorsMap = data['errors'] as Map;
-          for (final entry in errorsMap.values) {
-            if (entry is List && entry.isNotEmpty) {
-              return entry.first.toString();
-            }
-          }
-        }
-        if (data['message'] != null &&
-            data['message'].toString().trim().isNotEmpty) {
-          return data['message'].toString();
-        }
-      }
-      if (_isConnectionFailure(error)) {
-        return 'Cannot reach cloud server. Please check your internet connection.';
-      }
-    }
-    return fallback;
-  }
-
-  /// Syncs client directory and store KPIs from Neon Cloud, falling back to local SQLite.
+  /// Syncs client directory and store KPIs from Neon Cloud API.
   Future<void> refresh({bool silent = false}) async {
     if (!silent) {
       _isLoading = true;
@@ -249,177 +210,68 @@ class AdminStoreController extends ChangeNotifier {
     }
 
     try {
-      await DatabaseHelper.instance.ensureDefaultAdmin();
+      final onlineData = await ApiService.instance.getAdminClients();
+      final rawClients = onlineData['clients'];
+      if (rawClients is List) {
+        final List<User> cloudUsers = [];
+        final Map<int, StoreMetrics> cloudMetrics = {};
 
-      // 1. Primary path: Live Neon PostgreSQL via Backend API
-      try {
-        final onlineData = await ApiService.instance.getAdminClients();
-        final rawClients = onlineData['clients'];
-        if (rawClients is List) {
-          final List<User> cloudUsers = [];
-          final Map<int, StoreMetrics> cloudMetrics = {};
-          final Set<String> cloudUsernames = {};
+        for (final raw in rawClients) {
+          if (raw is! Map) continue;
+          final item = Map<String, dynamic>.from(raw);
+          final cloudUser = User.fromJson(item);
+          cloudUsers.add(cloudUser);
 
-          for (final raw in rawClients) {
-            if (raw is! Map) continue;
-            final item = Map<String, dynamic>.from(raw);
-            final username = (item['username'] ?? '').toString();
-            if (username.isEmpty) continue;
-            cloudUsernames.add(username.toLowerCase());
-
-            final localMatch = await DatabaseHelper.instance.getUser(username);
-            final id = (item['id'] as num?)?.toInt();
-            final hasPin =
-                item['has_pin'] == true ||
-                (localMatch?.pin != null && localMatch!.pin!.isNotEmpty);
-
-            final cloudUser = User(
-              id: id ?? localMatch?.id,
-              username: username,
-              password: localMatch?.password ?? '',
-              pin: localMatch?.pin,
-              fullName: (item['full_name'] ?? username).toString(),
-              email: item['email']?.toString(),
-              imagePath: item['image_path']?.toString() ?? localMatch?.imagePath,
-              role: (item['role'] ?? 'client').toString(),
-              isActive: item['is_active'] != false,
-              createdAt: item['created_at'] != null
-                  ? DateTime.tryParse(item['created_at'].toString()) ??
-                        DateTime.now()
-                  : (localMatch?.createdAt ?? DateTime.now()),
+          if (cloudUser.id != null) {
+            final statsRaw = item['stats'] is Map
+                ? Map<String, dynamic>.from(item['stats'] as Map)
+                : const <String, dynamic>{};
+            cloudMetrics[cloudUser.id!] = StoreMetrics.fromJson(
+              statsRaw,
+              hasPin: cloudUser.hasPin,
             );
-            cloudUsers.add(cloudUser);
-
-            if (cloudUser.id != null) {
-              final statsRaw = item['stats'] is Map
-                  ? Map<String, dynamic>.from(item['stats'] as Map)
-                  : const <String, dynamic>{};
-              cloudMetrics[cloudUser.id!] = StoreMetrics.fromJson(
-                statsRaw,
-                hasPin: hasPin,
-              );
-            }
           }
-
-          final summary = onlineData['summary'] is Map
-              ? Map<String, dynamic>.from(onlineData['summary'] as Map)
-              : const <String, dynamic>{};
-
-          // 2. Commit Live Cloud state to UI immediately
-          _users = cloudUsers;
-          _metrics = cloudMetrics;
-          _networkSales =
-              (summary['total_network_sales'] as num?)?.toDouble() ??
-              cloudMetrics.values.fold(0.0, (acc, m) => acc + m.totalSales);
-          _networkProducts =
-              (summary['total_network_products'] as num?)?.toInt() ??
-              cloudMetrics.values.fold(0, (acc, m) => acc + m.productsCount);
-          _isCloudSynced = true;
-          _syncBannerMessage = null;
-          _lastSyncedAt = DateTime.now();
-          SyncService.instance.isOnline.value = true;
-          _isLoading = false;
-          notifyListeners();
-
-          // 3. Persist local SQLite cache mirror in background (isolated from cloud sync state)
-          unawaited(_persistLocalMirror(cloudUsers, cloudUsernames));
-          return;
         }
-      } catch (e) {
-        debugPrint(
-          '[AdminStoreController] Cloud fetch unavailable, using SQLite cache: $e',
-        );
-        _isCloudSynced = false;
-        if (e is DioException) {
-          final statusCode = e.response?.statusCode;
-          if (statusCode == 401 || statusCode == 403) {
-            _syncBannerMessage =
-                'Admin authentication required. Please sign in again.';
-          } else if (_isConnectionFailure(e)) {
-            _syncBannerMessage =
-                'Cannot reach cloud server. Showing offline cache.';
-          } else {
-            _syncBannerMessage =
-                'Cloud unavailable (${statusCode ?? "error"}). Showing offline cache.';
-          }
-        } else {
-          _syncBannerMessage =
-              'Showing offline cache — connect to internet to sync live store telemetry.';
-        }
+
+        final summary = onlineData['summary'] is Map
+            ? Map<String, dynamic>.from(onlineData['summary'] as Map)
+            : const <String, dynamic>{};
+
+        _users = cloudUsers;
+        _metrics = cloudMetrics;
+        _networkSales = (summary['total_network_sales'] as num?)?.toDouble() ??
+            cloudMetrics.values.fold(0.0, (acc, m) => acc + m.totalSales);
+        _networkProducts =
+            (summary['total_network_products'] as num?)?.toInt() ??
+                cloudMetrics.values.fold(0, (acc, m) => acc + m.productsCount);
+        _isCloudSynced = true;
+        _syncBannerMessage = null;
+        _lastSyncedAt = DateTime.now();
       }
-
-      // 2. Offline Fallback: Local SQLite cache
-      final allLocal = await DatabaseHelper.instance.getAllUsers();
-      final Map<int, StoreMetrics> localMetrics = {};
-      for (final u in allLocal) {
-        if (u.id != null) {
-          final stats = await DatabaseHelper.instance.getUserStats(u.id!);
-          localMetrics[u.id!] = StoreMetrics.fromJson(
-            stats,
-            hasPin: u.pin != null && u.pin!.isNotEmpty,
-          );
-        }
-      }
-
-      _users = allLocal;
-      _metrics = localMetrics;
-      _recomputeSummaryFromMetrics();
     } catch (e) {
-      debugPrint('[AdminStoreController] Unexpected refresh error: $e');
+      debugPrint('[AdminStoreController] Cloud fetch error: $e');
+      _isCloudSynced = false;
+      if (e is DioException) {
+        final statusCode = e.response?.statusCode;
+        if (statusCode == 401 || statusCode == 403) {
+          _syncBannerMessage =
+              'Admin authentication required. Please sign in again.';
+        } else if (ApiService.isConnectionError(e)) {
+          _syncBannerMessage =
+              'Cannot reach cloud server. Please check your internet connection.';
+        } else {
+          _syncBannerMessage = 'Server error (${statusCode ?? "offline"}).';
+        }
+      } else {
+        _syncBannerMessage = ApiService.describeError(e);
+      }
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  Future<void> _persistLocalMirror(
-    List<User> cloudUsers,
-    Set<String> cloudUsernames,
-  ) async {
-    try {
-      for (final cloudUser in cloudUsers) {
-        final localMatch = await DatabaseHelper.instance.getUser(
-          cloudUser.username,
-        );
-        if (localMatch != null) {
-          await DatabaseHelper.instance.updateUser(
-            localMatch.copyWith(
-              fullName: cloudUser.fullName,
-              email: cloudUser.email,
-              imagePath: cloudUser.imagePath,
-              role: cloudUser.role,
-              isActive: cloudUser.isActive,
-            ),
-          );
-        } else {
-          try {
-            await DatabaseHelper.instance.createUser(
-              cloudUser.copyWith(id: null),
-            );
-          } catch (_) {}
-        }
-      }
-
-      // Prune stale cached client accounts that were deleted from Neon
-      final localUsers = await DatabaseHelper.instance.getAllUsers();
-      for (final local in localUsers) {
-        final uname = local.username.toLowerCase();
-        if (uname != 'admin' &&
-            !cloudUsernames.contains(uname) &&
-            local.id != null) {
-          try {
-            await DatabaseHelper.instance.deleteUser(local.id!);
-          } catch (_) {}
-        }
-      }
-    } catch (e) {
-      debugPrint(
-        '[AdminStoreController] Warning: SQLite local cache mirror non-fatal error: $e',
-      );
-    }
-  }
-
-  /// Fetches live store breakdown (today's sales + 10 recent transactions) from Neon.
+  /// Fetches live store breakdown (today's sales + 10 recent transactions) from Cloud.
   Future<Map<String, dynamic>?> fetchStoreLiveDetails(int userId) async {
     try {
       final res = await ApiService.instance.getAdminClientDetails(userId);
@@ -433,7 +285,6 @@ class AdminStoreController extends ChangeNotifier {
   }
 
   /// Creates a new client store or platform administrator account.
-  /// Returns `null` on success, or an error string on failure.
   Future<String?> createAccount({
     required String username,
     required String fullName,
@@ -444,7 +295,7 @@ class AdminStoreController extends ChangeNotifier {
     String role = 'client',
   }) async {
     try {
-      final res = await ApiService.instance.createAdminClient(
+      await ApiService.instance.createAdminClient(
         username: username,
         fullName: fullName,
         password: password,
@@ -455,38 +306,14 @@ class AdminStoreController extends ChangeNotifier {
         imageFilePath: imageFilePath,
       );
 
-      final createdUser = res['user'] is Map ? Map<String, dynamic>.from(res['user'] as Map) : null;
-      final savedImagePath = createdUser?['image_path']?.toString() ?? imageFilePath;
-
-      // Mirror locally for instant offline resilience
-      final existingLocal = await DatabaseHelper.instance.getUser(username);
-      if (existingLocal == null) {
-        await DatabaseHelper.instance.createUser(
-          User(
-            username: username,
-            password: password,
-            fullName: fullName,
-            email: email,
-            pin: pin,
-            imagePath: savedImagePath,
-            role: role,
-            isActive: true,
-            createdAt: DateTime.now(),
-          ),
-        );
-      }
-
       await refresh(silent: true);
       return null;
     } catch (e) {
-      if (_isConnectionFailure(e)) {
-        return 'Offline: Connect to the internet to provision @$username in Neon Cloud.';
-      }
-      return _extractErrorMessage(e, 'Failed to create account.');
+      return ApiService.describeError(e, 'Failed to create account.');
     }
   }
 
-  /// Updates business name, email, role, and store photo. Returns `null` on success.
+  /// Updates business name, email, role, and store photo.
   Future<String?> updateAccount(
     User user, {
     required String fullName,
@@ -497,7 +324,7 @@ class AdminStoreController extends ChangeNotifier {
   }) async {
     if (user.id == null) return 'Invalid account ID.';
     try {
-      final res = await ApiService.instance.updateAdminClient(
+      await ApiService.instance.updateAdminClient(
         user.id!,
         fullName: fullName,
         email: email,
@@ -506,50 +333,26 @@ class AdminStoreController extends ChangeNotifier {
         removeImage: removeImage,
       );
 
-      final updatedData = res['user'] is Map ? Map<String, dynamic>.from(res['user'] as Map) : null;
-      final updatedImagePath = removeImage
-          ? null
-          : (updatedData?['image_path']?.toString() ?? imageFilePath ?? user.imagePath);
-
-      final local = await DatabaseHelper.instance.getUser(user.username);
-      if (local != null) {
-        await DatabaseHelper.instance.updateUser(
-          local.copyWith(
-            fullName: fullName,
-            email: email,
-            role: role,
-            imagePath: updatedImagePath,
-          ),
-        );
-      }
-
       await refresh(silent: true);
       return null;
     } catch (e) {
-      return _extractErrorMessage(e, 'Failed to update store details.');
+      return ApiService.describeError(e, 'Failed to update store details.');
     }
   }
 
-  /// Toggles active/suspended access for a store account. Returns `null` on success.
+  /// Toggles active/suspended access for a store account.
   Future<String?> toggleStatus(User user) async {
     if (user.id == null) return 'Invalid account ID.';
-    final targetState = !user.isActive;
     try {
       await ApiService.instance.toggleClientStatus(user.id!);
-
-      final local = await DatabaseHelper.instance.getUser(user.username);
-      if (local?.id != null) {
-        await DatabaseHelper.instance.updateUserStatus(local!.id!, targetState);
-      }
-
       await refresh(silent: true);
       return null;
     } catch (e) {
-      return _extractErrorMessage(e, 'Failed to update store access status.');
+      return ApiService.describeError(e, 'Failed to update store access status.');
     }
   }
 
-  /// Resets password and/or quick PIN for a store account. Returns `null` on success.
+  /// Resets password and/or quick PIN for a store account.
   Future<String?> resetCredentials(
     User user, {
     String? password,
@@ -563,38 +366,22 @@ class AdminStoreController extends ChangeNotifier {
         pin: (pin != null && pin.isNotEmpty) ? pin : null,
       );
 
-      final local = await DatabaseHelper.instance.getUser(user.username);
-      if (local?.id != null) {
-        await DatabaseHelper.instance.updateUserCredentials(
-          local!.id!,
-          password: (password != null && password.isNotEmpty) ? password : null,
-          pin: (pin != null && pin.isNotEmpty) ? pin : null,
-        );
-      }
-
       await refresh(silent: true);
       return null;
     } catch (e) {
-      return _extractErrorMessage(e, 'Failed to reset credentials.');
+      return ApiService.describeError(e, 'Failed to reset credentials.');
     }
   }
 
-  /// Permanently removes a store account and all its cloud + local records.
-  /// Returns `null` on success.
+  /// Permanently removes a store account and all its cloud records.
   Future<String?> deleteAccount(User user) async {
     if (user.id == null) return 'Invalid account ID.';
     try {
       await ApiService.instance.deleteAdminClient(user.id!);
-
-      final local = await DatabaseHelper.instance.getUser(user.username);
-      if (local?.id != null) {
-        await DatabaseHelper.instance.deleteUser(local!.id!);
-      }
-
       await refresh(silent: true);
       return null;
     } catch (e) {
-      return _extractErrorMessage(e, 'Failed to delete store account.');
+      return ApiService.describeError(e, 'Failed to delete store account.');
     }
   }
 }

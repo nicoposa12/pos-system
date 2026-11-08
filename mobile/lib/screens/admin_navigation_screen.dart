@@ -379,7 +379,7 @@ class _AdminNavigationScreenState extends State<AdminNavigationScreen> {
                                 : Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      if (adminUser?.pin != null)
+                                      if (adminUser?.hasPin == true)
                                         IconButton(
                                           tooltip: 'Lock Console',
                                           icon: const Icon(
@@ -654,7 +654,7 @@ class _AdminCommandOverview extends StatelessWidget {
                             : () => controller.refresh(),
                         icon: const Icon(Icons.sync_rounded),
                       ),
-                      if (screenWidth < 700 && user?.pin != null)
+                      if (screenWidth < 700 && user?.hasPin == true)
                         IconButton(
                           tooltip: 'Lock Console',
                           onPressed: () => auth.lock(),
@@ -1535,7 +1535,7 @@ class _AdminConsoleSettingsViewState extends State<_AdminConsoleSettingsView> {
                   icon: Icons.dialpad_rounded,
                   iconColor: AppTheme.accentViolet,
                   title: 'Master Quick PIN',
-                  subtitle: user?.pin != null
+                  subtitle: user?.hasPin == true
                       ? 'Active • Auto-locks console after 2 min idle'
                       : 'Configure 4–6 digit PIN for fast unlock',
                   onTap: () => _showUpdateAdminPinDialog(context, auth),
@@ -1548,7 +1548,7 @@ class _AdminConsoleSettingsViewState extends State<_AdminConsoleSettingsView> {
                   subtitle: 'Update your administrator login password',
                   onTap: () => _showChangeAdminPasswordDialog(context, auth),
                 ),
-                if (user?.pin != null) ...[
+                if (user?.hasPin == true) ...[
                   Divider(height: 1, color: AppTheme.borderColor(context)),
                   _AdminSettingsTile(
                     icon: Icons.lock_outline_rounded,

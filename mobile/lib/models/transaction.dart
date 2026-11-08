@@ -7,7 +7,15 @@ class SaleTransaction {
   final double change;
   final String paymentMethod; // 'cash', 'gcash', 'debt'
   final DateTime date;
-  final bool isSynced;
+
+  /// Customer name of the linked debt record (pending / utang sales).
+  final String? customerName;
+
+  /// Line items: `product_id`, `product_name`, `category`, `quantity`, `subtotal`.
+  final List<Map<String, dynamic>> items;
+
+  /// Server `updated_at` (ISO-8601), used as the incremental delta-sync cursor.
+  final String? updatedAt;
 
   SaleTransaction({
     this.id,
@@ -18,40 +26,51 @@ class SaleTransaction {
     this.change = 0.0,
     this.paymentMethod = 'cash',
     required this.date,
-    this.isSynced = false,
+    this.customerName,
+    this.items = const [],
+    this.updatedAt,
   });
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'user_id': userId,
-      'total_amount': totalAmount,
-      'discount': discount,
-      'cash_received': cashReceived,
-      'change_amount': change,
-      'payment_method': paymentMethod,
-      'date': date.toIso8601String(),
-      'is_synced': isSynced ? 1 : 0,
-    };
+  static double _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
   }
 
-  factory SaleTransaction.fromMap(Map<String, dynamic> map) {
-    DateTime parsedDate;
-    try {
-      parsedDate = DateTime.parse(map['date']);
-    } catch (_) {
-      parsedDate = DateTime.now();
+  /// Builds a transaction from the API payload (`/transactions`), including
+  /// eager-loaded `items.product` and `debt` relations.
+  factory SaleTransaction.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'];
+    final items = <Map<String, dynamic>>[];
+    if (rawItems is List) {
+      for (final raw in rawItems) {
+        if (raw is! Map) continue;
+        final product = raw['product'] is Map ? raw['product'] as Map : null;
+        final productId = int.tryParse(raw['product_id']?.toString() ?? '') ?? 0;
+        items.add({
+          'product_id': productId,
+          'product_name': product?['name']?.toString() ?? 'Item #$productId',
+          'category': product?['category']?.toString(),
+          'quantity': int.tryParse(raw['quantity']?.toString() ?? '') ?? 1,
+          'subtotal': _toDouble(raw['subtotal']),
+        });
+      }
     }
+
+    final debt = json['debt'] is Map ? json['debt'] as Map : null;
+
     return SaleTransaction(
-      id: map['id'],
-      userId: map['user_id'] ?? 0,
-      totalAmount: (map['total_amount'] as num?)?.toDouble() ?? 0.0,
-      discount: (map['discount'] as num?)?.toDouble() ?? 0.0,
-      cashReceived: (map['cash_received'] as num?)?.toDouble() ?? 0.0,
-      change: (map['change_amount'] as num?)?.toDouble() ?? 0.0,
-      paymentMethod: map['payment_method'] ?? 'cash',
-      date: parsedDate,
-      isSynced: (map['is_synced'] == 1 || map['is_synced'] == true),
+      id: int.tryParse(json['id']?.toString() ?? ''),
+      userId: int.tryParse(json['user_id']?.toString() ?? '') ?? 0,
+      totalAmount: _toDouble(json['total_amount']),
+      discount: _toDouble(json['discount']),
+      cashReceived: _toDouble(json['cash_received']),
+      change: _toDouble(json['change_amount']),
+      paymentMethod: json['payment_method']?.toString() ?? 'cash',
+      date: (DateTime.tryParse(json['date']?.toString() ?? '') ?? DateTime.now())
+          .toLocal(),
+      customerName: debt?['customer_name']?.toString(),
+      items: items,
+      updatedAt: json['updated_at']?.toString(),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/server_settings_dialog.dart';
 import '../widgets/store_image_view.dart';
 import 'login_screen.dart';
 
@@ -47,7 +48,7 @@ class _PinLoginScreenState extends State<PinLoginScreen>
   }
 
   void _handleKeyPress(String key) {
-    if (_pin.length >= _pinLength) return;
+    if (_pin.length >= _pinLength || context.read<AuthProvider>().isLoading) return;
     setState(() {
       _hasError = false;
       _pin += key;
@@ -59,7 +60,7 @@ class _PinLoginScreenState extends State<PinLoginScreen>
   }
 
   void _backspace() {
-    if (_pin.isEmpty) return;
+    if (_pin.isEmpty || context.read<AuthProvider>().isLoading) return;
     setState(() {
       _hasError = false;
       _pin = _pin.substring(0, _pin.length - 1);
@@ -67,7 +68,7 @@ class _PinLoginScreenState extends State<PinLoginScreen>
   }
 
   void _clearPin() {
-    if (_pin.isEmpty) return;
+    if (_pin.isEmpty || context.read<AuthProvider>().isLoading) return;
     setState(() {
       _hasError = false;
       _pin = '';
@@ -76,6 +77,7 @@ class _PinLoginScreenState extends State<PinLoginScreen>
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (context.read<AuthProvider>().isLoading) return KeyEventResult.handled;
 
     if (event.logicalKey == LogicalKeyboardKey.backspace) {
       _backspace();
@@ -92,7 +94,8 @@ class _PinLoginScreenState extends State<PinLoginScreen>
   }
 
   Future<void> _login() async {
-    final success = await context.read<AuthProvider>().loginWithPin(_pin);
+    final auth = context.read<AuthProvider>();
+    final success = await auth.loginWithPin(_pin);
     if (!mounted) return;
 
     if (success) {
@@ -100,19 +103,32 @@ class _PinLoginScreenState extends State<PinLoginScreen>
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } else {
-      HapticFeedback.vibrate();
-      _shakeController.forward(from: 0);
-      final errorMsg = context.read<AuthProvider>().errorMessage;
+      final isConnection = auth.isLastPinErrorConnection;
+      final errorMsg = auth.errorMessage;
+
+      if (!isConnection) {
+        HapticFeedback.vibrate();
+        _shakeController.forward(from: 0);
+      }
+
       if (errorMsg != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMsg),
             backgroundColor: AppTheme.accentRose,
+            duration: Duration(seconds: isConnection ? 6 : 4),
+            action: isConnection
+                ? SnackBarAction(
+                    label: 'Server Settings',
+                    textColor: Colors.white,
+                    onPressed: () => showServerSettingsDialog(context),
+                  )
+                : null,
           ),
         );
       }
       setState(() {
-        _hasError = true;
+        _hasError = !isConnection;
         _pin = '';
       });
     }
@@ -166,7 +182,26 @@ class _PinLoginScreenState extends State<PinLoginScreen>
             ),
 
             SafeArea(
-              child: LayoutBuilder(
+              child: Stack(
+                children: [
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton(
+                      onPressed: () => showServerSettingsDialog(context),
+                      icon: const Icon(
+                        Icons.dns_rounded,
+                        color: AppTheme.textSecondaryDark,
+                        size: 20,
+                      ),
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppTheme.cardDark,
+                        side: const BorderSide(color: AppTheme.borderDark),
+                      ),
+                      tooltip: 'Server Settings',
+                    ),
+                  ),
+                  LayoutBuilder(
                 builder: (context, constraints) {
                   final compact = constraints.maxHeight < 680;
                   final keySize = compact ? 58.0 : 68.0;
@@ -229,26 +264,41 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                               SizedBox(height: compact ? 14 : 20),
 
                               // Status Pill
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.accentOrange.withValues(
-                                    alpha: 0.14,
+                              InkWell(
+                                onTap: () => showServerSettingsDialog(context),
+                                borderRadius: BorderRadius.circular(999),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
                                   ),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  widget.isLockMode
-                                      ? 'REGISTER LOCKED'
-                                      : 'QUICK PIN ACCESS',
-                                  style: const TextStyle(
-                                    color: AppTheme.accentOrange,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.2,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.accentOrange.withValues(
+                                      alpha: 0.14,
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        widget.isLockMode
+                                            ? 'REGISTER LOCKED'
+                                            : 'QUICK PIN ACCESS',
+                                        style: const TextStyle(
+                                          color: AppTheme.accentOrange,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(
+                                        Icons.tune_rounded,
+                                        size: 12,
+                                        color: AppTheme.accentOrange,
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -267,25 +317,50 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                _hasError
-                                    ? 'Incorrect PIN for this register.'
-                                    : (widget.isLockMode
-                                          ? 'Unlock to resume your session'
-                                          : (auth.isDeviceConfigured
-                                              ? 'Terminal linked to @${auth.deviceAccountUsername}'
-                                              : 'Fast cashier sign-in')),
-                                style: TextStyle(
-                                  color: _hasError
-                                      ? AppTheme.accentRose
-                                      : AppTheme.textSecondaryDark,
-                                  fontSize: 13,
-                                  fontWeight: _hasError
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
+                              if (auth.isLoading)
+                                const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: AppTheme.accentOrange,
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Connecting to server...',
+                                      style: TextStyle(
+                                        color: AppTheme.accentOrange,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else
+                                Text(
+                                  _hasError
+                                      ? 'Incorrect PIN for this register.'
+                                      : (widget.isLockMode
+                                            ? 'Unlock to resume your session'
+                                            : (auth.isDeviceConfigured
+                                                ? 'Terminal linked to @${auth.deviceAccountUsername}'
+                                                : 'Fast cashier sign-in')),
+                                  style: TextStyle(
+                                    color: _hasError
+                                        ? AppTheme.accentRose
+                                        : AppTheme.textSecondaryDark,
+                                    fontSize: 13,
+                                    fontWeight: _hasError
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
-                                textAlign: TextAlign.center,
-                              ),
 
                               SizedBox(height: compact ? 20 : 28),
 
@@ -429,21 +504,43 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                                   ],
                                 ),
                               ] else ...[
-                                TextButton.icon(
-                                  onPressed: _usePasswordLogin,
-                                  icon: const Icon(
-                                    Icons.password_rounded,
-                                    size: 18,
-                                    color: AppTheme.textSecondaryDark,
-                                  ),
-                                  label: const Text(
-                                    'Use Password Login',
-                                    style: TextStyle(
-                                      color: AppTheme.textPrimaryDark,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
+                                Wrap(
+                                  alignment: WrapAlignment.center,
+                                  spacing: 8,
+                                  children: [
+                                    TextButton.icon(
+                                      onPressed: _usePasswordLogin,
+                                      icon: const Icon(
+                                        Icons.password_rounded,
+                                        size: 18,
+                                        color: AppTheme.textSecondaryDark,
+                                      ),
+                                      label: const Text(
+                                        'Use Password Login',
+                                        style: TextStyle(
+                                          color: AppTheme.textPrimaryDark,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                    TextButton.icon(
+                                      onPressed: () => showServerSettingsDialog(context),
+                                      icon: const Icon(
+                                        Icons.dns_rounded,
+                                        size: 16,
+                                        color: AppTheme.textSecondaryDark,
+                                      ),
+                                      label: const Text(
+                                        'Server Settings',
+                                        style: TextStyle(
+                                          color: AppTheme.textSecondaryDark,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ],
@@ -454,9 +551,11 @@ class _PinLoginScreenState extends State<PinLoginScreen>
                   );
                 },
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+      ],
+    ),
       ),
     );
   }

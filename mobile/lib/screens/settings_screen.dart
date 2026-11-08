@@ -5,15 +5,15 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import '../core/app_theme.dart';
-import '../data/database_helper.dart';
 import '../models/transaction.dart';
 import '../providers/auth_provider.dart';
+import '../providers/product_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/transaction_provider.dart';
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
-import '../services/sync_service.dart';
+import '../widgets/server_settings_dialog.dart';
 import '../widgets/store_image_view.dart';
 import 'client_management_screen.dart';
 
@@ -320,7 +320,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           decoration: BoxDecoration(
                             color:
-                                (user.pin != null
+                                (user.hasPin
                                         ? AppTheme.accentTeal
                                         : AppTheme.accentAmber)
                                     .withValues(alpha: 0.18),
@@ -330,19 +330,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                user.pin != null
+                                user.hasPin
                                     ? Icons.verified_user_rounded
                                     : Icons.pin_outlined,
                                 size: 14,
-                                color: user.pin != null
+                                color: user.hasPin
                                     ? AppTheme.accentTeal
                                     : AppTheme.accentAmber,
                               ),
                               const SizedBox(width: 5),
                               Text(
-                                user.pin != null ? 'PIN Active' : 'No PIN',
+                                user.hasPin ? 'PIN Active' : 'No PIN',
                                 style: TextStyle(
-                                  color: user.pin != null
+                                  color: user.hasPin
                                       ? AppTheme.accentTeal
                                       : AppTheme.accentAmber,
                                   fontSize: 11,
@@ -1027,7 +1027,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: Icons.dialpad_rounded,
                       iconColor: AppTheme.accentOrange,
                       title: 'Quick 4-Digit PIN',
-                      subtitle: user?.pin == null
+                      subtitle: (user?.hasPin != true)
                           ? 'Set up fast PIN unlock & idle lock'
                           : 'Active • Locks after 2 min of inactivity',
                       onTap: () => _showSetupPinDialog(context),
@@ -1045,15 +1045,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 const SizedBox(height: 28),
 
-                // ── 4.5 Cloud Sync & Online API ──
+                // ── 4.5 Cloud Connection & Online API ──
                 _SettingsSectionLabel(
-                  isAdmin ? 'CLOUD SYNC & ONLINE BACKEND' : 'CLOUD DATA SYNC',
+                  isAdmin ? 'CLOUD CONNECTION & ONLINE BACKEND' : 'CLOUD CONNECTION',
                 ),
                 const SizedBox(height: 8),
                 _SettingsGroupCard(
                   children: [
                     ValueListenableBuilder<bool>(
-                      valueListenable: SyncService.instance.isOnline,
+                      valueListenable: ApiService.instance.isOnline,
                       builder: (context, online, _) {
                         return _SettingsTile(
                           icon: online
@@ -1062,12 +1062,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           iconColor: online ? AppTheme.accentTeal : Colors.grey,
                           title: online
                               ? 'Cloud Server Connected'
-                              : 'Working Offline (SQLite)',
+                              : 'Cloud Server Disconnected',
                           subtitle: isAdmin
                               ? ApiService.instance.baseUrl
                               : (online
                                     ? 'Connected to Neon Cloud Backend'
-                                    : 'Offline Mode • Local SQLite active'),
+                                    : 'Please check your internet connection'),
                           trailing: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
@@ -1097,34 +1097,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                     ),
                     Divider(height: 1, color: AppTheme.borderColor(context)),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: SyncService.instance.isSyncing,
-                      builder: (context, isSyncing, _) {
-                        return _SettingsTile(
-                          icon: Icons.sync_rounded,
-                          iconColor: AppTheme.accentOrange,
-                          title: isSyncing
-                              ? 'Syncing...'
-                              : 'Sync Store with Cloud Now',
-                          subtitle:
-                              'Uploads offline products & sales, and downloads latest cloud catalog',
-                          trailing: isSyncing
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 14,
-                                ),
-                          onTap: (isSyncing || user == null)
-                              ? null
-                              : () => _handleManualSync(user.id!),
-                        );
-                      },
+                    _SettingsTile(
+                      icon: Icons.refresh_rounded,
+                      iconColor: AppTheme.accentOrange,
+                      title: 'Refresh Store Data',
+                      subtitle: 'Re-fetches products and sales from the cloud',
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                      ),
+                      onTap: () => _handleManualRefresh(),
                     ),
                     if (isAdmin) ...[
                       Divider(height: 1, color: AppTheme.borderColor(context)),
@@ -1140,36 +1122,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
 
-                if (isAdmin) ...[
-                  const SizedBox(height: 28),
-                  // ── 5. Data Management (Admin Only) ──
-                  const _SettingsSectionLabel('DATABASE BACKUP (ADMIN ONLY)'),
-                  const SizedBox(height: 8),
-                  _SettingsGroupCard(
-                    children: [
-                      _SettingsTile(
-                        icon: Icons.cloud_upload_outlined,
-                        iconColor: AppTheme.accentTeal,
-                        title: 'Backup Store Data',
-                        subtitle:
-                            'Export SQLite database file to share or save',
-                        onTap: _handleBackup,
-                      ),
-                      Divider(height: 1, color: AppTheme.borderColor(context)),
-                      _SettingsTile(
-                        icon: Icons.settings_backup_restore_rounded,
-                        iconColor: AppTheme.accentAmber,
-                        title: 'Restore from Backup',
-                        subtitle: 'Import a previously exported database file',
-                        onTap: _handleRestore,
-                      ),
-                    ],
-                  ),
-                ],
-
                 const SizedBox(height: 28),
 
-                // ── 6. Account & App Info ──
+                // ── 5. Account & App Info ──
                 const _SettingsSectionLabel('ACCOUNT'),
                 const SizedBox(height: 8),
                 _SettingsGroupCard(
@@ -1178,7 +1133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: Icons.info_outline_rounded,
                       iconColor: AppTheme.mutedText(context),
                       title: 'TindaKo POS Version',
-                      subtitle: 'Offline-first Retail POS',
+                      subtitle: 'Online Cloud POS',
                       trailing: Text(
                         'v1.0.0',
                         style: TextStyle(
@@ -1542,198 +1497,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _handleManualSync(int userId) async {
+  Future<void> _handleManualRefresh() async {
     final messenger = ScaffoldMessenger.of(context);
-    final auth = context.read<AuthProvider>();
-
-    // If not authenticated yet, attempt silent PIN re-authentication
-    if (!ApiService.instance.isAuthenticated &&
-        auth.currentUser != null &&
-        auth.currentUser!.pin != null) {
-      try {
-        await ApiService.instance.pinLogin(
-          pin: auth.currentUser!.pin!,
-          username: auth.currentUser!.username,
-        );
-      } catch (_) {}
-    }
-
-    if (!ApiService.instance.isAuthenticated) {
+    try {
+      await Future.wait([
+        context.read<ProductProvider>().fetchProducts(),
+        context.read<TransactionProvider>().fetchTransactions(),
+      ]);
+      if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(
           content: Row(
             children: [
-              Icon(Icons.lock_outline_rounded, color: Colors.white, size: 20),
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
               SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Not signed in to Cloud. Sign Out and Log In / Register to sync.',
-                ),
-              ),
+              Text('Store data refreshed from cloud!'),
             ],
           ),
-          backgroundColor: AppTheme.accentAmber,
+          backgroundColor: AppTheme.accentTeal,
         ),
       );
-      return;
-    }
-
-    final success = await SyncService.instance.syncNow(userId);
-    if (!mounted) return;
-    messenger.showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(
-              success ? Icons.check_circle_rounded : Icons.info_outline_rounded,
-              color: Colors.white,
-              size: 20,
-            ),
-            const SizedBox(width: 10),
-            Text(
-              success
-                  ? 'Sync completed successfully!'
-                  : 'Sync failed. Check connection.',
-            ),
-          ],
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to refresh data: $e'),
+          backgroundColor: AppTheme.accentRose,
         ),
-        backgroundColor: success ? AppTheme.accentTeal : AppTheme.accentAmber,
-      ),
-    );
+      );
+    }
   }
 
   void _showChangeServerUrlDialog(BuildContext context) {
-    final urlController = TextEditingController(
-      text: ApiService.instance.baseUrl,
+    showServerSettingsDialog(
+      context,
+      onUrlChanged: () {
+        if (mounted) setState(() {});
+      },
     );
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Configure Cloud API URL'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter the URL of your Laravel REST API (Local or Render live URL):',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: urlController,
-              decoration: const InputDecoration(
-                labelText: 'API Base URL',
-                hintText: 'https://your-api.onrender.com/api',
-                prefixIcon: Icon(Icons.link_rounded),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final newUrl = urlController.text.trim();
-              if (newUrl.isNotEmpty) {
-                await ApiService.instance.setBaseUrl(newUrl);
-                setState(() {});
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _handleBackup() async {
-    try {
-      final path = await DatabaseHelper.instance.backupDatabase();
-      final file = XFile(path);
-
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [file],
-          text: 'TindaKo Database Backup',
-          subject: 'TindaKo Backup ${DateTime.now().toString().split('.')[0]}',
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Backup failed: $e'),
-            backgroundColor: AppTheme.accentRose,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _handleRestore() async {
-    try {
-      final result = await FilePicker.pickFiles(type: FileType.any);
-
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-
-        if (mounted) {
-          final confirm = await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text(
-                'Confirm Restore',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              content: const Text(
-                'Restoring will replace all current products and transactions. Continue?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accentRose,
-                    minimumSize: const Size(120, 44),
-                  ),
-                  child: const Text('Restore Now'),
-                ),
-              ],
-            ),
-          );
-
-          if (confirm == true) {
-            await DatabaseHelper.instance.restoreDatabase(file);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Database restored! Please sign in again.'),
-                  backgroundColor: AppTheme.accentTeal,
-                ),
-              );
-              context.read<AuthProvider>().logout();
-              Navigator.pop(context);
-            }
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Restore failed: $e'),
-            backgroundColor: AppTheme.accentRose,
-          ),
-        );
-      }
-    }
   }
 }
 

@@ -89,38 +89,8 @@ class AuthController extends Controller
 
         $matchedUser = null;
         foreach ($candidates as $user) {
-            $isMatch = false;
-            $needsHashUpgrade = false;
-
-            // Direct check for legacy plaintext PIN
-            if ($user->pin === $validated['pin']) {
-                $isMatch = true;
-                $needsHashUpgrade = true;
-            } else {
-                // Check if stored PIN is a valid password hash
-                try {
-                    $info = password_get_info((string) $user->pin);
-                    if (!empty($info['algo'])) {
-                        $isMatch = Hash::check($validated['pin'], $user->pin);
-                    }
-                } catch (\Throwable) {
-                    $isMatch = false;
-                }
-            }
-
-            if ($isMatch) {
+            if ($this->pinMatches($user, $validated['pin'])) {
                 $matchedUser = $user;
-                // Seamlessly upgrade legacy plaintext PIN to bcrypt hash in database
-                if ($needsHashUpgrade) {
-                    // Non-fatal: a failed hash upgrade must never block a valid login
-                    try {
-                        $user->pin = Hash::make($validated['pin']);
-                        $user->save();
-                    } catch (\Throwable $e) {
-                        $user->pin = $validated['pin'];
-                        Log::warning("PIN hash upgrade failed for user {$user->id}: " . $e->getMessage());
-                    }
-                }
                 break;
             }
         }
@@ -195,6 +165,55 @@ class AuthController extends Controller
     }
 
     /**
+     * Verify the authenticated user's PIN (idle-lock unlock, sensitive action confirmation)
+     * without issuing a new token.
+     */
+    public function verifyPin(Request $request)
+    {
+        $validated = $request->validate([
+            'pin' => 'required|string',
+        ]);
+
+        $user = $request->user();
+
+        if (empty($user->pin) || !$this->pinMatches($user, $validated['pin'])) {
+            return response()->json(['message' => 'Invalid PIN.'], 401);
+        }
+
+        if (!$user->is_active) {
+            return response()->json([
+                'message' => 'This account has been deactivated. Please contact an administrator.',
+            ], 403);
+        }
+
+        return response()->json(['message' => 'PIN verified']);
+    }
+
+    /**
+     * Change the authenticated user's password.
+     */
+    public function changePassword(Request $request)
+    {
+        $validated = $request->validate([
+            'current_password' => 'required|string',
+            'password' => 'required|string|min:6',
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($validated['current_password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['The current password is incorrect.'],
+            ]);
+        }
+
+        // The 'hashed' cast on User hashes the new password automatically
+        $user->update(['password' => $validated['password']]);
+
+        return response()->json(['message' => 'Password updated successfully']);
+    }
+
+    /**
      * Logout and revoke current access token.
      */
     public function logout(Request $request)
@@ -204,5 +223,37 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Logged out successfully',
         ]);
+    }
+
+    /**
+     * Checks a PIN against the stored value (bcrypt hash or legacy plaintext).
+     * Legacy plaintext PINs are transparently upgraded to a hash on match.
+     */
+    private function pinMatches(User $user, string $pin): bool
+    {
+        if (empty($user->pin)) {
+            return false;
+        }
+
+        // Direct check for legacy plaintext PIN
+        if ($user->pin === $pin) {
+            // Non-fatal: a failed hash upgrade must never block a valid login
+            try {
+                $user->pin = Hash::make($pin);
+                $user->save();
+            } catch (\Throwable $e) {
+                $user->pin = $pin;
+                Log::warning("PIN hash upgrade failed for user {$user->id}: " . $e->getMessage());
+            }
+            return true;
+        }
+
+        // Check if stored PIN is a valid password hash
+        try {
+            $info = password_get_info((string) $user->pin);
+            return !empty($info['algo']) && Hash::check($pin, $user->pin);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }
