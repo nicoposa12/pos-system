@@ -1353,7 +1353,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'TindaKo POS Version',
                       subtitle: 'Online Cloud POS',
                       trailing: Text(
-                        'v1.0.1+2',
+                        'v1.0.2+3',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
