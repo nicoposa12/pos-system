@@ -445,25 +445,25 @@ class _OnboardingSlideCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            padding: EdgeInsets.symmetric(
-              horizontal: veryCompact ? 16 : (compact ? 20 : 26),
-              vertical: veryCompact ? 14 : (compact ? 18 : 22),
-            ),
-            decoration: BoxDecoration(
-              color: AppTheme.cardDark,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppTheme.borderDark),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.center,
+        child: Container(
+          width: veryCompact ? 320 : 380,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: EdgeInsets.symmetric(
+            horizontal: veryCompact ? 16 : 22,
+            vertical: veryCompact ? 14 : 20,
+          ),
+          decoration: BoxDecoration(
+            color: AppTheme.cardDark,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppTheme.borderDark),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                 Row(
                   children: [
                     Container(
@@ -570,7 +570,6 @@ class _OnboardingSlideCard extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
