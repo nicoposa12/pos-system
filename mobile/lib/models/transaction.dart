@@ -58,6 +58,13 @@ class SaleTransaction {
 
     final debt = json['debt'] is Map ? json['debt'] as Map : null;
 
+    // Prefer created_at as it is the authoritative server UTC timestamp.
+    // Fall back to date, then now(). Always convert to the device's local timezone.
+    final rawDateStr = (json['created_at'] != null && json['created_at'].toString().trim().isNotEmpty)
+        ? json['created_at'].toString().trim()
+        : (json['date'] != null ? json['date'].toString().trim() : '');
+    final parsedDate = (DateTime.tryParse(rawDateStr) ?? DateTime.now()).toLocal();
+
     return SaleTransaction(
       id: int.tryParse(json['id']?.toString() ?? ''),
       userId: int.tryParse(json['user_id']?.toString() ?? '') ?? 0,
@@ -66,8 +73,7 @@ class SaleTransaction {
       cashReceived: _toDouble(json['cash_received']),
       change: _toDouble(json['change_amount']),
       paymentMethod: json['payment_method']?.toString() ?? 'cash',
-      date: (DateTime.tryParse(json['date']?.toString() ?? '') ?? DateTime.now())
-          .toLocal(),
+      date: parsedDate,
       customerName: debt?['customer_name']?.toString(),
       items: items,
       updatedAt: json['updated_at']?.toString(),

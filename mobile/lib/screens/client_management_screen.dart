@@ -1699,7 +1699,7 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
     final total = (tx['total_amount'] as num?)?.toDouble() ?? 0.0;
     final method = (tx['payment_method'] ?? 'cash').toString().toUpperCase();
     final items = tx['items'] is List ? (tx['items'] as List).length : 0;
-    final rawDate = tx['date'] ?? tx['created_at'];
+    final rawDate = tx['created_at'] ?? tx['date'];
     final parsedDate = rawDate != null ? DateTime.tryParse(rawDate.toString()) : null;
     final dateStr = parsedDate != null
         ? DateFormat('MMM d • h:mm a').format(parsedDate.toLocal())

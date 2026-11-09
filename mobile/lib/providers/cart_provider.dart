@@ -198,7 +198,7 @@ class CartProvider with ChangeNotifier {
         'change_amount': change > 0 ? change : 0.0,
         'payment_method': paymentMethod,
         'customer_name': customerName,
-        'date': DateTime.now().toIso8601String(),
+        'date': DateTime.now().toUtc().toIso8601String(),
         'items': payloadItems,
       });
 

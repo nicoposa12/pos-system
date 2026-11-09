@@ -79,7 +79,11 @@ class TransactionProvider with ChangeNotifier {
     for (final t in incoming) {
       if (t.id != null) byId[t.id!] = t;
     }
-    final merged = byId.values.toList()..sort((a, b) => b.date.compareTo(a.date));
+    final merged = byId.values.toList()..sort((a, b) {
+      final cmp = b.date.compareTo(a.date);
+      if (cmp != 0) return cmp;
+      return (b.id ?? 0).compareTo(a.id ?? 0);
+    });
     _setTransactions(merged);
   }
 
@@ -107,7 +111,11 @@ class TransactionProvider with ChangeNotifier {
           .whereType<Map>()
           .map((t) => SaleTransaction.fromJson(Map<String, dynamic>.from(t)));
       if (since == null) {
-        _setTransactions(parsed.toList()..sort((a, b) => b.date.compareTo(a.date)));
+        _setTransactions(parsed.toList()..sort((a, b) {
+          final cmp = b.date.compareTo(a.date);
+          if (cmp != 0) return cmp;
+          return (b.id ?? 0).compareTo(a.id ?? 0);
+        }));
       } else if (remote.isNotEmpty) {
         _merge(parsed);
       }

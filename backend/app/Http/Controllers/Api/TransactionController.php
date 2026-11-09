@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Models\TransactionItem;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -21,7 +22,7 @@ class TransactionController extends Controller
     {
         $query = $request->user()->transactions()
             ->with(['items.product:id,name,category,stock', 'debt'])
-            ->latest('date');
+            ->orderByDesc('id');
 
         // Incremental Delta Sync: return only records modified after the specified timestamp
         if ($request->filled('since')) {
@@ -129,7 +130,7 @@ class TransactionController extends Controller
                 'cash_received' => $validated['cash_received'] ?? 0.0,
                 'change_amount' => $validated['change_amount'] ?? 0.0,
                 'payment_method' => $validated['payment_method'],
-                'date' => $validated['date'] ?? now(),
+                'date' => !empty($validated['date']) ? Carbon::parse($validated['date'])->utc() : now(),
             ]);
 
             // 2. Insert items and decrement stock
@@ -156,7 +157,7 @@ class TransactionController extends Controller
                     'amount' => $validated['total_amount'],
                     'paid_amount' => $validated['cash_received'] ?? 0.0,
                     'status' => (($validated['cash_received'] ?? 0.0) >= $validated['total_amount']) ? 'paid' : 'pending',
-                    'date' => $validated['date'] ?? now(),
+                    'date' => !empty($validated['date']) ? Carbon::parse($validated['date'])->utc() : now(),
                 ]);
             }
 

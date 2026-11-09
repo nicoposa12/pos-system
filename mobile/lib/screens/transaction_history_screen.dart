@@ -1308,7 +1308,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                               const SizedBox(height: 10),
                           itemBuilder: (_, i) {
                             final ret = returns[i];
-                            final date = DateTime.parse(ret['date']);
+                            final date = (DateTime.tryParse(ret['date']?.toString() ?? '') ?? DateTime.now()).toLocal();
                             return Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
