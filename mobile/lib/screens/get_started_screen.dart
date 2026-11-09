@@ -123,128 +123,69 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
                 constraints: const BoxConstraints(maxWidth: 500),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final isCompactHeight = constraints.maxHeight < 680;
+                    final isLandscapeShort = constraints.maxHeight < 500;
+                    final isCompactHeight = constraints.maxHeight < 720;
                     final isVeryCompact =
-                        constraints.maxHeight < 580 ||
+                        constraints.maxHeight < 620 ||
                         constraints.maxWidth < 360;
 
-                    return SingleChildScrollView(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isVeryCompact ? 16 : 24,
-                        vertical: isCompactHeight ? 12 : 24,
-                      ),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: math.max(
-                            0,
-                            constraints.maxHeight - (isCompactHeight ? 24 : 48),
-                          ),
+                    if (isLandscapeShort) {
+                      // In landscape or very short screens, allow scrolling so nothing overflows
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                            _buildTopBrandRow(),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 220,
+                              child: PageView.builder(
+                                controller: _pageController,
+                                itemCount: _slides.length,
+                                onPageChanged: (index) {
+                                  setState(() => _currentPage = index);
+                                },
+                                itemBuilder: (context, index) {
+                                  return _OnboardingSlideCard(
+                                    slide: _slides[index],
+                                    compact: true,
+                                    veryCompact: true,
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            _buildDots(),
+                            const SizedBox(height: 14),
+                            _buildBottomCta(
+                              context,
+                              isCompact: true,
+                              isVeryCompact: true,
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    // Portrait phones: Fits cleanly on screen with CTA pinned at bottom!
+                    return Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isVeryCompact ? 16 : 24,
+                        vertical: isCompactHeight ? 12 : 20,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildTopBrandRow(),
+                          SizedBox(height: isCompactHeight ? 10 : 16),
+                          Expanded(
+                            child: Column(
                               children: [
-                                // ── Top Brand Row ──
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 42,
-                                      height: 42,
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.cardDark,
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: AppTheme.borderDark,
-                                        ),
-                                      ),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: Image.asset(
-                                        'assets/images/app_icon.png',
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, _, _) => const Icon(
-                                          Icons.storefront_rounded,
-                                          color: AppTheme.accentOrange,
-                                          size: 22,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    const Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            'TindaKo',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w800,
-                                              letterSpacing: -0.3,
-                                            ),
-                                          ),
-                                          Text(
-                                            'Point of Sale & Inventory',
-                                            style: TextStyle(
-                                              color: AppTheme.textSecondaryDark,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.accentTeal.withValues(
-                                          alpha: 0.14,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
-                                        border: Border.all(
-                                          color: AppTheme.accentTeal.withValues(
-                                            alpha: 0.35,
-                                          ),
-                                        ),
-                                      ),
-                                      child: const Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.cloud_done_rounded,
-                                            size: 14,
-                                            color: AppTheme.accentTeal,
-                                          ),
-                                          SizedBox(width: 4),
-                                          Text(
-                                            'Cloud-Connected',
-                                            style: TextStyle(
-                                              color: AppTheme.accentTeal,
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                SizedBox(height: isCompactHeight ? 12 : 24),
-
-                                // ── Feature Carousel ──
-                                SizedBox(
-                                  height: isVeryCompact
-                                      ? 260
-                                      : (isCompactHeight ? 300 : 360),
+                                Expanded(
                                   child: PageView.builder(
                                     controller: _pageController,
                                     itemCount: _slides.length,
@@ -260,123 +201,18 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
                                     },
                                   ),
                                 ),
-
-                                SizedBox(height: isCompactHeight ? 10 : 18),
-
-                                // ── Page Indicator Dots ──
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: List.generate(_slides.length, (
-                                    index,
-                                  ) {
-                                    final isActive = _currentPage == index;
-                                    return GestureDetector(
-                                      onTap: () {
-                                        _pageController.animateToPage(
-                                          index,
-                                          duration: const Duration(
-                                            milliseconds: 350,
-                                          ),
-                                          curve: Curves.easeOutCubic,
-                                        );
-                                      },
-                                      child: AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 300,
-                                        ),
-                                        margin: const EdgeInsets.symmetric(
-                                          horizontal: 4,
-                                        ),
-                                        height: 6,
-                                        width: isActive ? 28 : 8,
-                                        decoration: BoxDecoration(
-                                          color: isActive
-                                              ? AppTheme.accentOrange
-                                              : AppTheme.borderDark,
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ),
-                              ],
-                            ),
-
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SizedBox(height: isCompactHeight ? 14 : 24),
-
-                                // ── Primary CTA ──
-                                SizedBox(
-                                  height: 52,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => const LoginScreen(),
-                                        ),
-                                      );
-                                    },
-                                    icon: const Icon(
-                                      Icons.login_rounded,
-                                      size: 20,
-                                    ),
-                                    label: const Text('Sign In to Register'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.accentOrange,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      textStyle: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
                                 const SizedBox(height: 10),
-
-                                // ── Administrator Managed Note ──
-                                Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 4,
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.admin_panel_settings_outlined,
-                                          size: 15,
-                                          color: AppTheme.textSecondaryDark,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            'Accounts are provisioned by Administrator',
-                                            style: TextStyle(
-                                              color: AppTheme.textSecondaryDark
-                                                  .withValues(alpha: 0.8),
-                                              fontSize: 11.5,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                                _buildDots(),
                               ],
                             ),
-                          ],
-                        ),
+                          ),
+                          SizedBox(height: isCompactHeight ? 12 : 18),
+                          _buildBottomCta(
+                            context,
+                            isCompact: isCompactHeight,
+                            isVeryCompact: isVeryCompact,
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -386,6 +222,193 @@ class _GetStartedScreenState extends State<GetStartedScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTopBrandRow() {
+    return Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: AppTheme.cardDark,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppTheme.borderDark,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Image.asset(
+            'assets/images/app_icon.png',
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const Icon(
+              Icons.storefront_rounded,
+              color: AppTheme.accentOrange,
+              size: 22,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'TindaKo',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              Text(
+                'Point of Sale & Inventory',
+                style: TextStyle(
+                  color: AppTheme.textSecondaryDark,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 5,
+          ),
+          decoration: BoxDecoration(
+            color: AppTheme.accentTeal.withValues(
+              alpha: 0.14,
+            ),
+            borderRadius: BorderRadius.circular(
+              999,
+            ),
+            border: Border.all(
+              color: AppTheme.accentTeal.withValues(
+                alpha: 0.35,
+              ),
+            ),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.cloud_done_rounded,
+                size: 14,
+                color: AppTheme.accentTeal,
+              ),
+              SizedBox(width: 4),
+              Text(
+                'Cloud-Connected',
+                style: TextStyle(
+                  color: AppTheme.accentTeal,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDots() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(_slides.length, (index) {
+        final isActive = _currentPage == index;
+        return GestureDetector(
+          onTap: () {
+            _pageController.animateToPage(
+              index,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+            );
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            height: 6,
+            width: isActive ? 28 : 8,
+            decoration: BoxDecoration(
+              color: isActive ? AppTheme.accentOrange : AppTheme.borderDark,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildBottomCta(
+    BuildContext context, {
+    required bool isCompact,
+    required bool isVeryCompact,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: isVeryCompact ? 46 : 50,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const LoginScreen(),
+                ),
+              );
+            },
+            icon: const Icon(
+              Icons.login_rounded,
+              size: 19,
+            ),
+            label: const Text('Sign In to Register'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentOrange,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              textStyle: TextStyle(
+                fontSize: isVeryCompact ? 14.5 : 15.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.admin_panel_settings_outlined,
+                size: 14,
+                color: AppTheme.textSecondaryDark,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'Accounts are provisioned by Administrator',
+                  style: TextStyle(
+                    color: AppTheme.textSecondaryDark.withValues(alpha: 0.8),
+                    fontSize: isVeryCompact ? 10.5 : 11.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -422,121 +445,129 @@ class _OnboardingSlideCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: SingleChildScrollView(
-        child: Container(
-          padding: EdgeInsets.all(veryCompact ? 14 : (compact ? 18 : 28)),
-          decoration: BoxDecoration(
-            color: AppTheme.cardDark,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppTheme.borderDark),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: veryCompact ? 40 : (compact ? 46 : 56),
-                    height: veryCompact ? 40 : (compact ? 46 : 56),
-                    decoration: BoxDecoration(
-                      color: slide.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: slide.accent.withValues(alpha: 0.3),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            padding: EdgeInsets.symmetric(
+              horizontal: veryCompact ? 16 : (compact ? 20 : 26),
+              vertical: veryCompact ? 14 : (compact ? 18 : 22),
+            ),
+            decoration: BoxDecoration(
+              color: AppTheme.cardDark,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppTheme.borderDark),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: veryCompact ? 38 : (compact ? 44 : 52),
+                      height: veryCompact ? 38 : (compact ? 44 : 52),
+                      decoration: BoxDecoration(
+                        color: slide.accent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: slide.accent.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Icon(
+                        slide.icon,
+                        color: slide.accent,
+                        size: veryCompact ? 20 : (compact ? 22 : 26),
                       ),
                     ),
-                    child: Icon(
-                      slide.icon,
-                      color: slide.accent,
-                      size: veryCompact ? 20 : (compact ? 24 : 28),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceDark,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.borderDark),
+                        ),
+                        child: Text(
+                          slide.badge,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: slide.accent,
+                            fontSize: veryCompact ? 10 : 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ),
                     ),
+                  ],
+                ),
+                SizedBox(height: veryCompact ? 10 : (compact ? 12 : 18)),
+                Text(
+                  slide.title,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: veryCompact ? 18 : (compact ? 21 : 26),
+                    height: 1.18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
                   ),
-                  const SizedBox(width: 12),
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                ),
+                SizedBox(height: veryCompact ? 6 : (compact ? 8 : 10)),
+                Text(
+                  slide.description,
+                  style: TextStyle(
+                    color: AppTheme.textSecondaryDark,
+                    fontSize: veryCompact ? 11.5 : (compact ? 12.5 : 14),
+                    height: 1.4,
+                  ),
+                ),
+                SizedBox(height: veryCompact ? 10 : (compact ? 12 : 18)),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: slide.highlights.map((chip) {
+                    return Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: veryCompact ? 8 : 10,
+                        vertical: veryCompact ? 4 : 5,
                       ),
                       decoration: BoxDecoration(
                         color: AppTheme.surfaceDark,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppTheme.borderDark),
                       ),
-                      child: Text(
-                        slide.badge,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: slide.accent,
-                          fontSize: veryCompact ? 10 : 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.0,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: veryCompact ? 10 : (compact ? 14 : 24)),
-              Text(
-                slide.title,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: veryCompact ? 18 : (compact ? 22 : 30),
-                  height: 1.18,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.6,
-                ),
-              ),
-              SizedBox(height: veryCompact ? 8 : 12),
-              Text(
-                slide.description,
-                style: TextStyle(
-                  color: AppTheme.textSecondaryDark,
-                  fontSize: veryCompact ? 12 : (compact ? 13.5 : 15),
-                  height: 1.45,
-                ),
-              ),
-              SizedBox(height: veryCompact ? 12 : (compact ? 14 : 22)),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: slide.highlights.map((chip) {
-                  return Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: veryCompact ? 8 : 10,
-                      vertical: veryCompact ? 4 : 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceDark,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.borderDark),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.check_circle_rounded,
-                          size: veryCompact ? 12 : 14,
-                          color: slide.accent,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          chip,
-                          style: TextStyle(
-                            color: AppTheme.textPrimaryDark,
-                            fontSize: veryCompact ? 11 : 12,
-                            fontWeight: FontWeight.w600,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            size: veryCompact ? 12 : 13,
+                            color: slide.accent,
                           ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-            ],
+                          const SizedBox(width: 5),
+                          Text(
+                            chip,
+                            style: TextStyle(
+                              color: AppTheme.textPrimaryDark,
+                              fontSize: veryCompact ? 10.5 : 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
