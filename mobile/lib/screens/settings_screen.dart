@@ -13,6 +13,7 @@ import '../providers/settings_provider.dart';
 import '../providers/transaction_provider.dart';
 import '../services/api_service.dart';
 import '../services/pdf_service.dart';
+import '../services/update_service.dart';
 import '../widgets/store_image_view.dart';
 import 'client_management_screen.dart';
 
@@ -1352,13 +1353,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'TindaKo POS Version',
                       subtitle: 'Online Cloud POS',
                       trailing: Text(
-                        'v1.0.0',
+                        'v1.0.1+2',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
                           color: AppTheme.mutedText(context),
                         ),
                       ),
+                    ),
+                    Divider(height: 1, color: AppTheme.borderColor(context)),
+                    _SettingsTile(
+                      icon: Icons.system_update_rounded,
+                      iconColor: AppTheme.accentTeal,
+                      title: 'Check for Updates',
+                      subtitle: 'Download the latest cloud patches & features',
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 14,
+                      ),
+                      onTap: () =>
+                          UpdateService.instance.manualCheckForUpdates(context),
                     ),
                     Divider(height: 1, color: AppTheme.borderColor(context)),
                     _SettingsTile(

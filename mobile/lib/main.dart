@@ -15,6 +15,7 @@ import 'screens/pin_login_screen.dart';
 import 'data/legacy_offline_migration.dart';
 import 'services/api_service.dart';
 import 'services/realtime_service.dart';
+import 'services/update_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,11 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
   void initState() {
     super.initState();
     _startIdleTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        UpdateService.instance.checkForUpdatesOnStartup(context);
+      }
+    });
   }
 
   @override
