@@ -1,23 +1,35 @@
 import 'dart:async';
+import 'dart:io' show Platform;
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shorebird_code_push/shorebird_code_push.dart';
 import '../core/app_theme.dart';
 import '../widgets/update_dialog.dart';
+import '../widgets/windows_update_dialog.dart';
+import 'api_service.dart';
 
-/// Centralized service for checking, tracking, and applying Shorebird OTA patches.
+/// Centralized service for checking, tracking, and applying updates.
+/// Supports Shorebird OTA patches on Android/iOS and in-app auto-updates on Windows desktop.
 class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
+
+  static const String currentVersion = '1.0.2';
+  static const int currentBuildNumber = 3;
 
   final ShorebirdUpdater _updater = ShorebirdUpdater();
 
   bool _hasCheckedOnStartup = false;
   bool _isChecking = false;
 
+  /// Whether running on a desktop platform (Windows, macOS, Linux).
+  bool get isDesktop => !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
   /// Whether the Shorebird update engine is available in the current environment
-  /// (True on release APK/AAB builds, false in debug/testing).
-  bool get isAvailable => _updater.isAvailable;
+  /// (True on release APK/AAB builds, false on desktop or in debug/testing).
+  bool get isAvailable => !isDesktop && _updater.isAvailable;
 
   /// Returns the current installed patch number, or null if on base release or unavailable.
   Future<int?> getCurrentPatchNumber() async {
@@ -30,14 +42,20 @@ class UpdateService {
     }
   }
 
-  /// Automatically checks for patches on app launch.
-  /// If an update is detected, displays the progress dialog to patch the app cleanly.
+  /// Automatically checks for updates on app launch.
+  /// On mobile, downloads Shorebird OTA patches. On Windows, silently checks for desktop updates.
   Future<void> checkForUpdatesOnStartup(BuildContext context) async {
-    if (_hasCheckedOnStartup || !isAvailable) return;
+    if (_hasCheckedOnStartup) return;
     _hasCheckedOnStartup = true;
 
+    if (isDesktop) {
+      await _checkDesktopUpdateSilently(context);
+      return;
+    }
+
+    if (!isAvailable) return;
+
     try {
-      // Safe 6-second timeout so offline or slow connections never block POS operations
       final status = await _updater
           .checkForUpdate(track: UpdateTrack.stable)
           .timeout(const Duration(seconds: 6));
@@ -50,8 +68,46 @@ class UpdateService {
         _showRestartRequiredBanner(context);
       }
     } catch (e) {
-      debugPrint('[UpdateService] Startup update check error: $e');
+      debugPrint('[UpdateService] Mobile startup update check error: $e');
     }
+  }
+
+  /// Silent desktop check on startup: if an update is found, displays an action banner.
+  Future<void> _checkDesktopUpdateSilently(BuildContext context) async {
+    try {
+      final update = await _fetchDesktopUpdateManifest();
+      if (update != null && _isNewerVersion(update.version, currentVersion)) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.system_update_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('TindaKo v${update.version} is available with new updates.'),
+                ),
+              ],
+            ),
+            action: SnackBarAction(
+              label: 'UPDATE NOW',
+              textColor: AppTheme.accentOrange,
+              onPressed: () {
+                WindowsUpdateDialog.show(
+                  context,
+                  version: update.version,
+                  downloadUrl: update.downloadUrl,
+                  releaseNotes: update.releaseNotes,
+                  forceUpdate: update.forceUpdate,
+                );
+              },
+            ),
+            backgroundColor: AppTheme.cardDark,
+            duration: const Duration(seconds: 12),
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   /// Manual check triggered by user tapping "Check for Updates" in Settings.
@@ -61,6 +117,53 @@ class UpdateService {
 
     final messenger = ScaffoldMessenger.of(context);
 
+    // Desktop handling: query cloud backend for latest Windows installer
+    if (isDesktop) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              SizedBox(width: 12),
+              Text('Checking for TindaKo Windows updates...'),
+            ],
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+
+      try {
+        final update = await _fetchDesktopUpdateManifest();
+        messenger.hideCurrentSnackBar();
+
+        if (update != null && _isNewerVersion(update.version, currentVersion)) {
+          if (!context.mounted) return;
+          await WindowsUpdateDialog.show(
+            context,
+            version: update.version,
+            downloadUrl: update.downloadUrl,
+            releaseNotes: update.releaseNotes,
+            forceUpdate: update.forceUpdate,
+          );
+        } else {
+          if (!context.mounted) return;
+          await _showDesktopUpdateStatus(context);
+        }
+      } catch (e) {
+        messenger.hideCurrentSnackBar();
+        if (!context.mounted) return;
+        await _showDesktopUpdateStatus(context);
+      } finally {
+        _isChecking = false;
+      }
+      return;
+    }
+
+    // Mobile / Shorebird handling
     if (!isAvailable) {
       _isChecking = false;
       messenger.showSnackBar(
@@ -131,6 +234,162 @@ class UpdateService {
     }
   }
 
+  /// Fetches the update manifest from the cloud backend.
+  Future<_DesktopUpdateInfo?> _fetchDesktopUpdateManifest() async {
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5),
+      ),
+    );
+
+    final url = '${ApiService.instance.baseUrl}/app/version';
+
+    try {
+      final res = await dio.get(url);
+      if (res.statusCode == 200 && res.data is Map) {
+        final win = res.data['windows'];
+        if (win is Map) {
+          final ver = win['version']?.toString() ?? '';
+          final dlUrl = win['download_url']?.toString() ?? '';
+          final notes = win['release_notes']?.toString() ?? '';
+          final force = win['force_update'] == true;
+          if (ver.isNotEmpty && dlUrl.isNotEmpty) {
+            return _DesktopUpdateInfo(
+              version: ver,
+              downloadUrl: dlUrl,
+              releaseNotes: notes,
+              forceUpdate: force,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[UpdateService] Failed to fetch cloud version: $e');
+    }
+
+    return null;
+  }
+
+  /// Compares whether remoteVersion is strictly newer than localVersion.
+  static bool _isNewerVersion(String remote, String current) {
+    if (remote.isEmpty) return false;
+    final rParts = remote.replaceAll(RegExp(r'[^0-9.]'), '').split('.').map((s) => int.tryParse(s) ?? 0).toList();
+    final cParts = current.replaceAll(RegExp(r'[^0-9.]'), '').split('.').map((s) => int.tryParse(s) ?? 0).toList();
+    final len = rParts.length > cParts.length ? rParts.length : cParts.length;
+    for (int i = 0; i < len; i++) {
+      final r = i < rParts.length ? rParts[i] : 0;
+      final c = i < cParts.length ? cParts[i] : 0;
+      if (r > c) return true;
+      if (r < c) return false;
+    }
+    return false;
+  }
+
+  /// Displays a clean desktop update dialog when up to date.
+  Future<void> _showDesktopUpdateStatus(BuildContext context) async {
+    if (!context.mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        final isDark = Theme.of(dialogCtx).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentTeal.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle_rounded,
+                  color: AppTheme.accentTeal,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'TindaKo is Up to Date',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppTheme.borderColor(dialogCtx),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Installed Version',
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    Text(
+                      'v$currentVersion+$currentBuildNumber (Windows)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.accentOrange,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'You are running the latest official Windows desktop release.',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Automatic in-app updates are enabled. New updates will download and install with a single click.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accentOrange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showRestartRequiredBanner(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -155,3 +414,16 @@ class UpdateService {
   }
 }
 
+class _DesktopUpdateInfo {
+  final String version;
+  final String downloadUrl;
+  final String releaseNotes;
+  final bool forceUpdate;
+
+  _DesktopUpdateInfo({
+    required this.version,
+    required this.downloadUrl,
+    required this.releaseNotes,
+    this.forceUpdate = false,
+  });
+}

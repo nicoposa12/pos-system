@@ -22,9 +22,11 @@ DisableProgramGroupPage=yes
 ; Allow installing without Administrator privileges for simple store PCs
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline dialog
+CloseApplications=force
+RestartApplications=no
 OutputDir=..\build\windows\installer
 OutputBaseFilename=TindaKo-Setup-v{#MyAppVersion}
-SetupIconFile=runner\resources\app_icon.ico
+SetupIconFile=C:\Users\basco\Devs\pos_system\mobile\windows\runner\resources\app_icon.ico
 SolidCompression=yes
 Compression=lzma2/ultra64
 WizardStyle=modern
@@ -45,5 +47,5 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall
 

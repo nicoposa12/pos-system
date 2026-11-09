@@ -19,6 +19,23 @@ Route::prefix('auth')->group(function () {
     Route::post('/pin-login', [AuthController::class, 'pinLogin'])->middleware('throttle:auth-limiter');
 });
 
+// Public App Version & Auto-Update Manifest
+Route::get('/app/version', function () {
+    return response()->json([
+        'windows' => [
+            'version' => env('WINDOWS_APP_VERSION', '1.0.2'),
+            'build_number' => (int) env('WINDOWS_BUILD_NUMBER', 3),
+            'download_url' => env('WINDOWS_DOWNLOAD_URL', 'https://github.com/nicoposa12/pos-system/releases/latest/download/TindaKo-Setup.exe'),
+            'release_notes' => env('WINDOWS_RELEASE_NOTES', 'TindaKo Windows release with realtime cloud sync and automatic updates.'),
+            'force_update' => false,
+        ],
+        'android' => [
+            'version' => env('ANDROID_APP_VERSION', '1.0.2'),
+            'build_number' => (int) env('ANDROID_BUILD_NUMBER', 3),
+        ],
+    ]);
+});
+
 // Public image proxy route (allows mobile and web apps to stream product and store images directly through API)
 Route::get('/media/products/{filename}', [ProductController::class, 'serveImage']);
 Route::get('/media/stores/{filename}', [AdminController::class, 'serveStoreImage']);
