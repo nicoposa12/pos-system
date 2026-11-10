@@ -2,7 +2,7 @@
 ; Single-Click Windows Installer for Store Owners and Cashiers
 
 #define MyAppName "TindaKo"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "TindaKo"
 #define MyAppURL "https://pos-system-1-y58u.onrender.com"
 #define MyAppExeName "tindako.exe"

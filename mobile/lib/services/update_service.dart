@@ -16,8 +16,8 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
-  static const String currentVersion = '1.0.3';
-  static const int currentBuildNumber = 4;
+  static const String currentVersion = '1.0.4';
+  static const int currentBuildNumber = 5;
 
   final ShorebirdUpdater _updater = ShorebirdUpdater();
 
@@ -62,7 +62,7 @@ class UpdateService {
 
       if (status == UpdateStatus.outdated) {
         if (!context.mounted) return;
-        await UpdateProgressDialog.show(context, _updater);
+        _showMobileUpdateAvailableBanner(context);
       } else if (status == UpdateStatus.restartRequired) {
         if (!context.mounted) return;
         _showRestartRequiredBanner(context);
@@ -387,6 +387,31 @@ class UpdateService {
           ],
         );
       },
+    );
+  }
+
+  void _showMobileUpdateAvailableBanner(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.system_update_rounded, color: Colors.white, size: 20),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('A new TindaKo update is available.'),
+            ),
+          ],
+        ),
+        action: SnackBarAction(
+          label: 'UPDATE NOW',
+          textColor: AppTheme.accentOrange,
+          onPressed: () {
+            UpdateProgressDialog.show(context, _updater);
+          },
+        ),
+        backgroundColor: AppTheme.cardDark,
+        duration: const Duration(seconds: 12),
+      ),
     );
   }
 
