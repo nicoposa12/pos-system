@@ -12,18 +12,24 @@ class AuditLogger
      */
     public static function log(string $action, Request $request, array $details = []): void
     {
-        $user = $request->user();
+        try {
+            $user = $request->user();
 
-        Log::channel('daily')->info("[AUDIT] {$action}", [
-            'action' => $action,
-            'user_id' => $user?->id,
-            'username' => $user?->username,
-            'role' => $user?->role,
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'details' => $details,
-            'timestamp' => now()->toIso8601String(),
-        ]);
+            Log::channel('daily')->info("[AUDIT] {$action}", [
+                'action' => $action,
+                'user_id' => $user?->id,
+                'username' => $user?->username,
+                'role' => $user?->role,
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'details' => $details,
+                'timestamp' => now()->toIso8601String(),
+            ]);
+        } catch (\Throwable $e) {
+            try {
+                Log::info("[AUDIT] {$action}", $details);
+            } catch (\Throwable $ignored) {}
+        }
     }
 }
 

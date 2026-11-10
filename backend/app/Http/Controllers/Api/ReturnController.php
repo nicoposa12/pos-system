@@ -43,6 +43,9 @@ class ReturnController extends Controller
         ]);
 
         return DB::transaction(function () use ($validated, $transaction, $userId, $request) {
+            // Concurrency-safe: lock the parent transaction row (PostgreSQL prohibits FOR UPDATE on aggregate functions)
+            Transaction::where('id', $transaction->id)->lockForUpdate()->first();
+
             $purchased = (int) $transaction->items()
                 ->where('product_id', $validated['product_id'])
                 ->sum('quantity');
@@ -53,7 +56,6 @@ class ReturnController extends Controller
 
             $alreadyReturned = (int) ProductReturn::where('transaction_id', $transaction->id)
                 ->where('product_id', $validated['product_id'])
-                ->lockForUpdate()
                 ->sum('quantity');
 
             if ($validated['quantity'] > $purchased - $alreadyReturned) {
