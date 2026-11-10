@@ -12,6 +12,7 @@ import '../services/pdf_service.dart';
 import '../widgets/receipt_dialog.dart';
 import '../widgets/order_details_modal.dart';
 import '../widgets/skeleton.dart';
+import '../widgets/app_toast.dart';
 import 'scanner_screen.dart';
 
 enum TransactionFilter { all, daily, weekly, monthly, yearly }
@@ -1191,8 +1192,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   ) async {
     final netQty = (item['quantity'] as num?)?.toInt() ?? 0;
     if (netQty <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Item has already been fully returned.')),
+      AppToast.show(
+        context,
+        message: 'Item has already been fully returned.',
+        isError: true,
       );
       return;
     }
@@ -1202,6 +1205,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     final maxQty = netQty;
     final unitPrice = (item['unit_price'] as num?)?.toDouble() ??
         (maxQty > 0 ? ((item['subtotal'] as num).toDouble() / maxQty) : 0.0);
+    String? dialogError;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1276,7 +1280,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                       suffixIconConstraints: const BoxConstraints(minHeight: 0, minWidth: 0),
                     ),
                     keyboardType: TextInputType.number,
-                    onChanged: (val) => setDialogState(() {}),
+                    onChanged: (val) => setDialogState(() {
+                      dialogError = null;
+                    }),
                   ),
                   const SizedBox(height: 12),
                   // Real-time price & deduction breakdown
@@ -1343,7 +1349,41 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                       hintText: 'e.g. Damaged, Expired, Wrong item',
                     ),
                     maxLines: 2,
+                    onChanged: (val) {
+                      if (dialogError != null) {
+                        setDialogState(() {
+                          dialogError = null;
+                        });
+                      }
+                    },
                   ),
+                  if (dialogError != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentRose.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.accentRose.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline_rounded, color: AppTheme.accentRose, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              dialogError!,
+                              style: const TextStyle(
+                                color: AppTheme.accentRose,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1356,15 +1396,15 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                 onPressed: () {
                   final qty = int.tryParse(quantityController.text) ?? 0;
                   if (qty <= 0 || qty > maxQty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Invalid quantity (1 - $maxQty allowed)')),
-                    );
+                    setDialogState(() {
+                      dialogError = 'Invalid quantity (1 - $maxQty allowed)';
+                    });
                     return;
                   }
                   if (reasonController.text.trim().isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Please provide a reason')),
-                    );
+                    setDialogState(() {
+                      dialogError = 'Please provide a reason for return';
+                    });
                     return;
                   }
                   Navigator.pop(ctx, true);
@@ -1400,22 +1440,17 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
         // Do NOT pop the order details modal! It updates in real-time.
         final refundAmount = qtyToReturn * unitPrice;
         final newTotal = (tx.totalAmount - refundAmount).clamp(0.0, double.infinity);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Returned $qtyToReturn× ${item['product_name']}. Total updated to ₱${newTotal.toStringAsFixed(2)}.',
-            ),
-            backgroundColor: AppTheme.accentTeal,
-          ),
+        AppToast.show(
+          context,
+          message: 'Returned $qtyToReturn× ${item['product_name']}. Total updated to ₱${newTotal.toStringAsFixed(2)}.',
         );
       } else if (context.mounted) {
         final err = context.read<TransactionProvider>().lastActionError ??
             'Failed to process return';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(err),
-            backgroundColor: AppTheme.accentRose,
-          ),
+        AppToast.show(
+          context,
+          message: err,
+          isError: true,
         );
       }
     }
@@ -1913,12 +1948,10 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
     if (_isSubmitting) return;
 
     if (_selectedMethod == 'cash' && _cashTendered <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter an amount to pay or deposit.'),
-          backgroundColor: AppTheme.accentRose,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.show(
+        context,
+        message: 'Please enter an amount to pay or deposit.',
+        isError: true,
       );
       return;
     }
@@ -1955,37 +1988,17 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
 
     if (success) {
       widget.onPaymentSuccess();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  isFullyPaid
-                      ? 'Order #${widget.tx.id} marked as Paid (${_selectedMethod.toUpperCase()})'
-                      : 'Downpayment of ₱${paymentAmount.toStringAsFixed(2)} recorded for Order #${widget.tx.id}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xFF10B981),
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.show(
+        context,
+        message: isFullyPaid
+            ? 'Order #${widget.tx.id} marked as Paid (${_selectedMethod.toUpperCase()})'
+            : 'Downpayment of ₱${paymentAmount.toStringAsFixed(2)} recorded for Order #${widget.tx.id}',
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to update transaction. Please try again.'),
-          backgroundColor: AppTheme.accentRose,
-          behavior: SnackBarBehavior.floating,
-        ),
+      AppToast.show(
+        context,
+        message: 'Failed to update transaction. Please try again.',
+        isError: true,
       );
     }
   }
