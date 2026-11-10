@@ -4,6 +4,8 @@ import '../core/app_theme.dart';
 /// Premium, high-visibility floating toast notification that renders on the
 /// root overlay above all modal sheets, dialogs, and dark scrims.
 class AppToast {
+  static OverlayEntry? _currentEntry;
+
   static void show(
     BuildContext context, {
     required String message,
@@ -12,6 +14,11 @@ class AppToast {
   }) {
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;
+
+    if (_currentEntry != null && _currentEntry!.mounted) {
+      _currentEntry!.remove();
+      _currentEntry = null;
+    }
 
     late OverlayEntry entry;
 
@@ -24,10 +31,14 @@ class AppToast {
           if (entry.mounted) {
             entry.remove();
           }
+          if (_currentEntry == entry) {
+            _currentEntry = null;
+          }
         },
       ),
     );
 
+    _currentEntry = entry;
     overlay.insert(entry);
   }
 }

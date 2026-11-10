@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../core/app_theme.dart';
 import '../models/transaction.dart';
 import '../models/user.dart';
+import '../models/product.dart';
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/pdf_service.dart';
@@ -134,12 +135,12 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
 
     for (final item in widget.items) {
       final name = (item['product_name'] ?? 'Item').toString();
-      final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+      final qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
       final subtotal = ((item['subtotal'] as num?) ?? 0.0).toDouble();
       final unitPrice = qty > 0 ? (subtotal / qty) : subtotal;
 
       buffer.writeln(name);
-      buffer.writeln('  $qty x P${unitPrice.toStringAsFixed(2).padLeft(7)}    P${subtotal.toStringAsFixed(2).padLeft(9)}');
+      buffer.writeln('  ${formatQuantity(qty)} x P${unitPrice.toStringAsFixed(2).padLeft(7)}    P${subtotal.toStringAsFixed(2).padLeft(9)}');
     }
 
     buffer.writeln(lineSep);
@@ -508,7 +509,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                         ...widget.items.map((item) {
                           final name =
                               (item['product_name'] ?? 'Item').toString();
-                          final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+                          final qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
                           final subtotal =
                               ((item['subtotal'] as num?) ?? 0.0).toDouble();
                           final unitPrice = qty > 0 ? subtotal / qty : subtotal;
@@ -524,9 +525,9 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(name, style: monoBold),
-                                      if (qty > 1)
+                                      if ((qty - 1.0).abs() > 0.0001)
                                         Text(
-                                          '$qty x ₱${unitPrice.toStringAsFixed(2)}',
+                                          '${formatQuantity(qty)} x ₱${unitPrice.toStringAsFixed(2)}',
                                           style: monoMuted,
                                         ),
                                     ],

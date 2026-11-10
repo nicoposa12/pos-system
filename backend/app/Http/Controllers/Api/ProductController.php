@@ -47,7 +47,8 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
             'category' => 'nullable|string|max:100',
             'price' => 'required|numeric|min:0',
-            'stock' => 'required|integer|min:0',
+            'stock' => 'required|numeric|min:0',
+            'unit' => 'nullable|string|max:20',
             'barcode' => 'nullable|string|max:100',
             'variants' => 'nullable',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:4096', // 4MB max
@@ -74,6 +75,7 @@ class ProductController extends Controller
             'category' => $validated['category'] ?? null,
             'price' => $validated['price'],
             'stock' => $validated['stock'],
+            'unit' => $validated['unit'] ?? 'pcs',
             'barcode' => $validated['barcode'] ?? null,
             'image_path' => $imagePath,
             'variants' => is_string($validated['variants'] ?? null)
@@ -112,7 +114,8 @@ class ProductController extends Controller
             'name' => 'sometimes|required|string|max:255',
             'category' => 'nullable|string|max:100',
             'price' => 'sometimes|required|numeric|min:0',
-            'stock' => 'sometimes|required|integer|min:0',
+            'stock' => 'sometimes|required|numeric|min:0',
+            'unit' => 'nullable|string|max:20',
             'barcode' => 'nullable|string|max:100',
             'variants' => 'nullable',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:4096',
@@ -150,7 +153,7 @@ class ProductController extends Controller
             'product_id' => $product->id,
             'name' => $product->name,
             'price' => (float) $product->price,
-            'stock' => (int) $product->stock,
+            'stock' => (float) $product->stock,
         ]);
 
         $this->deleteImageIfExists($product->image_path);

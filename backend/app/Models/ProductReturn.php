@@ -19,7 +19,7 @@ class ProductReturn extends Model
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
+        'quantity' => 'float',
         'date' => 'datetime',
     ];
 

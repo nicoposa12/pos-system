@@ -62,7 +62,7 @@ class TransactionController extends Controller
                 'integer',
                 Rule::exists('products', 'id')->where('user_id', $userId),
             ],
-            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.quantity' => 'required|numeric|min:0.001',
             'items.*.subtotal' => 'required|numeric|min:0',
         ]);
 
@@ -90,8 +90,8 @@ class TransactionController extends Controller
                     }
                 }
 
-                $quantity = (int) $itemData['quantity'];
-                $unitPrice = (float) $itemData['subtotal'] / $quantity;
+                $quantity = (float) $itemData['quantity'];
+                $unitPrice = $quantity > 0 ? ((float) $itemData['subtotal'] / $quantity) : 0.0;
 
                 // Check if unitPrice matches base price or any variant price within 5 cents tolerance
                 $matchedPrice = false;

@@ -7,13 +7,13 @@ class CartItem {
   final Product product;
   final String? variantName;
   final double price;
-  int quantity;
+  double quantity;
 
   CartItem({
     required this.product,
     this.variantName,
     required this.price,
-    this.quantity = 1,
+    this.quantity = 1.0,
   });
 
   String get displayName =>
@@ -27,7 +27,9 @@ class CartProvider with ChangeNotifier {
   String? _lastError;
 
   Map<String, CartItem> get items => {..._items};
-  int get itemCount => _items.values.fold(0, (sum, item) => sum + item.quantity);
+  int get itemCount => _items.values.fold(0, (sum, item) => sum + item.quantity.ceil());
+  double get totalUnits => _items.values.fold(0.0, (sum, item) => sum + item.quantity);
+  int get uniqueItemCount => _items.length;
   String? get lastError => _lastError;
 
   void setUserId(int userId) {
@@ -42,51 +44,53 @@ class CartProvider with ChangeNotifier {
     return total;
   }
 
-  void addItem(Product product, {ProductVariant? variant}) {
+  void addItem(Product product, {ProductVariant? variant, double quantity = 1.0}) {
     final String variantKey = variant != null
         ? '${product.id}_${variant.name}'
         : '${product.id}_base';
     final double price = variant?.price ?? product.price;
-    final int itemStock = variant?.stock ?? product.stock;
+    final double itemStock = variant?.stock ?? product.stock;
 
     if (_items.containsKey(variantKey)) {
       if (variant?.stock != null) {
-        if (_items[variantKey]!.quantity < variant!.stock!) {
+        if (_items[variantKey]!.quantity + quantity <= variant!.stock!) {
           _items.update(
             variantKey,
             (existingItem) => CartItem(
               product: existingItem.product,
               variantName: existingItem.variantName,
               price: existingItem.price,
-              quantity: existingItem.quantity + 1,
+              quantity: existingItem.quantity + quantity,
             ),
           );
         }
       } else {
-        int totalInCart = _items.values
+        double totalInCart = _items.values
             .where((item) => item.product.id == product.id)
-            .fold(0, (sum, item) => sum + item.quantity);
+            .fold(0.0, (sum, item) => sum + item.quantity);
 
-        if (totalInCart < product.stock) {
+        if (totalInCart + quantity <= product.stock) {
           _items.update(
             variantKey,
             (existingItem) => CartItem(
               product: existingItem.product,
               variantName: existingItem.variantName,
               price: existingItem.price,
-              quantity: existingItem.quantity + 1,
+              quantity: existingItem.quantity + quantity,
             ),
           );
         }
       }
     } else {
       if (itemStock > 0) {
+        final initialQty = quantity <= itemStock ? quantity : itemStock;
         _items.putIfAbsent(
           variantKey,
           () => CartItem(
             product: product,
             variantName: variant?.name,
             price: price,
+            quantity: initialQty,
           ),
         );
       }
@@ -97,14 +101,14 @@ class CartProvider with ChangeNotifier {
   void removeSingleItem(String variantKey) {
     if (!_items.containsKey(variantKey)) return;
 
-    if (_items[variantKey]!.quantity > 1) {
+    if (_items[variantKey]!.quantity > 1.0) {
       _items.update(
         variantKey,
         (existingItem) => CartItem(
           product: existingItem.product,
           variantName: existingItem.variantName,
           price: existingItem.price,
-          quantity: existingItem.quantity - 1,
+          quantity: existingItem.quantity - 1.0,
         ),
       );
     } else {
@@ -113,7 +117,7 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  bool updateQuantity(String variantKey, int newQuantity) {
+  bool updateQuantity(String variantKey, double newQuantity) {
     if (!_items.containsKey(variantKey)) return false;
 
     if (newQuantity <= 0) {
@@ -132,14 +136,14 @@ class CartProvider with ChangeNotifier {
       if (matches.isNotEmpty) matchedVariant = matches.first;
     }
 
-    int maxAllowed;
+    double maxAllowed;
     if (matchedVariant?.stock != null) {
       maxAllowed = matchedVariant!.stock!;
     } else {
       final otherLinesCount = _items.entries
           .where((e) => e.key != variantKey && e.value.product.id == product.id)
-          .fold(0, (sum, e) => sum + e.value.quantity);
-      maxAllowed = (product.stock - otherLinesCount).clamp(0, product.stock);
+          .fold(0.0, (sum, e) => sum + e.value.quantity);
+      maxAllowed = (product.stock - otherLinesCount).clamp(0.0, product.stock);
     }
 
     final finalQuantity = newQuantity > maxAllowed ? maxAllowed : newQuantity;
@@ -154,7 +158,7 @@ class CartProvider with ChangeNotifier {
       ),
     );
     notifyListeners();
-    return finalQuantity == newQuantity;
+    return (finalQuantity - newQuantity).abs() < 0.0001;
   }
 
   void removeItem(String variantKey) {

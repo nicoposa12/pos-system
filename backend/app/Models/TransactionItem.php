@@ -17,7 +17,7 @@ class TransactionItem extends Model
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
+        'quantity' => 'float',
         'subtotal' => 'float',
     ];
 

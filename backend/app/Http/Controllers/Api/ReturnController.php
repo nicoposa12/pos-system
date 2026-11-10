@@ -38,7 +38,7 @@ class ReturnController extends Controller
 
         $validated = $request->validate([
             'product_id' => 'required|integer',
-            'quantity' => 'required|integer|min:1',
+            'quantity' => 'required|numeric|min:0.001',
             'reason' => 'nullable|string|max:500',
         ]);
 
@@ -46,22 +46,23 @@ class ReturnController extends Controller
             // Concurrency-safe: lock the parent transaction row (PostgreSQL prohibits FOR UPDATE on aggregate functions)
             Transaction::where('id', $transaction->id)->lockForUpdate()->first();
 
-            $purchased = (int) $transaction->items()
+            $purchased = (float) $transaction->items()
                 ->where('product_id', $validated['product_id'])
                 ->sum('quantity');
 
-            if ($purchased === 0) {
+            if ($purchased <= 0) {
                 return response()->json(['message' => 'This product is not part of the transaction.'], 422);
             }
 
-            $alreadyReturned = (int) ProductReturn::where('transaction_id', $transaction->id)
+            $alreadyReturned = (float) ProductReturn::where('transaction_id', $transaction->id)
                 ->where('product_id', $validated['product_id'])
                 ->sum('quantity');
 
-            if ($validated['quantity'] > $purchased - $alreadyReturned) {
+            $remainingReturnable = round($purchased - $alreadyReturned, 3);
+            if ($validated['quantity'] > ($remainingReturnable + 0.0001)) {
                 return response()->json([
                     'message' => 'Return quantity exceeds the remaining purchased quantity ('
-                        . max(0, $purchased - $alreadyReturned) . ').',
+                        . max(0.0, $remainingReturnable) . ').',
                 ], 422);
             }
 

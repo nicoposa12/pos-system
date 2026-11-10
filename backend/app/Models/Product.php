@@ -15,6 +15,7 @@ class Product extends Model
         'category',
         'price',
         'stock',
+        'unit',
         'barcode',
         'image_path',
         'variants',
@@ -22,7 +23,7 @@ class Product extends Model
 
     protected $casts = [
         'price' => 'float',
-        'stock' => 'integer',
+        'stock' => 'float',
         'variants' => 'array',
     ];
 

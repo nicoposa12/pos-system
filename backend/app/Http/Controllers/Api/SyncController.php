@@ -59,7 +59,7 @@ class SyncController extends Controller
             'transactions.*.customer_name' => 'nullable|string',
             'transactions.*.items' => 'required|array',
             'transactions.*.items.*.product_id' => 'required|integer',
-            'transactions.*.items.*.quantity' => 'required|integer',
+            'transactions.*.items.*.quantity' => 'required|numeric|min:0.001',
             'transactions.*.items.*.subtotal' => 'required|numeric',
         ]);
 
@@ -149,7 +149,8 @@ class SyncController extends Controller
             'products.*.client_id' => 'required',
             'products.*.name' => 'required|string|max:255',
             'products.*.price' => 'required|numeric|min:0',
-            'products.*.stock' => 'required|integer|min:0',
+            'products.*.stock' => 'required|numeric|min:0',
+            'products.*.unit' => 'nullable|string|max:20',
             'products.*.category' => 'nullable|string|max:100',
             'products.*.barcode' => 'nullable|string|max:100',
             'products.*.variants' => 'nullable',

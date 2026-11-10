@@ -716,7 +716,7 @@ class _PosScreenState extends State<PosScreen> {
     final cart = context.read<CartProvider>();
     final inCart = cart.items.values
         .where((item) => item.product.id == product.id)
-        .fold<int>(0, (sum, item) => sum + item.quantity);
+        .fold<double>(0.0, (sum, item) => sum + item.quantity);
 
     if (inCart >= product.stock) {
       HapticFeedback.vibrate();
@@ -725,7 +725,7 @@ class _PosScreenState extends State<PosScreen> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              'Maximum available stock (${product.stock}) reached for "${product.name}"',
+              'Maximum available stock (${formatQuantity(product.stock)}) reached for "${product.name}"',
             ),
             duration: const Duration(milliseconds: 1400),
             backgroundColor: AppTheme.accentAmber,
@@ -1150,7 +1150,7 @@ class _CartLineTileState extends State<_CartLineTile> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: '${widget.item.quantity}');
+    _controller = TextEditingController(text: formatQuantity(widget.item.quantity));
     _focusNode = FocusNode();
     _focusNode.addListener(_handleFocusChange);
   }
@@ -1160,7 +1160,7 @@ class _CartLineTileState extends State<_CartLineTile> {
     super.didUpdateWidget(oldWidget);
     if (!_focusNode.hasFocus &&
         widget.item.quantity != oldWidget.item.quantity) {
-      _controller.text = '${widget.item.quantity}';
+      _controller.text = formatQuantity(widget.item.quantity);
     }
   }
 
@@ -1177,11 +1177,11 @@ class _CartLineTileState extends State<_CartLineTile> {
 
   void _commitQuantity() {
     final text = _controller.text.trim();
-    final parsed = int.tryParse(text);
+    final parsed = double.tryParse(text);
     final cart = context.read<CartProvider>();
 
     if (parsed == null || text.isEmpty) {
-      _controller.text = '${widget.item.quantity}';
+      _controller.text = formatQuantity(widget.item.quantity);
       return;
     }
 
@@ -1190,7 +1190,7 @@ class _CartLineTileState extends State<_CartLineTile> {
       return;
     }
 
-    if (parsed == widget.item.quantity) return;
+    if ((parsed - widget.item.quantity).abs() < 0.0001) return;
 
     ProductVariant? matchedVariant;
     if (widget.item.variantName != null) {
@@ -1201,26 +1201,26 @@ class _CartLineTileState extends State<_CartLineTile> {
     }
 
     final variantStock = matchedVariant?.stock;
-    final int maxAvailable;
+    final double maxAvailable;
     if (variantStock != null) {
       maxAvailable = variantStock;
     } else {
       final otherLinesCount = cart.items.entries
           .where((e) =>
               e.key != widget.variantKey && e.value.product.id == widget.item.product.id)
-          .fold(0, (sum, e) => sum + e.value.quantity);
+          .fold<double>(0.0, (sum, e) => sum + e.value.quantity);
       maxAvailable =
-          (widget.item.product.stock - otherLinesCount).clamp(0, widget.item.product.stock);
+          (widget.item.product.stock - otherLinesCount).clamp(0.0, widget.item.product.stock);
     }
 
     final exact = cart.updateQuantity(widget.variantKey, parsed);
     if (!exact) {
-      _controller.text = '$maxAvailable';
+      _controller.text = formatQuantity(maxAvailable);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Quantity adjusted to available stock ($maxAvailable)',
+              'Quantity adjusted to available stock (${formatQuantity(maxAvailable)})',
             ),
             backgroundColor: AppTheme.accentAmber,
             duration: const Duration(seconds: 2),
@@ -1339,13 +1339,13 @@ class _CartLineTileState extends State<_CartLineTile> {
               children: [
                 IconButton(
                   tooltip:
-                      widget.item.quantity == 1 ? 'Remove item' : 'Decrease',
+                      widget.item.quantity <= 1.0 ? 'Remove item' : 'Decrease',
                   icon: Icon(
-                    widget.item.quantity == 1
+                    widget.item.quantity <= 1.0
                         ? Icons.delete_outline_rounded
                         : Icons.remove_rounded,
                     size: 18,
-                    color: widget.item.quantity == 1
+                    color: widget.item.quantity <= 1.0
                         ? AppTheme.accentRose
                         : null,
                   ),
@@ -1361,7 +1361,7 @@ class _CartLineTileState extends State<_CartLineTile> {
                   },
                 ),
                 Container(
-                  width: 44,
+                  width: 52,
                   height: 32,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
@@ -1377,17 +1377,17 @@ class _CartLineTileState extends State<_CartLineTile> {
                   child: TextField(
                     controller: _controller,
                     focusNode: _focusNode,
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
-                      fontSize: 14,
+                      fontSize: 13,
                       fontFeatures: AppTheme.tabularFigures,
                     ),
                     textInputAction: TextInputAction.done,
                     inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(4),
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}')),
+                      LengthLimitingTextInputFormatter(7),
                     ],
                     onSubmitted: (_) {
                       _focusNode.unfocus();
@@ -2186,13 +2186,13 @@ class _PosProductCardState extends State<_PosProductCard>
     final statusLabel = isOutOfStock
         ? 'Out of stock'
         : (isLowStock
-            ? '${widget.product.stock} low'
-            : '${widget.product.stock} in stock');
+            ? '${formatQuantity(widget.product.stock)} low'
+            : '${formatQuantity(widget.product.stock)} left');
 
-    final inCartQty = context.select<CartProvider, int>(
+    final inCartQty = context.select<CartProvider, double>(
       (cart) => cart.items.values
           .where((item) => item.product.id == widget.product.id)
-          .fold<int>(0, (sum, item) => sum + item.quantity),
+          .fold<double>(0.0, (sum, item) => sum + item.quantity),
     );
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isCompactCard = screenWidth < 360;
@@ -2202,7 +2202,7 @@ class _PosProductCardState extends State<_PosProductCard>
       button: !isOutOfStock,
       enabled: !isOutOfStock,
       label:
-          '${widget.product.name}, ₱${widget.product.price.toStringAsFixed(2)}, $statusLabel${inCartQty > 0 ? ', $inCartQty in order' : ''}',
+          '${widget.product.name}, ₱${widget.product.price.toStringAsFixed(2)}, $statusLabel${inCartQty > 0 ? ', ${formatQuantity(inCartQty)} in order' : ''}',
       child: ScaleTransition(
         scale: _scaleAnimation,
         child: AnimatedContainer(
@@ -2358,8 +2358,8 @@ class _PosProductCardState extends State<_PosProductCard>
                                 ? (isOutOfStock
                                     ? 'Out'
                                     : (isLowStock
-                                        ? '${widget.product.stock} low'
-                                        : '${widget.product.stock} left'))
+                                        ? '${formatQuantity(widget.product.stock)} low'
+                                        : '${formatQuantity(widget.product.stock)} left'))
                                 : statusLabel,
                             style: TextStyle(
                               color: statusColor,
@@ -2403,7 +2403,7 @@ class _PosProductCardState extends State<_PosProductCard>
                       ),
                       child: inCartQty > 0
                           ? Text(
-                              '$inCartQty',
+                              formatQuantity(inCartQty),
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 color: Colors.white,
@@ -2523,7 +2523,7 @@ class _PosProductCardState extends State<_PosProductCard>
 class _VariantOptionTile extends StatelessWidget {
   final String label;
   final double price;
-  final int? stock;
+  final double? stock;
   final String? imagePath;
   final VoidCallback onTap;
 

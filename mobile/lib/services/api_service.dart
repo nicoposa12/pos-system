@@ -342,7 +342,8 @@ class ApiService {
   Future<Map<String, dynamic>> createProduct({
     required String name,
     required double price,
-    required int stock,
+    required double stock,
+    String? unit,
     String? category,
     String? barcode,
     String? variants,
@@ -357,6 +358,7 @@ class ApiService {
         'name': name,
         'price': price,
         'stock': stock,
+        if (unit != null) 'unit': unit,
         'image': await MultipartFile.fromFile(imageFilePath),
       };
       if (category != null && category.trim().isNotEmpty) {
@@ -384,6 +386,7 @@ class ApiService {
         'name': name,
         'price': price,
         'stock': stock,
+        if (unit != null) 'unit': unit,
       };
       if (category != null && category.trim().isNotEmpty) {
         body['category'] = category.trim();
@@ -413,7 +416,8 @@ class ApiService {
     int id, {
     String? name,
     double? price,
-    int? stock,
+    double? stock,
+    String? unit,
     String? category,
     String? barcode,
     String? variants,
@@ -430,6 +434,7 @@ class ApiService {
       if (name != null) map['name'] = name;
       if (price != null) map['price'] = price;
       if (stock != null) map['stock'] = stock;
+      if (unit != null) map['unit'] = unit;
       if (category != null && category.trim().isNotEmpty) {
         map['category'] = category.trim();
       }
@@ -456,6 +461,7 @@ class ApiService {
       if (name != null) body['name'] = name;
       if (price != null) body['price'] = price;
       if (stock != null) body['stock'] = stock;
+      if (unit != null) body['unit'] = unit;
       if (category != null && category.trim().isNotEmpty) {
         body['category'] = category.trim();
       }
@@ -553,7 +559,7 @@ class ApiService {
   Future<Map<String, dynamic>> createReturn(
     int transactionId, {
     required int productId,
-    required int quantity,
+    required double quantity,
     String? reason,
   }) async {
     final response = await _dio.post(

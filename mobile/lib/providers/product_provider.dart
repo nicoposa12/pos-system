@@ -178,6 +178,7 @@ class ProductProvider with ChangeNotifier {
         name: product.name,
         price: product.price,
         stock: product.stock,
+        unit: product.unit,
         category: product.category,
         barcode: product.barcode,
         variants: product.variantsPayload,
@@ -199,6 +200,7 @@ class ProductProvider with ChangeNotifier {
         name: product.name,
         price: product.price,
         stock: product.stock,
+        unit: product.unit,
         category: product.category,
         barcode: product.barcode,
         variants: product.variantsPayload,
@@ -223,14 +225,14 @@ class ProductProvider with ChangeNotifier {
 
   /// Applies authoritative stock levels returned by the server (after a sale
   /// or return) without reloading the whole catalog.
-  void applyStockLevels(Map<int, int> stockByProductId) {
+  void applyStockLevels(Map<int, num> stockByProductId) {
     if (stockByProductId.isEmpty) return;
     var changed = false;
     final updated = _products.map((p) {
       final stock = p.id != null ? stockByProductId[p.id] : null;
       if (stock == null || stock == p.stock) return p;
       changed = true;
-      return p.copyWith(stock: stock);
+      return p.copyWith(stock: stock.toDouble());
     }).toList();
     if (!changed) return;
     _setProducts(updated);

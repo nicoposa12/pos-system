@@ -26,6 +26,18 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   late final TextEditingController _priceController;
   late final TextEditingController _stockController;
   late final TextEditingController _barcodeController;
+  String _selectedUnit = 'pcs';
+  static const List<String> _commonUnits = [
+    'pcs',
+    'kg',
+    'g',
+    'liter',
+    'meter',
+    'pack',
+    'box',
+    'can',
+    'bottle',
+  ];
   String? _selectedImagePath;
   final List<_VariantField> _variantFields = [];
   bool _isSaving = false;
@@ -47,8 +59,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           : '',
     );
     _stockController = TextEditingController(
-      text: widget.product?.stock.toString() ?? '',
+      text: widget.product != null ? formatQuantity(widget.product!.stock) : '',
     );
+    _selectedUnit = widget.product?.unit ?? 'pcs';
     _barcodeController = TextEditingController(
       text: widget.product?.barcode ?? '',
     );
@@ -63,7 +76,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
               text: variant.price.toString(),
             ),
             stockController: TextEditingController(
-              text: variant.stock != null ? variant.stock.toString() : '',
+              text: variant.stock != null ? formatQuantity(variant.stock!) : '',
             ),
             imagePath: variant.imagePath,
           ),
@@ -106,12 +119,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     });
   }
 
-  void _incrementStock(int delta) {
+  void _incrementStock(num delta) {
     HapticFeedback.selectionClick();
-    final current = int.tryParse(_stockController.text.trim()) ?? 0;
-    final updated = (current + delta).clamp(0, 999999);
+    final current = double.tryParse(_stockController.text.trim()) ?? 0.0;
+    final updated = (current + delta).clamp(0.0, 999999999.0);
     setState(() {
-      _stockController.text = '$updated';
+      _stockController.text = formatQuantity(updated);
     });
   }
 
@@ -561,21 +574,68 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                             Expanded(
                               child: TextFormField(
                                 controller: _stockController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Stock Quantity',
-                                  prefixIcon: Icon(Icons.layers_outlined),
+                                decoration: InputDecoration(
+                                  labelText: 'Stock Quantity (${_selectedUnit})',
+                                  prefixIcon: const Icon(Icons.layers_outlined),
                                 ),
-                                keyboardType: TextInputType.number,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
                                     return 'Required';
                                   }
-                                  final parsed = int.tryParse(value);
+                                  final parsed = double.tryParse(value);
                                   if (parsed == null || parsed < 0) {
                                     return 'Invalid qty';
                                   }
                                   return null;
                                 },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Unit of Measure Selector
+                        Row(
+                          children: [
+                            Text(
+                              'Unit of Measure:',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.mutedText(context),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.subtleSurface(context),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: AppTheme.borderColor(context)),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _commonUnits.contains(_selectedUnit) ? _selectedUnit : 'pcs',
+                                    isExpanded: true,
+                                    borderRadius: BorderRadius.circular(12),
+                                    items: _commonUnits.map((u) {
+                                      final isDecimal = ['kg', 'g', 'liter', 'meter'].contains(u);
+                                      return DropdownMenuItem(
+                                        value: u,
+                                        child: Text(
+                                          '$u ${isDecimal ? '(decimal allowed)' : ''}',
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        setState(() => _selectedUnit = val);
+                                      }
+                                    },
+                                  ),
+                                ),
                               ),
                             ),
                           ],
@@ -598,11 +658,14 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                               child: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: Row(
-                                  children: [1, 5, 12, 24].map((step) {
+                                  children: (['kg', 'g', 'liter', 'meter'].contains(_selectedUnit)
+                                          ? [0.5, 1.0, 5.0, 10.0]
+                                          : [1.0, 5.0, 12.0, 24.0])
+                                      .map((step) {
                                     return Padding(
                                       padding: const EdgeInsets.only(right: 6),
                                       child: ActionChip(
-                                        label: Text('+$step'),
+                                        label: Text('+${formatQuantity(step)}'),
                                         visualDensity: VisualDensity.compact,
                                         labelStyle: const TextStyle(
                                           fontSize: 12,
@@ -972,11 +1035,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                                     ),
                                               ),
                                               keyboardType:
-                                                  TextInputType.number,
-                                              inputFormatters: [
-                                                FilteringTextInputFormatter
-                                                    .digitsOnly,
-                                              ],
+                                                  const TextInputType.numberWithOptions(decimal: true),
                                             ),
                                           ),
                                         ],
@@ -1075,7 +1134,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         final name = _nameController.text.trim();
         final category = _categoryController.text.trim();
         final price = double.parse(_priceController.text.trim());
-        final stock = int.parse(_stockController.text.trim());
+        final stock = double.parse(_stockController.text.trim());
         final barcode = _barcodeController.text.trim();
 
         final auth = context.read<AuthProvider>();
@@ -1087,7 +1146,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
               (f) => ProductVariant(
                 name: f.nameController.text.trim(),
                 price: double.tryParse(f.priceController.text.trim()) ?? 0.0,
-                stock: int.tryParse(f.stockController.text.trim()),
+                stock: double.tryParse(f.stockController.text.trim()),
                 imagePath: f.imagePath,
               ),
             )
@@ -1101,6 +1160,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           category: category.isEmpty ? null : category,
           price: price,
           stock: stock,
+          unit: _selectedUnit,
           barcode: barcode.isEmpty ? null : barcode,
           imagePath: _selectedImagePath,
           variants: variants,

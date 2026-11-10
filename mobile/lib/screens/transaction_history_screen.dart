@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../models/transaction.dart';
+import '../models/product.dart';
 import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/settings_provider.dart';
@@ -858,9 +859,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 ),
                                 itemBuilder: (ctx, index) {
                                   final item = items[index];
-                                  final netQty = (item['quantity'] as num?)?.toInt() ?? 0;
-                                  final originalQty = (item['original_quantity'] as num?)?.toInt() ?? netQty;
-                                  final returnedQty = (item['returned_quantity'] as num?)?.toInt() ?? 0;
+                                  final netQty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+                                  final originalQty = (item['original_quantity'] as num?)?.toDouble() ?? netQty;
+                                  final returnedQty = (item['returned_quantity'] as num?)?.toDouble() ?? 0.0;
                                   final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
                                   final isFullyReturned = netQty <= 0 && returnedQty > 0;
                                   final isPartiallyReturned = returnedQty > 0 && netQty > 0;
@@ -886,7 +887,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                             borderRadius: BorderRadius.circular(8),
                                           ),
                                           child: Text(
-                                            isFullyReturned ? '0×' : '$netQty×',
+                                            isFullyReturned ? '0×' : '${formatQuantity(netQty)}×',
                                             style: TextStyle(
                                               color: isFullyReturned
                                                   ? AppTheme.accentRose
@@ -916,7 +917,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                                 Padding(
                                                   padding: const EdgeInsets.only(top: 2),
                                                   child: Text(
-                                                    'RETURNED ($returnedQty pcs)',
+                                                    'RETURNED (${formatQuantity(returnedQty)})',
                                                     style: const TextStyle(
                                                       color: AppTheme.accentRose,
                                                       fontWeight: FontWeight.w700,
@@ -928,7 +929,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                                 Padding(
                                                   padding: const EdgeInsets.only(top: 2),
                                                   child: Text(
-                                                    '$returnedQty of $originalQty returned',
+                                                    '${formatQuantity(returnedQty)} of ${formatQuantity(originalQty)} returned',
                                                     style: TextStyle(
                                                       color: AppTheme.mutedText(sheetCtx),
                                                       fontWeight: FontWeight.w600,
@@ -1190,7 +1191,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     SaleTransaction tx,
     Map<String, dynamic> item,
   ) async {
-    final netQty = (item['quantity'] as num?)?.toInt() ?? 0;
+    final netQty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
     if (netQty <= 0) {
       AppToast.show(
         context,
@@ -1201,7 +1202,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     }
 
     final reasonController = TextEditingController();
-    final quantityController = TextEditingController(text: netQty.toString());
+    final quantityController = TextEditingController(text: formatQuantity(netQty));
     final maxQty = netQty;
     final unitPrice = (item['unit_price'] as num?)?.toDouble() ??
         (maxQty > 0 ? ((item['subtotal'] as num).toDouble() / maxQty) : 0.0);
@@ -1211,8 +1212,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (dialogCtx, setDialogState) {
-          final inputQty = int.tryParse(quantityController.text) ?? 0;
-          final validQty = inputQty.clamp(0, maxQty);
+          final inputQty = double.tryParse(quantityController.text) ?? 0.0;
+          final validQty = inputQty.clamp(0.0, maxQty);
           final refundAmount = validQty * unitPrice;
           final newTotal = (tx.totalAmount - refundAmount).clamp(0.0, double.infinity);
 
@@ -1264,12 +1265,12 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                   TextField(
                     controller: quantityController,
                     decoration: InputDecoration(
-                      labelText: 'Quantity to Return (Max: $maxQty)',
+                      labelText: 'Quantity to Return (Max: ${formatQuantity(maxQty)})',
                       hintText: 'Enter quantity',
                       suffixIcon: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         child: Text(
-                          'max: $maxQty',
+                          'max: ${formatQuantity(maxQty)}',
                           style: TextStyle(
                             color: AppTheme.mutedText(dialogCtx),
                             fontSize: 12,
@@ -1279,7 +1280,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                       ),
                       suffixIconConstraints: const BoxConstraints(minHeight: 0, minWidth: 0),
                     ),
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     onChanged: (val) => setDialogState(() {
                       dialogError = null;
                     }),
@@ -1394,10 +1395,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
               ),
               ElevatedButton(
                 onPressed: () {
-                  final qty = int.tryParse(quantityController.text) ?? 0;
-                  if (qty <= 0 || qty > maxQty) {
+                  final qty = double.tryParse(quantityController.text) ?? 0.0;
+                  if (qty <= 0 || qty > (maxQty + 0.0001)) {
                     setDialogState(() {
-                      dialogError = 'Invalid quantity (1 - $maxQty allowed)';
+                      dialogError = 'Invalid quantity (0.01 - ${formatQuantity(maxQty)} allowed)';
                     });
                     return;
                   }
@@ -1423,7 +1424,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     );
 
     if (confirmed == true && context.mounted) {
-      final qtyToReturn = int.parse(quantityController.text);
+      final qtyToReturn = double.parse(quantityController.text);
       final newStock = await context.read<TransactionProvider>().processReturn(
         transactionId: tx.id!,
         productId: item['product_id'],
@@ -1442,7 +1443,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
         final newTotal = (tx.totalAmount - refundAmount).clamp(0.0, double.infinity);
         AppToast.show(
           context,
-          message: 'Returned $qtyToReturn× ${item['product_name']}. Total updated to ₱${newTotal.toStringAsFixed(2)}.',
+          message: 'Returned ${formatQuantity(qtyToReturn)}× ${item['product_name']}. Total updated to ₱${newTotal.toStringAsFixed(2)}.',
         );
       } else if (context.mounted) {
         final err = context.read<TransactionProvider>().lastActionError ??

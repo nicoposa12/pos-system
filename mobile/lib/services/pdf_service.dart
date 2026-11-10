@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/transaction.dart';
 import '../models/user.dart';
+import '../models/product.dart';
 
 class PdfService {
   static pw.Font? _cachedFontMono;
@@ -389,7 +390,7 @@ class PdfService {
     final itemWidgets = items.map<pw.Widget>((item) {
       final rawName = (item['product_name'] ?? 'Item').toString();
       final name = _clean(rawName);
-      final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+      final qty = (item['quantity'] as num?)?.toDouble() ?? 1.0;
       final subtotal = ((item['subtotal'] as num?) ?? 0.0).toDouble();
       final unitPrice = qty > 0 ? (subtotal / qty) : subtotal;
 
@@ -403,10 +404,10 @@ class PdfService {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(name, style: regular),
-                  if (qty > 1) ...[
+                  if ((qty - 1.0).abs() > 0.0001) ...[
                     pw.SizedBox(height: 1),
                     pw.Text(
-                      '$qty x $currency${unitPrice.toStringAsFixed(2)}',
+                      '${formatQuantity(qty)} x $currency${unitPrice.toStringAsFixed(2)}',
                       style: regularMuted,
                     ),
                   ],

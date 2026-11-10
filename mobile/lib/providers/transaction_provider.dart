@@ -201,15 +201,17 @@ class TransactionProvider with ChangeNotifier {
         final id = item['product_id'] as int? ?? 0;
         final entry = byProduct.putIfAbsent(
           id,
-          () => {'name': item['product_name'], 'total_sold': 0, 'total_revenue': 0.0},
+          () => {'name': item['product_name'], 'total_sold': 0.0, 'total_revenue': 0.0},
         );
-        entry['total_sold'] = (entry['total_sold'] as int) + (item['quantity'] as int? ?? 0);
+        entry['total_sold'] = ((entry['total_sold'] as num?)?.toDouble() ?? 0.0) +
+            ((item['quantity'] as num?)?.toDouble() ?? 0.0);
         entry['total_revenue'] = (entry['total_revenue'] as double) +
             ((item['subtotal'] as num?)?.toDouble() ?? 0.0);
       }
     }
     final list = byProduct.values.toList()
-      ..sort((a, b) => (b['total_sold'] as int).compareTo(a['total_sold'] as int));
+      ..sort((a, b) => ((b['total_sold'] as num?)?.toDouble() ?? 0.0)
+          .compareTo((a['total_sold'] as num?)?.toDouble() ?? 0.0));
     return List.unmodifiable(list.take(limit));
   }
 
@@ -265,10 +267,10 @@ class TransactionProvider with ChangeNotifier {
 
   /// Records a return on the server (which restores stock). On success returns
   /// the product's updated stock level; returns `null` on failure.
-  Future<int?> processReturn({
+  Future<double?> processReturn({
     required int transactionId,
     required int productId,
-    required int quantity,
+    required double quantity,
     required String reason,
   }) async {
     if (_userId == null) return null;
@@ -293,7 +295,7 @@ class TransactionProvider with ChangeNotifier {
       // Re-fetch transactions to immediately reflect updated quantity and price across all screens
       await fetchTransactions(silent: true);
 
-      return (res['product_stock'] as num?)?.toInt() ?? -1;
+      return (res['product_stock'] as num?)?.toDouble() ?? -1.0;
     } catch (e) {
       debugPrint('Error processing return: $e');
       _lastActionError = ApiService.describeError(e, 'Failed to process return.');
