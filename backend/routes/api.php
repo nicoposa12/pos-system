@@ -21,11 +21,17 @@ Route::prefix('auth')->group(function () {
 
 // Public App Version & Auto-Update Manifest
 Route::get('/app/version', function () {
+    $windowsVersion = env('WINDOWS_APP_VERSION', '1.0.3');
+    $defaultDownloadUrl = env(
+        'WINDOWS_DOWNLOAD_URL',
+        "https://github.com/nicoposa12/pos-system/releases/download/v{$windowsVersion}/TindaKo-Setup-v{$windowsVersion}.exe"
+    );
+
     return response()->json([
         'windows' => [
-            'version' => env('WINDOWS_APP_VERSION', '1.0.3'),
+            'version' => $windowsVersion,
             'build_number' => (int) env('WINDOWS_BUILD_NUMBER', 4),
-            'download_url' => env('WINDOWS_DOWNLOAD_URL', 'https://github.com/nicoposa12/pos-system/releases/latest/download/TindaKo-Setup.exe'),
+            'download_url' => $defaultDownloadUrl,
             'release_notes' => env('WINDOWS_RELEASE_NOTES', 'TindaKo v1.0.3 with accurate real-time product return calculations, dynamic balance updates, and enhanced receipt workflows.'),
             'force_update' => false,
         ],

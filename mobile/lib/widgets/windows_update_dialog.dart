@@ -72,22 +72,50 @@ class _WindowsUpdateDialogState extends State<WindowsUpdateDialog> {
       }
 
       final dio = Dio();
-      await dio.download(
-        widget.downloadUrl,
-        savePath,
-        cancelToken: _cancelToken,
-        onReceiveProgress: (received, total) {
-          if (total > 0 && mounted) {
-            final percent = received / total;
-            final receivedMB = (received / (1024 * 1024)).toStringAsFixed(1);
-            final totalMB = (total / (1024 * 1024)).toStringAsFixed(1);
-            setState(() {
-              _progress = percent.clamp(0.0, 1.0);
-              _statusText = 'Downloading update... $receivedMB MB / $totalMB MB (${(_progress * 100).toInt()}%)';
-            });
-          }
-        },
-      );
+      try {
+        await dio.download(
+          widget.downloadUrl,
+          savePath,
+          cancelToken: _cancelToken,
+          onReceiveProgress: (received, total) {
+            if (total > 0 && mounted) {
+              final percent = received / total;
+              final receivedMB = (received / (1024 * 1024)).toStringAsFixed(1);
+              final totalMB = (total / (1024 * 1024)).toStringAsFixed(1);
+              setState(() {
+                _progress = percent.clamp(0.0, 1.0);
+                _statusText = 'Downloading update... $receivedMB MB / $totalMB MB (${(_progress * 100).toInt()}%)';
+              });
+            }
+          },
+        );
+      } on DioException catch (dioErr) {
+        // Fallback: If generic filename 404s, try versioned filename
+        if (dioErr.response?.statusCode == 404 && widget.downloadUrl.endsWith('TindaKo-Setup.exe')) {
+          final fallbackUrl = widget.downloadUrl.replaceFirst(
+            'TindaKo-Setup.exe',
+            'TindaKo-Setup-v${widget.version}.exe',
+          );
+          await dio.download(
+            fallbackUrl,
+            savePath,
+            cancelToken: _cancelToken,
+            onReceiveProgress: (received, total) {
+              if (total > 0 && mounted) {
+                final percent = received / total;
+                final receivedMB = (received / (1024 * 1024)).toStringAsFixed(1);
+                final totalMB = (total / (1024 * 1024)).toStringAsFixed(1);
+                setState(() {
+                  _progress = percent.clamp(0.0, 1.0);
+                  _statusText = 'Downloading update... $receivedMB MB / $totalMB MB (${(_progress * 100).toInt()}%)';
+                });
+              }
+            },
+          );
+        } else {
+          rethrow;
+        }
+      }
 
       if (!mounted) return;
 
