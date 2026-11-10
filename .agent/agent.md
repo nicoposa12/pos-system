@@ -14,7 +14,7 @@ Act like a senior full-stack developer: understand the existing codebase first, 
 - **Always Remind & Prompt for Updates**: Whenever code, UI, or business logic changes are made, the AI must always proactively remind and provide the user with the exact shortcut commands to update **both** target platforms:
   1. **Mobile (Android Shorebird OTA Patch)**:
      ```powershell
-     cd mobile; shorebird patch android --release-version 1.0.2+3 --track stable
+     cd mobile; shorebird patch android --release-version 1.0.2+3 --track stable --allow-asset-diffs
      ```
      *(Or run the root shortcut: `.\patch_android.ps1`)*
   2. **Windows Desktop (1-Click Installer Build)**:

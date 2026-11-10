@@ -1,4 +1,4 @@
-# TindaKo Android Shorebird OTA Patch Script
+﻿# TindaKo Android Shorebird OTA Patch Script
 # Automatically deploys Over-The-Air code patches to Android devices.
 
 param(
@@ -20,7 +20,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 
 Set-Location $mobileDir
 try {
-    shorebird patch android --release-version $ReleaseVersion --track $Track
+    shorebird patch android --release-version $ReleaseVersion --track $Track --allow-asset-diffs
     if ($LASTEXITCODE -ne 0) {
         throw "Shorebird patch command failed."
     }
