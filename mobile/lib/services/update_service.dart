@@ -16,8 +16,8 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
-  static const String currentVersion = '1.0.2';
-  static const int currentBuildNumber = 3;
+  static const String currentVersion = '1.0.3';
+  static const int currentBuildNumber = 4;
 
   final ShorebirdUpdater _updater = ShorebirdUpdater();
 

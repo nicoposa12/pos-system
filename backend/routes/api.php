@@ -23,15 +23,15 @@ Route::prefix('auth')->group(function () {
 Route::get('/app/version', function () {
     return response()->json([
         'windows' => [
-            'version' => env('WINDOWS_APP_VERSION', '1.0.2'),
-            'build_number' => (int) env('WINDOWS_BUILD_NUMBER', 3),
+            'version' => env('WINDOWS_APP_VERSION', '1.0.3'),
+            'build_number' => (int) env('WINDOWS_BUILD_NUMBER', 4),
             'download_url' => env('WINDOWS_DOWNLOAD_URL', 'https://github.com/nicoposa12/pos-system/releases/latest/download/TindaKo-Setup.exe'),
-            'release_notes' => env('WINDOWS_RELEASE_NOTES', 'TindaKo Windows release with realtime cloud sync and automatic updates.'),
+            'release_notes' => env('WINDOWS_RELEASE_NOTES', 'TindaKo v1.0.3 with accurate real-time product return calculations, dynamic balance updates, and enhanced receipt workflows.'),
             'force_update' => false,
         ],
         'android' => [
-            'version' => env('ANDROID_APP_VERSION', '1.0.2'),
-            'build_number' => (int) env('ANDROID_BUILD_NUMBER', 3),
+            'version' => env('ANDROID_APP_VERSION', '1.0.3'),
+            'build_number' => (int) env('ANDROID_BUILD_NUMBER', 4),
         ],
     ]);
 });
