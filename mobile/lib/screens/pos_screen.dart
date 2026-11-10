@@ -2187,7 +2187,7 @@ class _PosProductCardState extends State<_PosProductCard>
         ? 'Out of stock'
         : (isLowStock
             ? '${formatQuantity(widget.product.stock)} low'
-            : '${formatQuantity(widget.product.stock)} left');
+            : '${formatQuantity(widget.product.stock)} in stock');
 
     final inCartQty = context.select<CartProvider, double>(
       (cart) => cart.items.values

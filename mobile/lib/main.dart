@@ -62,8 +62,8 @@ class _AuthenticationWrapperState extends State<AuthenticationWrapper> {
   int? _lastSyncedUserId;
   Timer? _idleTimer;
 
-  // Lock after 2 minutes of inactivity (default)
-  static const int idleTimeoutSeconds = 120;
+  // Lock after 60 minutes (1 hour) of inactivity
+  static const int idleTimeoutSeconds = 3600;
 
   @override
   void initState() {

@@ -1247,7 +1247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Quick 4-Digit PIN',
                       subtitle: (user?.hasPin != true)
                           ? 'Set up fast PIN unlock & idle lock'
-                          : 'Active • Locks after 2 min of inactivity',
+                          : 'Active • Locks after 60 min of inactivity',
                       onTap: () => _showSetupPinDialog(context),
                     ),
                     Divider(height: 1, color: AppTheme.borderColor(context)),

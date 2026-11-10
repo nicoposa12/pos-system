@@ -731,10 +731,10 @@ class _InventoryProductCard extends StatelessWidget {
         : (isLow ? AppTheme.accentAmber : AppTheme.accentTeal);
     final statusLabel = isOut
         ? 'Out of stock'
-        : (isLow ? '${product.formattedStock} low' : '${product.formattedStock} in stock');
+        : (isLow ? '${formatQuantity(product.stock)} low' : '${formatQuantity(product.stock)} in stock');
 
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final isCompactCard = screenWidth < 360;
+    final isCompactCard = screenWidth < 400;
     final thumbSize = isCompactCard ? 48.0 : 62.0;
 
     return Container(
@@ -869,7 +869,7 @@ class _InventoryProductCard extends StatelessWidget {
                         isCompactCard
                             ? (isOut
                                 ? 'Out'
-                                : (isLow ? '${product.formattedStock} low' : '${product.formattedStock} left'))
+                                : (isLow ? '${formatQuantity(product.stock)} low' : '${formatQuantity(product.stock)} left'))
                             : statusLabel,
                         style: TextStyle(
                           color: statusColor,

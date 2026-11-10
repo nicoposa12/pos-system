@@ -1536,7 +1536,7 @@ class _AdminConsoleSettingsViewState extends State<_AdminConsoleSettingsView> {
                   iconColor: AppTheme.accentViolet,
                   title: 'Master Quick PIN',
                   subtitle: user?.hasPin == true
-                      ? 'Active • Auto-locks console after 2 min idle'
+                      ? 'Active • Auto-locks console after 60 min idle'
                       : 'Configure 4–6 digit PIN for fast unlock',
                   onTap: () => _showUpdateAdminPinDialog(context, auth),
                 ),
