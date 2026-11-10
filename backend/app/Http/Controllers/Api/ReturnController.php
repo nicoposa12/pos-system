@@ -76,18 +76,49 @@ class ReturnController extends Controller
                 ->where('user_id', $userId)
                 ->increment('stock', $validated['quantity']);
 
+            // Calculate refund amount based on item unit price
+            $item = $transaction->items()
+                ->where('product_id', $validated['product_id'])
+                ->first();
+
+            $unitPrice = ($item && $item->quantity > 0)
+                ? ((float) $item->subtotal / $item->quantity)
+                : 0.0;
+            $refundAmount = round($unitPrice * $validated['quantity'], 2);
+
+            // Update transaction total_amount accurately
+            $newTotal = max(0.0, round((float) $transaction->total_amount - $refundAmount, 2));
+            $transaction->update(['total_amount' => $newTotal]);
+
+            // If transaction has an associated debt (utang), reduce debt amount accurately
+            if ($transaction->debt) {
+                $debt = $transaction->debt;
+                $newDebtAmount = max(0.0, round((float) $debt->amount - $refundAmount, 2));
+                $debtStatus = $newDebtAmount <= (float) $debt->paid_amount ? 'paid' : $debt->status;
+                $debt->update([
+                    'amount' => $newDebtAmount,
+                    'status' => $debtStatus,
+                ]);
+            }
+
+            $transaction->touch();
+
             AuditLogger::log('transaction.return', $request, [
                 'transaction_id' => $transaction->id,
                 'product_id' => $validated['product_id'],
                 'quantity' => $validated['quantity'],
+                'refund_amount' => $refundAmount,
+                'new_total' => $newTotal,
             ]);
 
             $return->load('product:id,name,stock');
+            $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
 
             return response()->json([
                 'message' => 'Return processed and stock restored',
                 'return' => $this->present($return),
                 'product_stock' => $return->product?->stock,
+                'transaction' => $transaction,
             ], 201);
         });
     }

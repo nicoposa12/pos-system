@@ -702,396 +702,461 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
 
   void _showTransactionDetails(BuildContext context, SaleTransaction tx) async {
     final txProvider = context.read<TransactionProvider>();
-    final items = tx.items.isNotEmpty
+    final initialItems = tx.items.isNotEmpty
         ? tx.items
         : await txProvider.getTransactionItems(tx.id!);
     if (!context.mounted) return;
     final theme = Theme.of(context);
-    final customerName = tx.customerName;
-    final isPending =
-        tx.paymentMethod.toLowerCase() == 'pending' ||
-        tx.paymentMethod.toLowerCase() == 'debt';
-    final remainingBalance = (tx.totalAmount - tx.cashReceived).clamp(
-      0.0,
-      tx.totalAmount,
-    );
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetCtx) => ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 560,
-          maxHeight: MediaQuery.sizeOf(sheetCtx).height * 0.85,
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.cardTheme.color,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: AppTheme.borderColor(sheetCtx)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 10),
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppTheme.borderColor(sheetCtx),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 18, 16, 14),
-                  child: Row(
-                    children: [
-                      Expanded(
+      builder: (sheetCtx) => Consumer<TransactionProvider>(
+        builder: (consumerCtx, provider, _) {
+          // Reactively fetch the latest transaction from provider
+          final currentTx = provider.transactions.firstWhere(
+            (t) => t.id == tx.id,
+            orElse: () => tx,
+          );
+          final items = currentTx.items.isNotEmpty
+              ? currentTx.items
+              : initialItems;
+          final customerName = currentTx.customerName;
+          final isPending =
+              currentTx.paymentMethod.toLowerCase() == 'pending' ||
+              currentTx.paymentMethod.toLowerCase() == 'debt';
+          final remainingBalance = (currentTx.totalAmount - currentTx.cashReceived).clamp(
+            0.0,
+            currentTx.totalAmount,
+          );
+
+          return ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 560,
+              maxHeight: MediaQuery.sizeOf(sheetCtx).height * 0.85,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: theme.cardTheme.color,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(color: AppTheme.borderColor(sheetCtx)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppTheme.borderColor(sheetCtx),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 18, 16, 14),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Order #${currentTx.id}',
+                                      style: theme.textTheme.titleLarge?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.3,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    _PaymentBadge(method: currentTx.paymentMethod),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  DateFormat(
+                                    'EEE, MMM d, yyyy • h:mm a',
+                                  ).format(currentTx.date),
+                                  style: TextStyle(
+                                    color: AppTheme.mutedText(sheetCtx),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                if (customerName != null &&
+                                    customerName.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.person_outline_rounded,
+                                        size: 14,
+                                        color: AppTheme.accentOrange,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Customer: $customerName',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(sheetCtx),
+                            tooltip: 'Close',
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(24),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Text(
-                                  'Order #${tx.id}',
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.3,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                _PaymentBadge(method: tx.paymentMethod),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
                             Text(
-                              DateFormat(
-                                'EEE, MMM d, yyyy • h:mm a',
-                              ).format(tx.date),
+                              'ITEMS PURCHASED',
                               style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
                                 color: AppTheme.mutedText(sheetCtx),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
                               ),
                             ),
-                            if (customerName != null &&
-                                customerName.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.person_outline_rounded,
-                                    size: 14,
-                                    color: AppTheme.accentOrange,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Customer: $customerName',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(sheetCtx),
-                        tooltip: 'Close',
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Flexible(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'ITEMS PURCHASED',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: AppTheme.mutedText(sheetCtx),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: AppTheme.subtleSurface(sheetCtx),
-                            borderRadius: BorderRadius.circular(
-                              AppTheme.radiusMd,
-                            ),
-                            border: Border.all(
-                              color: AppTheme.borderColor(sheetCtx),
-                            ),
-                          ),
-                          child: ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: items.length,
-                            separatorBuilder: (_, _) => Divider(
-                              height: 1,
-                              color: AppTheme.borderColor(sheetCtx),
-                            ),
-                            itemBuilder: (ctx, index) {
-                              final item = items[index];
-                              return Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  10,
-                                  6,
-                                  10,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.accentOrange.withValues(
-                                          alpha: 0.12,
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        '${item['quantity']}×',
-                                        style: const TextStyle(
-                                          color: AppTheme.accentOrange,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 12,
-                                          fontFeatures: AppTheme.tabularFigures,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        item['product_name'] ?? 'Unknown Item',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      '₱${(item['subtotal'] as num).toStringAsFixed(2)}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                        fontFeatures: AppTheme.tabularFigures,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      onPressed: () =>
-                                          _showReturnDialog(context, tx, item),
-                                      icon: const Icon(
-                                        Icons.assignment_return_outlined,
-                                        size: 19,
-                                        color: AppTheme.accentRose,
-                                      ),
-                                      tooltip: 'Return Item',
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Financial Breakdown
-                        if (tx.discount > 0) ...[
-                          _ReceiptRow(
-                            label: 'Subtotal',
-                            value:
-                                '₱${(tx.totalAmount + tx.discount).toStringAsFixed(2)}',
-                          ),
-                          const SizedBox(height: 8),
-                          _ReceiptRow(
-                            label: 'Discount',
-                            value: '-₱${tx.discount.toStringAsFixed(2)}',
-                            valueColor: AppTheme.accentTeal,
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                        if (tx.paymentMethod == 'cash') ...[
-                          _ReceiptRow(
-                            label: 'Cash Received',
-                            value: '₱${tx.cashReceived.toStringAsFixed(2)}',
-                          ),
-                          const SizedBox(height: 8),
-                          _ReceiptRow(
-                            label: 'Change Given',
-                            value: '₱${tx.change.toStringAsFixed(2)}',
-                            valueColor: AppTheme.accentTeal,
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        if (isPending) ...[
-                          Container(
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accentAmber.withValues(
-                                alpha: 0.12,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: AppTheme.accentAmber.withValues(
-                                  alpha: 0.35,
-                                ),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.pending_actions_rounded,
-                                  color: AppTheme.accentAmber,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Pending Balance Due',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 12,
-                                          color: AppTheme.accentAmber,
-                                        ),
-                                      ),
-                                      if (tx.cashReceived > 0)
-                                        Text(
-                                          'Deposit Paid: ₱${tx.cashReceived.toStringAsFixed(2)}',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: AppTheme.mutedText(sheetCtx),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                Text(
-                                  '₱${remainingBalance.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                    color: AppTheme.accentAmber,
-                                    fontFeatures: AppTheme.tabularFigures,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                        ],
-                        const Divider(height: 16),
-                        _ReceiptRow(
-                          label: 'Total Amount',
-                          value: '₱${tx.totalAmount.toStringAsFixed(2)}',
-                          isTotal: true,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (isPending) ...[
-                        SizedBox(
-                          width: double.infinity,
-                          height: 48,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              _showCollectPaymentDialog(
-                                context,
-                                tx: tx,
-                                remainingBalance: remainingBalance,
-                                customerName: customerName,
-                                parentSheetContext: sheetCtx,
-                              );
-                            },
-                            icon: const Icon(Icons.payments_rounded, size: 20),
-                            label: Text(
-                              'Collect Payment (₱${remainingBalance.toStringAsFixed(2)})',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF10B981),
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
+                            const SizedBox(height: 10),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: AppTheme.subtleSurface(sheetCtx),
                                 borderRadius: BorderRadius.circular(
                                   AppTheme.radiusMd,
                                 ),
+                                border: Border.all(
+                                  color: AppTheme.borderColor(sheetCtx),
+                                ),
+                              ),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: items.length,
+                                separatorBuilder: (_, _) => Divider(
+                                  height: 1,
+                                  color: AppTheme.borderColor(sheetCtx),
+                                ),
+                                itemBuilder: (ctx, index) {
+                                  final item = items[index];
+                                  final netQty = (item['quantity'] as num?)?.toInt() ?? 0;
+                                  final originalQty = (item['original_quantity'] as num?)?.toInt() ?? netQty;
+                                  final returnedQty = (item['returned_quantity'] as num?)?.toInt() ?? 0;
+                                  final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
+                                  final isFullyReturned = netQty <= 0 && returnedQty > 0;
+                                  final isPartiallyReturned = returnedQty > 0 && netQty > 0;
+
+                                  return Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      14,
+                                      10,
+                                      6,
+                                      10,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isFullyReturned
+                                                ? AppTheme.accentRose.withValues(alpha: 0.12)
+                                                : AppTheme.accentOrange.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            isFullyReturned ? '0×' : '$netQty×',
+                                            style: TextStyle(
+                                              color: isFullyReturned
+                                                  ? AppTheme.accentRose
+                                                  : AppTheme.accentOrange,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 12,
+                                              fontFeatures: AppTheme.tabularFigures,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                item['product_name'] ?? 'Unknown Item',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 14,
+                                                  decoration: isFullyReturned ? TextDecoration.lineThrough : null,
+                                                  color: isFullyReturned ? AppTheme.mutedText(sheetCtx) : null,
+                                                ),
+                                              ),
+                                              if (isFullyReturned)
+                                                Padding(
+                                                  padding: const EdgeInsets.only(top: 2),
+                                                  child: Text(
+                                                    'RETURNED ($returnedQty pcs)',
+                                                    style: const TextStyle(
+                                                      color: AppTheme.accentRose,
+                                                      fontWeight: FontWeight.w700,
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                )
+                                              else if (isPartiallyReturned)
+                                                Padding(
+                                                  padding: const EdgeInsets.only(top: 2),
+                                                  child: Text(
+                                                    '$returnedQty of $originalQty returned',
+                                                    style: TextStyle(
+                                                      color: AppTheme.mutedText(sheetCtx),
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        Text(
+                                          '₱${subtotal.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                            color: isFullyReturned ? AppTheme.mutedText(sheetCtx) : null,
+                                            fontFeatures: AppTheme.tabularFigures,
+                                          ),
+                                        ),
+                                        if (!isFullyReturned)
+                                          IconButton(
+                                            onPressed: () =>
+                                                _showReturnDialog(context, currentTx, item),
+                                            icon: const Icon(
+                                              Icons.assignment_return_outlined,
+                                              size: 19,
+                                              color: AppTheme.accentRose,
+                                            ),
+                                            tooltip: 'Return Item',
+                                          )
+                                        else
+                                          const Padding(
+                                            padding: EdgeInsets.symmetric(horizontal: 12),
+                                            child: Icon(
+                                              Icons.check_circle_outline_rounded,
+                                              size: 18,
+                                              color: AppTheme.accentRose,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 20),
+
+                            // Financial Breakdown
+                            if (currentTx.discount > 0) ...[
+                              _ReceiptRow(
+                                label: 'Subtotal',
+                                value:
+                                    '₱${(currentTx.totalAmount + currentTx.discount).toStringAsFixed(2)}',
+                              ),
+                              const SizedBox(height: 8),
+                              _ReceiptRow(
+                                label: 'Discount',
+                                value: '-₱${currentTx.discount.toStringAsFixed(2)}',
+                                valueColor: AppTheme.accentTeal,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            if (currentTx.paymentMethod == 'cash') ...[
+                              _ReceiptRow(
+                                label: 'Cash Received',
+                                value: '₱${currentTx.cashReceived.toStringAsFixed(2)}',
+                              ),
+                              const SizedBox(height: 8),
+                              _ReceiptRow(
+                                label: 'Change Given',
+                                value: '₱${currentTx.change.toStringAsFixed(2)}',
+                                valueColor: AppTheme.accentTeal,
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            if (isPending) ...[
+                              Container(
+                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.accentAmber.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppTheme.accentAmber.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.pending_actions_rounded,
+                                      color: AppTheme.accentAmber,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Pending Balance Due',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 12,
+                                              color: AppTheme.accentAmber,
+                                            ),
+                                          ),
+                                          if (currentTx.cashReceived > 0)
+                                            Text(
+                                              'Deposit Paid: ₱${currentTx.cashReceived.toStringAsFixed(2)}',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: AppTheme.mutedText(sheetCtx),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    Text(
+                                      '₱${remainingBalance.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                        color: AppTheme.accentAmber,
+                                        fontFeatures: AppTheme.tabularFigures,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            const Divider(height: 16),
+                            _ReceiptRow(
+                              label: 'Total Amount',
+                              value: '₱${currentTx.totalAmount.toStringAsFixed(2)}',
+                              isTotal: true,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                      ],
-                      Row(
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                final auth = context.read<AuthProvider>();
-                                showReceiptDialog(
-                                  context,
-                                  transaction: tx,
-                                  items: items,
-                                  user: auth.currentUser,
-                                  customerName: customerName,
-                                );
-                              },
-                              icon: const Icon(
-                                Icons.receipt_long_rounded,
-                                size: 18,
+                          if (isPending) ...[
+                            SizedBox(
+                              width: double.infinity,
+                              height: 48,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  _showCollectPaymentDialog(
+                                    context,
+                                    tx: currentTx,
+                                    remainingBalance: remainingBalance,
+                                    customerName: customerName,
+                                    parentSheetContext: sheetCtx,
+                                  );
+                                },
+                                icon: const Icon(Icons.payments_rounded, size: 20),
+                                label: Text(
+                                  'Collect Payment (₱${remainingBalance.toStringAsFixed(2)})',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF10B981),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      AppTheme.radiusMd,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              label: const Text('Thermal Receipt'),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () => Navigator.pop(sheetCtx),
-                              child: const Text('Done'),
-                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    final auth = context.read<AuthProvider>();
+                                    showReceiptDialog(
+                                      context,
+                                      transaction: currentTx,
+                                      items: items,
+                                      user: auth.currentUser,
+                                      customerName: customerName,
+                                    );
+                                  },
+                                  icon: const Icon(
+                                    Icons.receipt_long_rounded,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Thermal Receipt'),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: () => Navigator.pop(sheetCtx),
+                                  child: const Text('Done'),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1124,77 +1189,205 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     SaleTransaction tx,
     Map<String, dynamic> item,
   ) async {
+    final netQty = (item['quantity'] as num?)?.toInt() ?? 0;
+    if (netQty <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item has already been fully returned.')),
+      );
+      return;
+    }
+
     final reasonController = TextEditingController();
-    final quantityController = TextEditingController(
-      text: item['quantity'].toString(),
-    );
-    final maxQty = item['quantity'] as int;
+    final quantityController = TextEditingController(text: netQty.toString());
+    final maxQty = netQty;
+    final unitPrice = (item['unit_price'] as num?)?.toDouble() ??
+        (maxQty > 0 ? ((item['subtotal'] as num).toDouble() / maxQty) : 0.0);
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Return ${item['product_name']}',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: quantityController,
-              decoration: InputDecoration(
-                labelText: 'Quantity to Return (Max: $maxQty)',
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          final inputQty = int.tryParse(quantityController.text) ?? 0;
+          final validQty = inputQty.clamp(0, maxQty);
+          final refundAmount = validQty * unitPrice;
+          final newTotal = (tx.totalAmount - refundAmount).clamp(0.0, double.infinity);
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentRose.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.assignment_return_outlined,
+                    color: AppTheme.accentRose,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Return ${item['product_name']}',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'Unit Price: ₱${unitPrice.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.mutedText(dialogCtx),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: quantityController,
+                    decoration: InputDecoration(
+                      labelText: 'Quantity to Return (Max: $maxQty)',
+                      hintText: 'Enter quantity',
+                      suffixIcon: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        child: Text(
+                          'max: $maxQty',
+                          style: TextStyle(
+                            color: AppTheme.mutedText(dialogCtx),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      suffixIconConstraints: const BoxConstraints(minHeight: 0, minWidth: 0),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (val) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  // Real-time price & deduction breakdown
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.subtleSurface(dialogCtx),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.borderColor(dialogCtx)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Refund / Deduction:',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.mutedText(dialogCtx),
+                              ),
+                            ),
+                            Text(
+                              '-₱${refundAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.accentRose,
+                                fontFeatures: AppTheme.tabularFigures,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'New Order Total:',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.mutedText(dialogCtx),
+                              ),
+                            ),
+                            Text(
+                              '₱${newTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.accentOrange,
+                                fontFeatures: AppTheme.tabularFigures,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: reasonController,
+                    decoration: const InputDecoration(
+                      labelText: 'Reason for Return',
+                      hintText: 'e.g. Damaged, Expired, Wrong item',
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
               ),
-              keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: reasonController,
-              decoration: const InputDecoration(
-                labelText: 'Reason for Return',
-                hintText: 'e.g. Damaged, Expired, Wrong item',
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
               ),
-              maxLines: 2,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final qty = int.tryParse(quantityController.text) ?? 0;
-              if (qty <= 0 || qty > maxQty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Invalid quantity')),
-                );
-                return;
-              }
-              if (reasonController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please provide a reason')),
-                );
-                return;
-              }
-              Navigator.pop(ctx, true);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.accentRose,
-              minimumSize: const Size(120, 44),
-            ),
-            child: const Text('Process Return'),
-          ),
-        ],
+              ElevatedButton(
+                onPressed: () {
+                  final qty = int.tryParse(quantityController.text) ?? 0;
+                  if (qty <= 0 || qty > maxQty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Invalid quantity (1 - $maxQty allowed)')),
+                    );
+                    return;
+                  }
+                  if (reasonController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please provide a reason')),
+                    );
+                    return;
+                  }
+                  Navigator.pop(ctx, true);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accentRose,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(120, 44),
+                ),
+                child: const Text('Process Return'),
+              ),
+            ],
+          );
+        },
       ),
     );
 
     if (confirmed == true && context.mounted) {
+      final qtyToReturn = int.parse(quantityController.text);
       final newStock = await context.read<TransactionProvider>().processReturn(
         transactionId: tx.id!,
         productId: item['product_id'],
-        quantity: int.parse(quantityController.text),
+        quantity: qtyToReturn,
         reason: reasonController.text.trim(),
       );
 
@@ -1204,10 +1397,14 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
         } else {
           context.read<ProductProvider>().fetchProducts(silent: true);
         }
-        Navigator.pop(context);
+        // Do NOT pop the order details modal! It updates in real-time.
+        final refundAmount = qtyToReturn * unitPrice;
+        final newTotal = (tx.totalAmount - refundAmount).clamp(0.0, double.infinity);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Return processed and stock restored'),
+          SnackBar(
+            content: Text(
+              'Returned $qtyToReturn× ${item['product_name']}. Total updated to ₱${newTotal.toStringAsFixed(2)}.',
+            ),
             backgroundColor: AppTheme.accentTeal,
           ),
         );

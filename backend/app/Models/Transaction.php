@@ -41,4 +41,9 @@ class Transaction extends Model
     {
         return $this->hasOne(Debt::class);
     }
+
+    public function returns()
+    {
+        return $this->hasMany(ProductReturn::class);
+    }
 }

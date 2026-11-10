@@ -281,6 +281,18 @@ class TransactionProvider with ChangeNotifier {
         quantity: quantity,
         reason: reason,
       );
+
+      // If backend returned the updated transaction, merge immediately
+      if (res['transaction'] is Map) {
+        final updatedTx = SaleTransaction.fromJson(
+          Map<String, dynamic>.from(res['transaction'] as Map),
+        );
+        _merge([updatedTx]);
+      }
+
+      // Re-fetch transactions to immediately reflect updated quantity and price across all screens
+      await fetchTransactions(silent: true);
+
       return (res['product_stock'] as num?)?.toInt() ?? -1;
     } catch (e) {
       debugPrint('Error processing return: $e');

@@ -9,3 +9,16 @@ Act like a senior full-stack developer: understand the existing codebase first, 
 
 ## Cloud Architecture Rule
 - **Live Cloud Only**: The application is strictly and fully connected to the live cloud services: Render (`https://pos-system-1-y58u.onrender.com/api`) and Neon PostgreSQL. Never use localhost, local servers (e.g. 10.0.2.2 or 127.0.0.1), or offline fallback databases. Do not include temporary server settings or URL-switching UI for testing; the app must communicate directly with the live cloud endpoint.
+   
+## Multi-Platform Update & Deployment Rule
+- **Always Remind & Prompt for Updates**: Whenever code, UI, or business logic changes are made, the AI must always proactively remind and provide the user with the exact shortcut commands to update **both** target platforms:
+  1. **Mobile (Android Shorebird OTA Patch)**:
+     ```powershell
+     cd mobile; shorebird patch android --release-version 1.0.2+3 --track stable
+     ```
+     *(Or run the root shortcut: `.\patch_android.ps1`)*
+  2. **Windows Desktop (1-Click Installer Build)**:
+     ```powershell
+     .\build_windows.ps1
+     ```
+- Never consider a multi-platform release finished without explicitly presenting both Windows and Android update commands to the user.

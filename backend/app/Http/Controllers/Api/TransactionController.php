@@ -21,7 +21,7 @@ class TransactionController extends Controller
     public function index(Request $request)
     {
         $query = $request->user()->transactions()
-            ->with(['items.product:id,name,category,stock', 'debt'])
+            ->with(['items.product:id,name,category,stock', 'debt', 'returns'])
             ->orderByDesc('id');
 
         // Incremental Delta Sync: return only records modified after the specified timestamp
@@ -161,7 +161,7 @@ class TransactionController extends Controller
                 ]);
             }
 
-            $transaction->load(['items.product:id,name,category,stock', 'debt']);
+            $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
 
             return response()->json([
                 'message' => 'Transaction completed successfully',
@@ -179,7 +179,7 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $transaction->load(['items.product:id,name,category,stock', 'debt']);
+        $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
 
         return response()->json(['transaction' => $transaction]);
     }
@@ -223,7 +223,7 @@ class TransactionController extends Controller
             'is_fully_paid' => $isFullyPaid,
         ]);
 
-        $transaction->load(['items.product:id,name,category,stock', 'debt']);
+        $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
 
         return response()->json([
             'message' => $isFullyPaid ? 'Transaction marked as paid successfully' : 'Payment recorded successfully',
