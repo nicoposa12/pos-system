@@ -795,6 +795,7 @@ class _PosScreenState extends State<PosScreen> {
 
       messenger.showSnackBar(
         SnackBar(
+          duration: const Duration(seconds: 5),
           content: const Row(
             children: [
               Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
@@ -822,6 +823,7 @@ class _PosScreenState extends State<PosScreen> {
       HapticFeedback.vibrate();
       messenger.showSnackBar(
         SnackBar(
+          duration: const Duration(seconds: 5),
           content: Row(
             children: [
               const Icon(Icons.error_rounded, color: Colors.white, size: 20),

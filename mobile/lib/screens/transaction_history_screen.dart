@@ -36,6 +36,8 @@ class TransactionHistoryScreen extends StatefulWidget {
 class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   late TransactionFilter _currentFilter;
   DateTime _selectedDate = DateTime.now();
+  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  int _selectedYear = DateTime.now().year;
   late final TextEditingController _searchController;
   String _searchQuery = '';
   String _paymentFilter = 'all'; // 'all', 'cash', 'gcash'
@@ -49,6 +51,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     if (widget.filterRequest?.value != null) {
       _currentFilter = widget.filterRequest!.value!;
       _selectedDate = DateTime.now();
+      _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+      _selectedYear = DateTime.now().year;
       widget.filterRequest!.value = null;
     }
     Future.microtask(() {
@@ -72,6 +76,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       setState(() {
         _currentFilter = requested;
         _selectedDate = DateTime.now();
+        _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+        _selectedYear = DateTime.now().year;
       });
       widget.filterRequest?.value = null;
     }
@@ -120,11 +126,13 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
         break;
       case TransactionFilter.monthly:
         list = all.where(
-          (t) => t.date.year == now.year && t.date.month == now.month,
+          (t) =>
+              t.date.year == _selectedMonth.year &&
+              t.date.month == _selectedMonth.month,
         );
         break;
       case TransactionFilter.yearly:
-        list = all.where((t) => t.date.year == now.year);
+        list = all.where((t) => t.date.year == _selectedYear);
         break;
       case TransactionFilter.all:
         list = all;
@@ -175,9 +183,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       case TransactionFilter.weekly:
         return 'Last 7 Days';
       case TransactionFilter.monthly:
-        return DateFormat('MMMM yyyy').format(DateTime.now());
+        return DateFormat('MMMM yyyy').format(_selectedMonth);
       case TransactionFilter.yearly:
-        return 'Year ${DateTime.now().year}';
+        return 'Year $_selectedYear';
       case TransactionFilter.all:
         return 'All Sales Records';
     }
@@ -188,13 +196,26 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       case TransactionFilter.all:
         return 'All';
       case TransactionFilter.daily:
-        return 'Daily';
+        final now = DateTime.now();
+        final isToday =
+            _selectedDate.year == now.year &&
+            _selectedDate.month == now.month &&
+            _selectedDate.day == now.day;
+        return isToday ? 'Daily' : DateFormat('MMM d').format(_selectedDate);
       case TransactionFilter.weekly:
         return '7 Days';
       case TransactionFilter.monthly:
-        return 'Monthly';
+        final now = DateTime.now();
+        final isThisMonth =
+            _selectedMonth.year == now.year &&
+            _selectedMonth.month == now.month;
+        return isThisMonth
+            ? 'Monthly'
+            : DateFormat('MMM yyyy').format(_selectedMonth);
       case TransactionFilter.yearly:
-        return 'Yearly';
+        final now = DateTime.now();
+        final isThisYear = _selectedYear == now.year;
+        return isThisYear ? 'Yearly' : '$_selectedYear';
     }
   }
 
@@ -203,12 +224,388 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (picked != null && mounted) {
       setState(() {
         _selectedDate = picked;
         _currentFilter = TransactionFilter.daily;
+      });
+    }
+  }
+
+  Future<void> _pickMonthYear() async {
+    int pickerYear = _selectedMonth.year;
+    int pickerMonth = _selectedMonth.month;
+
+    final picked = await showDialog<DateTime>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            final isDark = Theme.of(dialogCtx).brightness == Brightness.dark;
+            final now = DateTime.now();
+            final monthNames = const [
+              'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+            ];
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+              ),
+              backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+              titlePadding: const EdgeInsets.fromLTRB(20, 18, 16, 10),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentOrange.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    ),
+                    child: const Icon(
+                      Icons.calendar_month_rounded,
+                      color: AppTheme.accentOrange,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Select Month & Year',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 330,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Year selector banner
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppTheme.cardDark : AppTheme.subtleSurface(dialogCtx),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                        border: Border.all(color: AppTheme.borderColor(dialogCtx)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left_rounded),
+                            tooltip: 'Previous Year',
+                            onPressed: pickerYear > 2020
+                                ? () => setDialogState(() => pickerYear--)
+                                : null,
+                          ),
+                          Text(
+                            '$pickerYear',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              fontFeatures: AppTheme.tabularFigures,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_right_rounded),
+                            tooltip: 'Next Year',
+                            onPressed: pickerYear < now.year + 2
+                                ? () => setDialogState(() => pickerYear++)
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Months 3x4 Grid
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 2.1,
+                      ),
+                      itemCount: 12,
+                      itemBuilder: (context, idx) {
+                        final monthNum = idx + 1;
+                        final isSelected = pickerYear == _selectedMonth.year && monthNum == pickerMonth;
+                        final isCurrentRealMonth = pickerYear == now.year && monthNum == now.month;
+
+                        return Material(
+                          color: isSelected
+                              ? AppTheme.accentOrange
+                              : (isDark ? AppTheme.cardDark : Colors.white),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                            side: BorderSide(
+                              color: isSelected
+                                  ? AppTheme.accentOrange
+                                  : (isCurrentRealMonth
+                                      ? AppTheme.accentOrange.withValues(alpha: 0.6)
+                                      : AppTheme.borderColor(dialogCtx)),
+                              width: isCurrentRealMonth && !isSelected ? 1.5 : 1.0,
+                            ),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                            onTap: () {
+                              setDialogState(() {
+                                pickerMonth = monthNum;
+                              });
+                            },
+                            child: Center(
+                              child: Text(
+                                monthNames[idx],
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : (isCurrentRealMonth
+                                          ? AppTheme.accentOrange
+                                          : Theme.of(dialogCtx).colorScheme.onSurface),
+                                  fontWeight: isSelected || isCurrentRealMonth
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actionsAlignment: MainAxisAlignment.spaceBetween,
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogCtx).pop(DateTime(now.year, now.month));
+                  },
+                  child: const Text('This Month'),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogCtx).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(dialogCtx).pop(DateTime(pickerYear, pickerMonth));
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accentOrange,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                        ),
+                      ),
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _selectedMonth = picked;
+        _currentFilter = TransactionFilter.monthly;
+      });
+    }
+  }
+
+  Future<void> _pickYear() async {
+    int pickerYear = _selectedYear;
+    final now = DateTime.now();
+    final startYear = 2020;
+    final endYear = now.year + 1;
+    final years = List<int>.generate(
+      endYear - startYear + 1,
+      (i) => endYear - i,
+    );
+
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            final isDark = Theme.of(dialogCtx).brightness == Brightness.dark;
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusLg),
+              ),
+              backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+              titlePadding: const EdgeInsets.fromLTRB(20, 18, 16, 10),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentOrange.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    ),
+                    child: const Icon(
+                      Icons.date_range_rounded,
+                      color: AppTheme.accentOrange,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Select Year',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 320,
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.center,
+                  children: years.map((y) {
+                    final isSelected = y == pickerYear;
+                    final isCurrentYear = y == now.year;
+
+                    return Material(
+                      color: isSelected
+                          ? AppTheme.accentOrange
+                          : (isDark ? AppTheme.cardDark : Colors.white),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                        side: BorderSide(
+                          color: isSelected
+                              ? AppTheme.accentOrange
+                              : (isCurrentYear
+                                  ? AppTheme.accentOrange.withValues(alpha: 0.6)
+                                  : AppTheme.borderColor(dialogCtx)),
+                          width: isCurrentYear && !isSelected ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                        onTap: () {
+                          setDialogState(() {
+                            pickerYear = y;
+                          });
+                        },
+                        child: Container(
+                          width: 88,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          alignment: Alignment.center,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$y',
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : (isCurrentYear
+                                          ? AppTheme.accentOrange
+                                          : Theme.of(dialogCtx).colorScheme.onSurface),
+                                  fontWeight: isSelected || isCurrentYear
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                  fontSize: 15,
+                                  fontFeatures: AppTheme.tabularFigures,
+                                ),
+                              ),
+                              if (isCurrentYear) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Current',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    color: isSelected
+                                        ? Colors.white70
+                                        : AppTheme.accentOrange,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              actionsAlignment: MainAxisAlignment.spaceBetween,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(now.year),
+                  child: const Text('This Year'),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogCtx).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(dialogCtx).pop(pickerYear),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accentOrange,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                        ),
+                      ),
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _selectedYear = picked;
+        _currentFilter = TransactionFilter.yearly;
       });
     }
   }
@@ -377,7 +774,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 ),
                                 side: BorderSide(
                                   color:
-                                      _currentFilter == TransactionFilter.daily
+                                      (_currentFilter == TransactionFilter.daily ||
+                                       _currentFilter == TransactionFilter.monthly ||
+                                       _currentFilter == TransactionFilter.yearly)
                                       ? AppTheme.accentOrange
                                       : AppTheme.borderColor(context),
                                 ),
@@ -386,14 +785,29 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 borderRadius: BorderRadius.circular(
                                   AppTheme.radiusMd,
                                 ),
-                                onTap: _pickCustomDate,
-                                child: const SizedBox(
+                                onTap: () {
+                                  if (_currentFilter == TransactionFilter.monthly) {
+                                    _pickMonthYear();
+                                  } else if (_currentFilter == TransactionFilter.yearly) {
+                                    _pickYear();
+                                  } else {
+                                    _pickCustomDate();
+                                  }
+                                },
+                                child: SizedBox(
                                   width: 50,
                                   height: 50,
-                                  child: Icon(
-                                    Icons.calendar_month_rounded,
-                                    color: AppTheme.accentOrange,
-                                    size: 22,
+                                  child: Tooltip(
+                                    message: _currentFilter == TransactionFilter.monthly
+                                        ? 'Select Month & Year'
+                                        : (_currentFilter == TransactionFilter.yearly
+                                            ? 'Select Year'
+                                            : 'Select Date'),
+                                    child: const Icon(
+                                      Icons.calendar_month_rounded,
+                                      color: AppTheme.accentOrange,
+                                      size: 22,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -409,23 +823,54 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                             children: [
                               ...TransactionFilter.values.map((filter) {
                                 final isSelected = _currentFilter == filter;
+                                final hasPicker = filter == TransactionFilter.daily ||
+                                    filter == TransactionFilter.monthly ||
+                                    filter == TransactionFilter.yearly;
+
                                 return Padding(
                                   padding: const EdgeInsets.only(right: 8),
                                   child: ChoiceChip(
-                                    label: Text(_chipLabel(filter)),
+                                    label: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(_chipLabel(filter)),
+                                        if (isSelected && hasPicker) ...[
+                                          const SizedBox(width: 3),
+                                          const Icon(
+                                            Icons.arrow_drop_down_rounded,
+                                            size: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                     selected: isSelected,
                                     showCheckmark: false,
                                     onSelected: (_) {
                                       HapticFeedback.selectionClick();
-                                      setState(() {
-                                        if (filter == TransactionFilter.daily &&
-                                            _currentFilter ==
-                                                TransactionFilter.daily) {
+                                      if (filter == TransactionFilter.daily) {
+                                        if (_currentFilter == TransactionFilter.daily) {
                                           _pickCustomDate();
                                         } else {
-                                          _currentFilter = filter;
+                                          setState(() => _currentFilter = filter);
                                         }
-                                      });
+                                      } else if (filter == TransactionFilter.monthly) {
+                                        if (_currentFilter == TransactionFilter.monthly) {
+                                          _pickMonthYear();
+                                        } else {
+                                          setState(() => _currentFilter = filter);
+                                          _pickMonthYear();
+                                        }
+                                      } else if (filter == TransactionFilter.yearly) {
+                                        if (_currentFilter == TransactionFilter.yearly) {
+                                          _pickYear();
+                                        } else {
+                                          setState(() => _currentFilter = filter);
+                                          _pickYear();
+                                        }
+                                      } else {
+                                        setState(() => _currentFilter = filter);
+                                      }
                                     },
                                     selectedColor: AppTheme.accentOrange,
                                     backgroundColor: theme.cardTheme.color,
@@ -513,12 +958,46 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      _getFilterLabel(),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppTheme.mutedText(context),
+                                    InkWell(
+                                      onTap: () {
+                                        if (_currentFilter == TransactionFilter.monthly) {
+                                          _pickMonthYear();
+                                        } else if (_currentFilter == TransactionFilter.yearly) {
+                                          _pickYear();
+                                        } else if (_currentFilter == TransactionFilter.daily) {
+                                          _pickCustomDate();
+                                        }
+                                      },
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 2),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Flexible(
+                                              child: Text(
+                                                _getFilterLabel(),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppTheme.mutedText(context),
+                                                ),
+                                              ),
+                                            ),
+                                            if (_currentFilter == TransactionFilter.daily ||
+                                                _currentFilter == TransactionFilter.monthly ||
+                                                _currentFilter == TransactionFilter.yearly) ...[
+                                              const SizedBox(width: 4),
+                                              const Icon(
+                                                Icons.arrow_drop_down_rounded,
+                                                size: 16,
+                                                color: AppTheme.accentOrange,
+                                              ),
+                                            ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(height: 4),
