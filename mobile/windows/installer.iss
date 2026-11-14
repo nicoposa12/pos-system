@@ -3,7 +3,7 @@
 
 #define MyAppName "TindaKo"
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.4"
+#define MyAppVersion "1.0.6"
 #endif
 #define MyAppPublisher "TindaKo"
 #define MyAppURL "https://pos-system-1-y58u.onrender.com"

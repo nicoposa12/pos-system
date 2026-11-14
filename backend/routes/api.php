@@ -21,24 +21,9 @@ Route::prefix('auth')->group(function () {
 
 // Public App Version & Auto-Update Manifest
 Route::get('/app/version', function () {
-    $windowsVersion = env('WINDOWS_APP_VERSION', '1.0.4');
-    $defaultDownloadUrl = env(
-        'WINDOWS_DOWNLOAD_URL',
-        "https://github.com/nicoposa12/pos-system/releases/download/v{$windowsVersion}/TindaKo-Setup-v{$windowsVersion}.exe"
-    );
-
     return response()->json([
-        'windows' => [
-            'version' => $windowsVersion,
-            'build_number' => (int) env('WINDOWS_BUILD_NUMBER', 5),
-            'download_url' => $defaultDownloadUrl,
-            'release_notes' => env('WINDOWS_RELEASE_NOTES', 'TindaKo v1.0.4 with decimal stock, month/year picker, 60-min auto-lock, 5s toasts, and approval update dialogs.'),
-            'force_update' => false,
-        ],
-        'android' => [
-            'version' => env('ANDROID_APP_VERSION', '1.0.4'),
-            'build_number' => (int) env('ANDROID_BUILD_NUMBER', 5),
-        ],
+        'windows' => config('updates.windows'),
+        'android' => config('updates.android'),
     ]);
 });
 

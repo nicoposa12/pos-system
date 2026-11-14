@@ -16,8 +16,14 @@ class UpdateService {
   UpdateService._();
   static final UpdateService instance = UpdateService._();
 
-  static const String currentVersion = '1.0.4';
-  static const int currentBuildNumber = 5;
+  static const String currentVersion = String.fromEnvironment(
+    'APP_VERSION',
+    defaultValue: '1.0.6',
+  );
+  static const int currentBuildNumber = int.fromEnvironment(
+    'APP_BUILD_NUMBER',
+    defaultValue: 6,
+  );
 
   final ShorebirdUpdater _updater = ShorebirdUpdater();
 
@@ -72,11 +78,44 @@ class UpdateService {
     }
   }
 
+  bool _hasDesktopUpdate(_DesktopUpdateInfo update) {
+    return isNewerVersion(
+      update.version,
+      currentVersion,
+      remoteBuildNumber: update.buildNumber,
+      currentBuildNumber: currentBuildNumber,
+    );
+  }
+
+  Future<void> _openWindowsUpdateDialog(
+    BuildContext context,
+    _DesktopUpdateInfo update,
+  ) {
+    return WindowsUpdateDialog.show(
+      context,
+      version: update.version,
+      downloadUrl: update.downloadUrl,
+      releaseNotes: update.releaseNotes,
+      forceUpdate: update.forceUpdate,
+    );
+  }
+
+  void _showCheckErrorBanner(ScaffoldMessengerState messenger, String message) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.accentRose,
+      ),
+    );
+  }
+
   /// Silent desktop check on startup: if an update is found, displays an action banner.
   Future<void> _checkDesktopUpdateSilently(BuildContext context) async {
     try {
-      final update = await _fetchDesktopUpdateManifest();
-      if (update != null && _isNewerVersion(update.version, currentVersion)) {
+      final update = await _fetchDesktopUpdateManifest(
+        timeout: const Duration(seconds: 15),
+      );
+      if (update != null && _hasDesktopUpdate(update)) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -93,13 +132,7 @@ class UpdateService {
               label: 'UPDATE NOW',
               textColor: AppTheme.accentOrange,
               onPressed: () {
-                WindowsUpdateDialog.show(
-                  context,
-                  version: update.version,
-                  downloadUrl: update.downloadUrl,
-                  releaseNotes: update.releaseNotes,
-                  forceUpdate: update.forceUpdate,
-                );
+                _openWindowsUpdateDialog(context, update);
               },
             ),
             backgroundColor: AppTheme.cardDark,
@@ -132,31 +165,30 @@ class UpdateService {
               Text('Checking for TindaKo Windows updates...'),
             ],
           ),
-          duration: Duration(seconds: 4),
+          duration: Duration(seconds: 25),
         ),
       );
 
       try {
-        final update = await _fetchDesktopUpdateManifest();
+        final update = await _fetchDesktopUpdateManifest(
+          timeout: const Duration(seconds: 25),
+          rethrowOnError: true,
+        );
         messenger.hideCurrentSnackBar();
 
-        if (update != null && _isNewerVersion(update.version, currentVersion)) {
+        if (update != null && _hasDesktopUpdate(update)) {
           if (!context.mounted) return;
-          await WindowsUpdateDialog.show(
-            context,
-            version: update.version,
-            downloadUrl: update.downloadUrl,
-            releaseNotes: update.releaseNotes,
-            forceUpdate: update.forceUpdate,
-          );
+          await _openWindowsUpdateDialog(context, update);
         } else {
           if (!context.mounted) return;
           await _showDesktopUpdateStatus(context);
         }
       } catch (e) {
         messenger.hideCurrentSnackBar();
-        if (!context.mounted) return;
-        await _showDesktopUpdateStatus(context);
+        _showCheckErrorBanner(
+          messenger,
+          'Could not check for updates. Server may be waking up or offline.',
+        );
       } finally {
         _isChecking = false;
       }
@@ -223,11 +255,9 @@ class UpdateService {
       }
     } catch (e) {
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Could not check for updates. Check your internet connection.'),
-          backgroundColor: AppTheme.accentRose,
-        ),
+      _showCheckErrorBanner(
+        messenger,
+        'Could not check for updates. Check your internet connection.',
       );
     } finally {
       _isChecking = false;
@@ -235,11 +265,14 @@ class UpdateService {
   }
 
   /// Fetches the update manifest from the cloud backend.
-  Future<_DesktopUpdateInfo?> _fetchDesktopUpdateManifest() async {
+  Future<_DesktopUpdateInfo?> _fetchDesktopUpdateManifest({
+    Duration timeout = const Duration(seconds: 20),
+    bool rethrowOnError = false,
+  }) async {
     final dio = Dio(
       BaseOptions(
-        connectTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(seconds: 5),
+        connectTimeout: timeout,
+        receiveTimeout: timeout,
       ),
     );
 
@@ -250,13 +283,15 @@ class UpdateService {
       if (res.statusCode == 200 && res.data is Map) {
         final win = res.data['windows'];
         if (win is Map) {
-          final ver = win['version']?.toString() ?? '';
-          final dlUrl = win['download_url']?.toString() ?? '';
+          final ver = win['version']?.toString().trim() ?? '';
+          final dlUrl = win['download_url']?.toString().trim() ?? '';
           final notes = win['release_notes']?.toString() ?? '';
           final force = win['force_update'] == true;
+          final build = int.tryParse(win['build_number']?.toString() ?? '');
           if (ver.isNotEmpty && dlUrl.isNotEmpty) {
             return _DesktopUpdateInfo(
               version: ver,
+              buildNumber: build,
               downloadUrl: dlUrl,
               releaseNotes: notes,
               forceUpdate: force,
@@ -264,24 +299,40 @@ class UpdateService {
           }
         }
       }
+      if (rethrowOnError) {
+        throw const FormatException('Invalid update manifest received.');
+      }
     } catch (e) {
       debugPrint('[UpdateService] Failed to fetch cloud version: $e');
+      if (rethrowOnError) rethrow;
     }
 
     return null;
   }
 
-  /// Compares whether remoteVersion is strictly newer than localVersion.
-  static bool _isNewerVersion(String remote, String current) {
-    if (remote.isEmpty) return false;
-    final rParts = remote.replaceAll(RegExp(r'[^0-9.]'), '').split('.').map((s) => int.tryParse(s) ?? 0).toList();
-    final cParts = current.replaceAll(RegExp(r'[^0-9.]'), '').split('.').map((s) => int.tryParse(s) ?? 0).toList();
+  /// Compares whether [remote] (and optional [remoteBuildNumber]) is strictly
+  /// newer than [current] (and optional [currentBuildNumber]).
+  @visibleForTesting
+  static bool isNewerVersion(
+    String remote,
+    String current, {
+    int? remoteBuildNumber,
+    int? currentBuildNumber,
+  }) {
+    final cleanRemote = remote.replaceAll(RegExp(r'[^0-9.]'), '');
+    if (cleanRemote.isEmpty) return false;
+    final cleanCurrent = current.replaceAll(RegExp(r'[^0-9.]'), '');
+    final rParts = cleanRemote.split('.').map((s) => int.tryParse(s) ?? 0).toList();
+    final cParts = cleanCurrent.split('.').map((s) => int.tryParse(s) ?? 0).toList();
     final len = rParts.length > cParts.length ? rParts.length : cParts.length;
     for (int i = 0; i < len; i++) {
       final r = i < rParts.length ? rParts[i] : 0;
       final c = i < cParts.length ? cParts[i] : 0;
       if (r > c) return true;
       if (r < c) return false;
+    }
+    if (remoteBuildNumber != null && currentBuildNumber != null) {
+      return remoteBuildNumber > currentBuildNumber;
     }
     return false;
   }
@@ -441,12 +492,14 @@ class UpdateService {
 
 class _DesktopUpdateInfo {
   final String version;
+  final int? buildNumber;
   final String downloadUrl;
   final String releaseNotes;
   final bool forceUpdate;
 
   _DesktopUpdateInfo({
     required this.version,
+    this.buildNumber,
     required this.downloadUrl,
     required this.releaseNotes,
     this.forceUpdate = false,
