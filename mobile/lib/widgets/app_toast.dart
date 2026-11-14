@@ -10,7 +10,7 @@ class AppToast {
     BuildContext context, {
     required String message,
     bool isError = false,
-    Duration duration = const Duration(seconds: 5),
+    Duration duration = const Duration(seconds: 3),
   }) {
     final overlay = Overlay.maybeOf(context, rootOverlay: true);
     if (overlay == null) return;

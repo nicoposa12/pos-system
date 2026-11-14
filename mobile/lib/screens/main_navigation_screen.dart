@@ -55,6 +55,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   void _selectTab(int index) {
     RealtimeService.instance.recordUserActivity();
+    ScaffoldMessenger.of(context).clearSnackBars();
     if (_selectedIndex == index) return;
     HapticFeedback.selectionClick();
     setState(() => _selectedIndex = index);

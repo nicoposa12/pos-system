@@ -58,6 +58,7 @@ class _AdminNavigationScreenState extends State<AdminNavigationScreen> {
   }
 
   void _selectTab(int index, {String? storeFilter}) {
+    ScaffoldMessenger.of(context).clearSnackBars();
     HapticFeedback.selectionClick();
     if (storeFilter != null) {
       _storeFilterNotifier.value = storeFilter;

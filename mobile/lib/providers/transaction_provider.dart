@@ -194,26 +194,86 @@ class TransactionProvider with ChangeNotifier {
     return _transactions.where((t) => _isSameDay(t.date, today)).length;
   }
 
-  List<Map<String, dynamic>> _computeTopProducts({int limit = 5}) {
-    final byProduct = <int, Map<String, dynamic>>{};
-    for (final t in _transactions) {
+  /// Aggregates sold products across [transactions] matching [filter].
+  ///
+  /// Each entry includes `product_id`, `name`, `category`, `total_sold`,
+  /// `total_revenue`, and `order_count`. Items with zero net sold quantity and
+  /// zero revenue (such as fully returned items) are excluded.
+  List<Map<String, dynamic>> getProductSales({
+    bool Function(SaleTransaction tx)? filter,
+    int? limit,
+    bool sortByRevenue = false,
+  }) {
+    final byProduct = <String, Map<String, dynamic>>{};
+
+    for (final t in transactions) {
+      if (filter != null && !filter(t)) continue;
+      final seenInOrder = <String>{};
+
       for (final item in t.items) {
-        final id = item['product_id'] as int? ?? 0;
+        final id = (item['product_id'] as num?)?.toInt() ?? 0;
+        final name = (item['product_name'] ?? 'Item #$id').toString();
+        final qty = (item['quantity'] as num?)?.toDouble() ?? 0.0;
+        final rev = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
+        if (qty <= 0 && rev <= 0) continue;
+
+        final key = id > 0 ? 'id:$id' : 'name:${name.toLowerCase()}';
+        final rawCat = item['category']?.toString().trim();
+        final category = (rawCat != null && rawCat.isNotEmpty) ? rawCat : null;
+
         final entry = byProduct.putIfAbsent(
-          id,
-          () => {'name': item['product_name'], 'total_sold': 0.0, 'total_revenue': 0.0},
+          key,
+          () => {
+            'product_id': id,
+            'name': name,
+            'category': category,
+            'total_sold': 0.0,
+            'total_revenue': 0.0,
+            'order_count': 0,
+          },
         );
-        entry['total_sold'] = ((entry['total_sold'] as num?)?.toDouble() ?? 0.0) +
-            ((item['quantity'] as num?)?.toDouble() ?? 0.0);
-        entry['total_revenue'] = (entry['total_revenue'] as double) +
-            ((item['subtotal'] as num?)?.toDouble() ?? 0.0);
+
+        if (entry['category'] == null && category != null) {
+          entry['category'] = category;
+        }
+        entry['total_sold'] = (entry['total_sold'] as double) + qty;
+        entry['total_revenue'] = (entry['total_revenue'] as double) + rev;
+        if (seenInOrder.add(key)) {
+          entry['order_count'] = (entry['order_count'] as int) + 1;
+        }
       }
     }
+
     final list = byProduct.values.toList()
-      ..sort((a, b) => ((b['total_sold'] as num?)?.toDouble() ?? 0.0)
-          .compareTo((a['total_sold'] as num?)?.toDouble() ?? 0.0));
-    return List.unmodifiable(list.take(limit));
+      ..sort((a, b) {
+        final primaryA = sortByRevenue
+            ? (a['total_revenue'] as double)
+            : (a['total_sold'] as double);
+        final primaryB = sortByRevenue
+            ? (b['total_revenue'] as double)
+            : (b['total_sold'] as double);
+        final cmpPrimary = primaryB.compareTo(primaryA);
+        if (cmpPrimary != 0) return cmpPrimary;
+
+        final secondaryA = sortByRevenue
+            ? (a['total_sold'] as double)
+            : (a['total_revenue'] as double);
+        final secondaryB = sortByRevenue
+            ? (b['total_sold'] as double)
+            : (b['total_revenue'] as double);
+        final cmpSecondary = secondaryB.compareTo(secondaryA);
+        if (cmpSecondary != 0) return cmpSecondary;
+
+        return (a['name'] as String).toLowerCase().compareTo(
+          (b['name'] as String).toLowerCase(),
+        );
+      });
+
+    return List.unmodifiable(limit != null ? list.take(limit) : list);
   }
+
+  List<Map<String, dynamic>> _computeTopProducts({int limit = 5}) =>
+      getProductSales(limit: limit);
 
   List<Map<String, dynamic>> _computeCategorySales() {
     final byCategory = <String, double>{};

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
+import '../models/product.dart';
 import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
 import '../providers/settings_provider.dart';
@@ -12,6 +13,7 @@ import '../widgets/product_image_view.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/store_image_view.dart';
 import 'add_edit_product_screen.dart';
+import 'best_sellers_screen.dart';
 import 'client_management_screen.dart';
 import 'product_list_screen.dart';
 import 'settings_screen.dart';
@@ -547,24 +549,47 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Business Insights',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
+          SizedBox(
+            height: 36,
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Business Insights',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
                   ),
                 ),
-              ),
-              Icon(
-                Icons.bar_chart_rounded,
-                size: 20,
-                color: AppTheme.mutedText(context),
-              ),
-            ],
+                if (_currentInsightPage == 1)
+                  TextButton(
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const BestSellersScreen(),
+                        ),
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    child: const Text('Show All'),
+                  )
+                else
+                  Icon(
+                    Icons.bar_chart_rounded,
+                    size: 20,
+                    color: AppTheme.mutedText(context),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -1528,7 +1553,8 @@ class _TopProductsChart extends StatelessWidget {
       itemBuilder: (context, index) {
         final item = display[index];
         final name = (item['name'] ?? 'Item').toString();
-        final sold = (item['total_sold'] as num?)?.toInt() ?? 0;
+        final sold =
+            (item['total_sold'] as num?) ?? (item['total_qty'] as num?) ?? 0;
         final revenue = (item['total_revenue'] as num?)?.toDouble() ?? 0.0;
         final ratio = (revenue / maxRevenue).clamp(0.05, 1.0);
 
@@ -1572,7 +1598,7 @@ class _TopProductsChart extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '$sold sold',
+                  '${formatQuantity(sold)} sold',
                   style: TextStyle(
                     fontSize: 11,
                     color: AppTheme.mutedText(context),

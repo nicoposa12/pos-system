@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -793,9 +794,17 @@ class _PosScreenState extends State<PosScreen> {
         customerName: customerName,
       );
 
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(
-          duration: const Duration(seconds: 5),
+          duration: const Duration(seconds: 3),
+          onVisible: () {
+            Future.delayed(const Duration(seconds: 3), () {
+              try {
+                messenger.hideCurrentSnackBar();
+              } catch (_) {}
+            });
+          },
           content: const Row(
             children: [
               Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
@@ -819,15 +828,30 @@ class _PosScreenState extends State<PosScreen> {
           backgroundColor: AppTheme.accentTeal,
         ),
       );
+
+      // Force guaranteed dismissal after 3.2s even if modal dialog took focus or desktop ticker paused
+      Timer(const Duration(milliseconds: 3200), () {
+        try {
+          messenger.hideCurrentSnackBar();
+        } catch (_) {}
+      });
     } else {
       HapticFeedback.vibrate();
+      messenger.clearSnackBars();
       messenger.showSnackBar(
         SnackBar(
-          duration: const Duration(seconds: 5),
+          duration: const Duration(seconds: 3),
+          onVisible: () {
+            Future.delayed(const Duration(seconds: 3), () {
+              try {
+                messenger.hideCurrentSnackBar();
+              } catch (_) {}
+            });
+          },
           content: Row(
             children: [
               const Icon(Icons.error_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   cart.lastError ?? 'Transaction failed. Please try again.',
@@ -838,6 +862,12 @@ class _PosScreenState extends State<PosScreen> {
           backgroundColor: AppTheme.accentRose,
         ),
       );
+
+      Timer(const Duration(milliseconds: 3200), () {
+        try {
+          messenger.hideCurrentSnackBar();
+        } catch (_) {}
+      });
     }
   }
 }
