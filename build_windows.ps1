@@ -107,8 +107,15 @@ Write-Host "========================================" -ForegroundColor Cyan
 # 5. Real-time Live Update & Local Launch
 if (-not $NoInstall -and $latestSetup) {
     Write-Host "[3/3] 🔄 Applying update to local PC in real-time..." -ForegroundColor Yellow
-    
-    # Silently install and close existing running instance
+
+    # Stop any running TindaKo instance first so flutter_windows.dll is never locked
+    $running = Get-Process -Name "tindako" -ErrorAction SilentlyContinue
+    if ($running) {
+        $running | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 600
+    }
+
+    # Silently install
     Start-Process -FilePath $latestSetup.FullName -ArgumentList "/SILENT", "/FORCECLOSEAPPLICATIONS" -Wait
     Write-Host "✅ Local installation updated successfully!" -ForegroundColor Green
     
