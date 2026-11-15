@@ -1526,9 +1526,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
               ElevatedButton(
                 onPressed: () {
                   final qty = double.tryParse(quantityController.text) ?? 0.0;
-                  if (qty <= 0 || qty > (maxQty + 0.0001)) {
+                  if (qty < 0.001 || qty > (maxQty + 0.0001)) {
                     setDialogState(() {
-                      dialogError = 'Invalid quantity (0.01 - ${formatQuantity(maxQty)} allowed)';
+                      dialogError = 'Invalid quantity (0.001 - ${formatQuantity(maxQty)} allowed)';
                     });
                     return;
                   }
@@ -1569,7 +1569,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
           context.read<ProductProvider>().fetchProducts(silent: true);
         }
         // Do NOT pop the order details modal! It updates in real-time.
-        final refundAmount = qtyToReturn * unitPrice;
+        final refundAmount = double.parse((qtyToReturn * unitPrice).toStringAsFixed(2));
         final newTotal = (tx.totalAmount - refundAmount).clamp(0.0, double.infinity);
         AppToast.show(
           context,
@@ -1730,7 +1730,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Text(
-                                      'Qty ${ret['quantity']}',
+                                      'Qty ${formatQuantity(double.tryParse(ret['quantity']?.toString() ?? '') ?? 0)}',
                                       style: const TextStyle(
                                         color: AppTheme.accentRose,
                                         fontWeight: FontWeight.w700,

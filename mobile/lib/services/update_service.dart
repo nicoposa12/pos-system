@@ -22,7 +22,7 @@ class UpdateService {
   );
   static const int currentBuildNumber = int.fromEnvironment(
     'APP_BUILD_NUMBER',
-    defaultValue: 6,
+    defaultValue: 7,
   );
 
   final ShorebirdUpdater _updater = ShorebirdUpdater();

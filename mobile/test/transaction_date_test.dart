@@ -140,5 +140,151 @@ void main() {
       expect(item1['subtotal'], 738.0);
       expect(item1['unit_price'], 123.0);
     });
+
+    test('preserves decimal quantities (0.5) on items without returns', () {
+      final json = {
+        'id': 128,
+        'user_id': 1,
+        'total_amount': 61.5,
+        'payment_method': 'cash',
+        'items': [
+          {
+            'product_id': 42,
+            'quantity': '0.500',
+            'subtotal': '61.50',
+            'product': {'id': 42, 'name': '1231'},
+          },
+        ],
+        'returns': [],
+      };
+
+      final tx = SaleTransaction.fromJson(json);
+
+      expect(tx.totalAmount, 61.5);
+      final item = tx.items.single;
+      expect(item['quantity'], 0.5);
+      expect(item['original_quantity'], 0.5);
+      expect(item['returned_quantity'], 0.0);
+      expect(item['unit_price'], 123.0);
+      expect(item['subtotal'], 61.5);
+    });
+
+    test('accurately applies full decimal return (0.5 out of 0.5)', () {
+      final json = {
+        'id': 128,
+        'user_id': 1,
+        'total_amount': 0.0,
+        'payment_method': 'cash',
+        'items': [
+          {
+            'product_id': 42,
+            'quantity': 0.5,
+            'subtotal': 61.5,
+            'product': {'id': 42, 'name': '1231'},
+          },
+        ],
+        'returns': [
+          {
+            'product_id': 42,
+            'quantity': '0.500',
+          },
+        ],
+      };
+
+      final tx = SaleTransaction.fromJson(json);
+
+      expect(tx.totalAmount, 0.0);
+      final item = tx.items.single;
+      expect(item['quantity'], 0.0);
+      expect(item['original_quantity'], 0.5);
+      expect(item['returned_quantity'], 0.5);
+      expect(item['unit_price'], 123.0);
+      expect(item['subtotal'], 0.0);
+    });
+
+    test('handles partial and sequential decimal returns without float drift', () {
+      final partialJson = {
+        'id': 129,
+        'user_id': 1,
+        'total_amount': 30.75,
+        'payment_method': 'cash',
+        'items': [
+          {
+            'product_id': 42,
+            'quantity': 0.5,
+            'subtotal': 61.5,
+            'product': {'id': 42, 'name': '1231'},
+          },
+        ],
+        'returns': [
+          {'product_id': 42, 'quantity': 0.25},
+        ],
+      };
+
+      final partialTx = SaleTransaction.fromJson(partialJson);
+      expect(partialTx.totalAmount, 30.75);
+      expect(partialTx.items.single['quantity'], 0.25);
+      expect(partialTx.items.single['returned_quantity'], 0.25);
+      expect(partialTx.items.single['subtotal'], 30.75);
+
+      // 0.1 + 0.2 against 0.3 ordered avoids 2.77e-17 float remainder
+      final sequentialJson = {
+        'id': 130,
+        'user_id': 1,
+        'total_amount': 0.0,
+        'payment_method': 'cash',
+        'items': [
+          {
+            'product_id': 7,
+            'quantity': 0.3,
+            'subtotal': 30.0,
+            'product': {'id': 7, 'name': 'Sugar'},
+          },
+        ],
+        'returns': [
+          {'product_id': 7, 'quantity': 0.1},
+          {'product_id': 7, 'quantity': 0.2},
+        ],
+      };
+
+      final sequentialTx = SaleTransaction.fromJson(sequentialJson);
+      expect(sequentialTx.items.single['quantity'], 0.0);
+      expect(sequentialTx.items.single['returned_quantity'], 0.3);
+      expect(sequentialTx.items.single['subtotal'], 0.0);
+      expect(sequentialTx.totalAmount, 0.0);
+    });
+
+    test('allocates returns across duplicate product_id line items without double subtraction', () {
+      final json = {
+        'id': 131,
+        'user_id': 1,
+        'total_amount': 50.0,
+        'payment_method': 'cash',
+        'items': [
+          {
+            'product_id': 9,
+            'quantity': 0.5,
+            'subtotal': 50.0,
+            'product': {'id': 9, 'name': 'Rice'},
+          },
+          {
+            'product_id': 9,
+            'quantity': 0.5,
+            'subtotal': 50.0,
+            'product': {'id': 9, 'name': 'Rice'},
+          },
+        ],
+        'returns': [
+          {'product_id': 9, 'quantity': 0.5},
+        ],
+      };
+
+      final tx = SaleTransaction.fromJson(json);
+      expect(tx.totalAmount, 50.0);
+      expect(tx.items[0]['quantity'], 0.0);
+      expect(tx.items[0]['returned_quantity'], 0.5);
+      expect(tx.items[1]['quantity'], 0.5);
+      expect(tx.items[1]['returned_quantity'], 0.0);
+    });
   });
 }

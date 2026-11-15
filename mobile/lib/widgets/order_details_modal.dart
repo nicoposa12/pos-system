@@ -776,9 +776,9 @@ void _showReturnDialog(
             ElevatedButton(
               onPressed: () {
                 final qty = double.tryParse(quantityController.text) ?? 0.0;
-                if (qty <= 0 || qty > (maxQty + 0.0001)) {
+                if (qty < 0.001 || qty > (maxQty + 0.0001)) {
                   setDialogState(() {
-                    dialogError = 'Invalid quantity (0.01 - ${formatQuantity(maxQty)} allowed)';
+                    dialogError = 'Invalid quantity (0.001 - ${formatQuantity(maxQty)} allowed)';
                   });
                   return;
                 }
@@ -819,7 +819,7 @@ void _showReturnDialog(
         context.read<ProductProvider>().fetchProducts(silent: true);
       }
       // Do NOT pop the modal! It updates automatically and stays visible.
-      final refundAmount = qtyToReturn * unitPrice;
+      final refundAmount = double.parse((qtyToReturn * unitPrice).toStringAsFixed(2));
       final newTotal = (tx.totalAmount - refundAmount).clamp(0.0, double.infinity);
       AppToast.show(
         context,

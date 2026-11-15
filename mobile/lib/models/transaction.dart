@@ -31,27 +31,39 @@ class SaleTransaction {
     this.updatedAt,
   });
 
-  static double _toDouble(dynamic value) {
+  static double? _tryToDouble(dynamic value) {
+    if (value == null) return null;
     if (value is num) return value.toDouble();
-    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    return double.tryParse(value.toString());
   }
+
+  static double _toDouble(dynamic value) => _tryToDouble(value) ?? 0.0;
+
+  static double _roundQty(double value) =>
+      double.parse(value.toStringAsFixed(3));
+
+  static double _roundMoney(double value) =>
+      double.parse(value.toStringAsFixed(2));
 
   /// Builds a transaction from the API payload (`/transactions`), including
   /// eager-loaded `items.product`, `debt`, and `returns` relations.
   factory SaleTransaction.fromJson(Map<String, dynamic> json) {
-    // Build return map by product_id
-    final returnMap = <int, int>{};
+    // Build return map by product_id (supports decimal quantities like 0.5)
+    final returnMap = <int, double>{};
     final rawReturns = json['returns'];
     if (rawReturns is List) {
       for (final r in rawReturns) {
         if (r is Map) {
           final pid = int.tryParse(r['product_id']?.toString() ?? '') ?? 0;
-          final qty = int.tryParse(r['quantity']?.toString() ?? '') ?? 0;
-          returnMap[pid] = (returnMap[pid] ?? 0) + qty;
+          final qty = _toDouble(r['quantity']);
+          if (pid > 0 && qty > 0) {
+            returnMap[pid] = _roundQty((returnMap[pid] ?? 0.0) + qty);
+          }
         }
       }
     }
 
+    final remainingReturns = Map<int, double>.from(returnMap);
     final rawItems = json['items'];
     final items = <Map<String, dynamic>>[];
     double computedSubtotalSum = 0.0;
@@ -61,13 +73,24 @@ class SaleTransaction {
         if (raw is! Map) continue;
         final product = raw['product'] is Map ? raw['product'] as Map : null;
         final productId = int.tryParse(raw['product_id']?.toString() ?? '') ?? 0;
-        final originalQty = int.tryParse(raw['quantity']?.toString() ?? '') ?? 1;
+        final originalQty = _tryToDouble(raw['quantity']) ?? 1.0;
         final rawSubtotal = _toDouble(raw['subtotal']);
         final unitPrice = originalQty > 0 ? (rawSubtotal / originalQty) : 0.0;
 
-        final returnedQty = returnMap[productId] ?? 0;
-        final netQty = (originalQty - returnedQty).clamp(0, originalQty);
-        final netSubtotal = double.parse((netQty * unitPrice).toStringAsFixed(2));
+        final returnedAvailable = remainingReturns[productId] ?? 0.0;
+        final returnedQty = _roundQty(
+          returnedAvailable.clamp(0.0, originalQty).toDouble(),
+        );
+        remainingReturns[productId] = _roundQty(
+          (returnedAvailable - returnedQty).clamp(0.0, double.infinity).toDouble(),
+        );
+
+        final netQty = _roundQty(
+          (originalQty - returnedQty).clamp(0.0, originalQty).toDouble(),
+        );
+        final netSubtotal = netQty <= 0.0
+            ? 0.0
+            : _roundMoney(netQty * unitPrice);
 
         computedSubtotalSum += netSubtotal;
 
@@ -90,7 +113,7 @@ class SaleTransaction {
 
     // When returns exist, accurately reflect the net total amount
     final netTotal = returnMap.isNotEmpty
-        ? (computedSubtotalSum - discount).clamp(0.0, double.infinity)
+        ? _roundMoney((computedSubtotalSum - discount).clamp(0.0, double.infinity).toDouble())
         : rawTotal;
 
     // Prefer created_at as it is the authoritative server UTC timestamp.
