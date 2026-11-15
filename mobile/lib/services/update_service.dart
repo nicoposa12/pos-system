@@ -18,11 +18,11 @@ class UpdateService {
 
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.0.6',
+    defaultValue: '1.0.7',
   );
   static const int currentBuildNumber = int.fromEnvironment(
     'APP_BUILD_NUMBER',
-    defaultValue: 7,
+    defaultValue: 8,
   );
 
   final ShorebirdUpdater _updater = ShorebirdUpdater();

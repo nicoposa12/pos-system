@@ -298,7 +298,7 @@ class PdfService {
           crossAxisAlignment: pw.CrossAxisAlignment.center,
           children: [
             pw.Text(
-              'Receipt #${transaction.id ?? 0}',
+              'Receipt #${transaction.displayOrderNumber ?? 0}',
               style: bold,
             ),
             pw.Container(
@@ -581,7 +581,7 @@ class PdfService {
             children: [
               pw.BarcodeWidget(
                 barcode: pw.Barcode.code128(),
-                data: 'ORDER-${transaction.id ?? 0}',
+                data: 'ORDER-${transaction.displayOrderNumber ?? 0}',
                 width: barcodeW,
                 height: barcodeH,
                 drawText: false,
@@ -589,7 +589,7 @@ class PdfService {
               ),
               pw.SizedBox(height: 3),
               pw.Text(
-                'ORDER #${transaction.id ?? 0}',
+                'ORDER #${transaction.displayOrderNumber ?? 0}',
                 style: pw.TextStyle(
                   font: fontMono,
                   fontSize: is58 ? 7.5 : 8.5,
@@ -672,7 +672,7 @@ class PdfService {
         : PdfPageFormat(58 * PdfPageFormat.mm, double.infinity);
 
     await Printing.layoutPdf(
-      name: 'receipt_${transaction.id}.pdf',
+      name: 'receipt_${transaction.displayOrderNumber ?? transaction.id}.pdf',
       format: defaultRoll,
       onLayout: (PdfPageFormat format) async {
         return buildReceiptPdfBytes(
@@ -811,7 +811,7 @@ class PdfService {
                 <String>['Transaction ID', 'Date & Time', 'Amount'],
                 ...transactions.map(
                   (t) => [
-                    '#${t.id}',
+                    '#${t.displayOrderNumber ?? t.id}',
                     DateFormat('MMM d, yyyy - h:mm a').format(t.date),
                     'P${t.totalAmount.toStringAsFixed(2)}',
                   ],

@@ -545,6 +545,13 @@ class ApiService {
     return Map<String, dynamic>.from(response.data['transaction'] as Map);
   }
 
+  Future<Map<String, dynamic>> getTransactionByOrderNumber(
+    int orderNumber,
+  ) async {
+    final response = await _dio.get('/transactions/by-order/$orderNumber');
+    return Map<String, dynamic>.from(response.data['transaction'] as Map);
+  }
+
   // ==========================================
   // RETURNS
   // ==========================================

@@ -1,5 +1,6 @@
 class SaleTransaction {
   final int? id;
+  final int? orderNumber;
   final int userId;
   final double totalAmount;
   final double discount;
@@ -17,8 +18,12 @@ class SaleTransaction {
   /// Server `updated_at` (ISO-8601), used as the incremental delta-sync cursor.
   final String? updatedAt;
 
+  /// Store-scoped sequential order number, falling back to [id] when absent.
+  int? get displayOrderNumber => orderNumber ?? id;
+
   SaleTransaction({
     this.id,
+    this.orderNumber,
     required this.userId,
     required this.totalAmount,
     this.discount = 0.0,
@@ -125,6 +130,7 @@ class SaleTransaction {
 
     return SaleTransaction(
       id: int.tryParse(json['id']?.toString() ?? ''),
+      orderNumber: int.tryParse(json['order_number']?.toString() ?? ''),
       userId: int.tryParse(json['user_id']?.toString() ?? '') ?? 0,
       totalAmount: netTotal,
       discount: discount,

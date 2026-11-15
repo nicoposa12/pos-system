@@ -1239,7 +1239,7 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            'Order #${tx.id ?? '-'}',
+                                            'Order #${tx.displayOrderNumber ?? '-'}',
                                             style: const TextStyle(
                                               fontSize: 13.5,
                                               fontWeight: FontWeight.w700,

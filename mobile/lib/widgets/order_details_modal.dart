@@ -52,7 +52,7 @@ Future<bool> handleOrderBarcodeScan(
   if (orderId == null) return false;
 
   final txProvider = context.read<TransactionProvider>();
-  final transaction = await txProvider.findTransaction(orderId);
+  final transaction = await txProvider.findTransactionByOrderNumber(orderId);
 
   if (!context.mounted) return true;
 
@@ -143,7 +143,7 @@ Future<void> showOrderDetailsModal(
                               Row(
                                 children: [
                                   Text(
-                                    'Order #${currentTx.id}',
+                                    'Order #${currentTx.displayOrderNumber}',
                                     style: theme.textTheme.titleLarge?.copyWith(
                                       fontWeight: FontWeight.w800,
                                       letterSpacing: -0.3,
@@ -1022,8 +1022,8 @@ class _CollectPaymentSheetState extends State<CollectPaymentSheet> {
       AppToast.show(
         context,
         message: isFullyPaid
-            ? 'Order #${widget.tx.id} marked as Paid (${_selectedMethod.toUpperCase()})'
-            : 'Downpayment of ₱${paymentAmount.toStringAsFixed(2)} recorded for Order #${widget.tx.id}',
+            ? 'Order #${widget.tx.displayOrderNumber} marked as Paid (${_selectedMethod.toUpperCase()})'
+            : 'Downpayment of ₱${paymentAmount.toStringAsFixed(2)} recorded for Order #${widget.tx.displayOrderNumber}',
       );
     } else {
       AppToast.show(
@@ -1088,7 +1088,7 @@ class _CollectPaymentSheetState extends State<CollectPaymentSheet> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Order #${widget.tx.id}${widget.customerName != null && widget.customerName!.isNotEmpty ? ' • ${widget.customerName}' : ''}',
+                              'Order #${widget.tx.displayOrderNumber}${widget.customerName != null && widget.customerName!.isNotEmpty ? ' • ${widget.customerName}' : ''}',
                               style: TextStyle(
                                 color: AppTheme.mutedText(context),
                                 fontSize: 13,

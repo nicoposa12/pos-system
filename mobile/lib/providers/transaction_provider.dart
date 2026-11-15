@@ -314,6 +314,28 @@ class TransactionProvider with ChangeNotifier {
     }
   }
 
+  /// Finds a sale by store-scoped [orderNumber] (falling back to [id] when
+  /// [orderNumber] is absent on legacy records), or queries
+  /// `GET /transactions/by-order/{orderNumber}`.
+  Future<SaleTransaction?> findTransactionByOrderNumber(int orderNumber) async {
+    for (final t in _transactions) {
+      if (t.orderNumber == orderNumber) return t;
+    }
+    for (final t in _transactions) {
+      if (t.orderNumber == null && t.id == orderNumber) return t;
+    }
+    try {
+      final tx = SaleTransaction.fromJson(
+        await ApiService.instance.getTransactionByOrderNumber(orderNumber),
+      );
+      if (_userId != null && tx.userId == _userId) _merge([tx]);
+      return tx;
+    } catch (e) {
+      debugPrint('[TransactionProvider] order #$orderNumber lookup failed: $e');
+      return null;
+    }
+  }
+
   /// Product returns recorded for this store (newest first).
   Future<List<Map<String, dynamic>>> fetchReturns() async {
     final raw = await ApiService.instance.getReturns();

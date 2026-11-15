@@ -48,6 +48,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('products', ProductController::class);
 
     // Transactions (POS Checkout)
+    Route::get('/transactions/by-order/{orderNumber}', [TransactionController::class, 'showByOrderNumber'])
+        ->whereNumber('orderNumber');
     Route::post('/transactions/{transaction}/mark-paid', [TransactionController::class, 'markPaid']);
     Route::post('/transactions/{transaction}/returns', [ReturnController::class, 'store']);
     Route::apiResource('transactions', TransactionController::class)->only(['index', 'store', 'show']);

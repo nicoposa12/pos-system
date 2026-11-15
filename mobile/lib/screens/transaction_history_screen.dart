@@ -161,7 +161,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
           .trim();
       list = list.where(
         (t) =>
-            '${t.id ?? ''}'.contains(q) ||
+            '${t.displayOrderNumber ?? ''}'.contains(q) ||
             t.paymentMethod.toLowerCase().contains(q) ||
             t.totalAmount.toStringAsFixed(2).contains(q),
       );
@@ -899,7 +899,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                 Row(
                                   children: [
                                     Text(
-                                      'Order #${currentTx.id}',
+                                      'Order #${currentTx.displayOrderNumber}',
                                       style: theme.textTheme.titleLarge?.copyWith(
                                         fontWeight: FontWeight.w800,
                                         letterSpacing: -0.3,
@@ -1933,7 +1933,7 @@ class _TransactionCard extends StatelessWidget {
                         children: [
                           Flexible(
                             child: Text(
-                              'Order #${transaction.id}',
+                              'Order #${transaction.displayOrderNumber}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
@@ -2122,8 +2122,8 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
       AppToast.show(
         context,
         message: isFullyPaid
-            ? 'Order #${widget.tx.id} marked as Paid (${_selectedMethod.toUpperCase()})'
-            : 'Downpayment of ₱${paymentAmount.toStringAsFixed(2)} recorded for Order #${widget.tx.id}',
+            ? 'Order #${widget.tx.displayOrderNumber} marked as Paid (${_selectedMethod.toUpperCase()})'
+            : 'Downpayment of ₱${paymentAmount.toStringAsFixed(2)} recorded for Order #${widget.tx.displayOrderNumber}',
       );
     } else {
       AppToast.show(
@@ -2193,7 +2193,7 @@ class _CollectPaymentSheetState extends State<_CollectPaymentSheet> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Order #${widget.tx.id}${widget.customerName != null && widget.customerName!.isNotEmpty ? ' • ${widget.customerName}' : ''}',
+                              'Order #${widget.tx.displayOrderNumber}${widget.customerName != null && widget.customerName!.isNotEmpty ? ' • ${widget.customerName}' : ''}',
                               style: TextStyle(
                                 color: AppTheme.mutedText(context),
                                 fontSize: 13,

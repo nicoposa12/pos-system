@@ -121,7 +121,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
         : '09XX XXX XXXX';
     buffer.writeln('Tel: $phone');
     buffer.writeln(lineSep);
-    buffer.writeln('Receipt #: ${widget.transaction.id ?? 0}');
+    buffer.writeln('Receipt #: ${widget.transaction.displayOrderNumber ?? 0}');
     buffer.writeln('Date: $dateStr');
     if (widget.user != null && widget.user!.fullName.trim().isNotEmpty) {
       buffer.writeln('Cashier: ${widget.user!.fullName.trim()}');
@@ -180,7 +180,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
     SharePlus.instance.share(
       ShareParams(
         text: buffer.toString(),
-        subject: 'Receipt #${widget.transaction.id ?? 0}',
+        subject: 'Receipt #${widget.transaction.displayOrderNumber ?? 0}',
       ),
     );
   }
@@ -405,7 +405,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Receipt #${widget.transaction.id ?? 0}',
+                              'Receipt #${widget.transaction.displayOrderNumber ?? 0}',
                               style: monoBold,
                             ),
                             Container(
@@ -690,13 +690,13 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                                 height: 38,
                                 child: CustomPaint(
                                   painter: BarcodePainter(
-                                    data: 'ORDER-${widget.transaction.id ?? 0}',
+                                    data: 'ORDER-${widget.transaction.displayOrderNumber ?? 0}',
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'ORDER #${widget.transaction.id ?? 0}',
+                                'ORDER #${widget.transaction.displayOrderNumber ?? 0}',
                                 style: monoMuted.copyWith(
                                   fontSize: 10,
                                   letterSpacing: 1.2,

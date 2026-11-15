@@ -129,6 +129,7 @@ class SyncController extends Controller
                 $syncedMapping[] = [
                     'client_id' => $txData['client_id'],
                     'server_id' => $tx->id,
+                    'order_number' => $tx->order_number,
                 ];
             }
         });

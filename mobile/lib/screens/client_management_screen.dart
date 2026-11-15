@@ -1695,7 +1695,7 @@ class _StoreInspectorPanelState extends State<StoreInspectorPanel> {
   }
 
   Widget _buildTransactionRow(BuildContext context, Map<String, dynamic> tx) {
-    final id = tx['id'] ?? '';
+    final id = tx['order_number'] ?? tx['id'] ?? '';
     final total = (tx['total_amount'] as num?)?.toDouble() ?? 0.0;
     final method = (tx['payment_method'] ?? 'cash').toString().toUpperCase();
     final items = tx['items'] is List ? (tx['items'] as List).length : 0;

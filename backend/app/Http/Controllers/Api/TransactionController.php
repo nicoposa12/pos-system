@@ -185,6 +185,33 @@ class TransactionController extends Controller
     }
 
     /**
+     * Show single transaction detail by the authenticated store's order number.
+     */
+    public function showByOrderNumber(Request $request, int $orderNumber)
+    {
+        $userId = $request->user()->id;
+
+        $transaction = Transaction::where('user_id', $userId)
+            ->where('order_number', $orderNumber)
+            ->first();
+
+        if (!$transaction) {
+            $transaction = Transaction::where('user_id', $userId)
+                ->whereNull('order_number')
+                ->where('id', $orderNumber)
+                ->first();
+        }
+
+        if (!$transaction) {
+            return response()->json(['message' => 'Transaction not found'], 404);
+        }
+
+        $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
+
+        return response()->json(['transaction' => $transaction]);
+    }
+
+    /**
      * Mark a pending transaction as paid.
      */
     public function markPaid(Request $request, Transaction $transaction)
