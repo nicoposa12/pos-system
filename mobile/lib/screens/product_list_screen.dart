@@ -1,10 +1,16 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
 import '../models/product.dart';
 import '../providers/auth_provider.dart';
 import '../providers/product_provider.dart';
+import '../providers/settings_provider.dart';
+import '../services/pdf_service.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/product_image_view.dart';
 import '../widgets/order_details_modal.dart';
 import '../widgets/skeleton.dart';
@@ -91,14 +97,26 @@ class _ProductListScreenState extends State<ProductListScreen> {
     });
   }
 
-  List<Product> _filterAndSort(List<Product> all) {
+  List<Product> _filterAndSort(List<Product> all) => _filterAndSortWith(
+    all,
+    stockFilter: _stockFilter,
+    category: _selectedCategory,
+    searchQuery: _searchQuery,
+  );
+
+  List<Product> _filterAndSortWith(
+    List<Product> all, {
+    required StockFilter stockFilter,
+    required String category,
+    String searchQuery = '',
+  }) {
     Iterable<Product> result = all;
 
-    if (_selectedCategory != 'All') {
-      result = result.where((p) => p.category == _selectedCategory);
+    if (category != 'All') {
+      result = result.where((p) => p.category == category);
     }
 
-    switch (_stockFilter) {
+    switch (stockFilter) {
       case StockFilter.inStock:
         result = result.where((p) => p.stock > 5);
         break;
@@ -112,8 +130,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
         break;
     }
 
-    if (_searchQuery.trim().isNotEmpty) {
-      final q = _searchQuery.trim().toLowerCase();
+    if (searchQuery.trim().isNotEmpty) {
+      final q = searchQuery.trim().toLowerCase();
       result = result.where(
         (p) =>
             p.name.toLowerCase().contains(q) ||
@@ -147,6 +165,569 @@ class _ProductListScreenState extends State<ProductListScreen> {
         break;
     }
     return list;
+  }
+
+  String _stockFilterLabel(StockFilter filter) {
+    switch (filter) {
+      case StockFilter.all:
+        return 'All Items';
+      case StockFilter.inStock:
+        return 'Healthy';
+      case StockFilter.lowStock:
+        return 'Low Stock';
+      case StockFilter.outOfStock:
+        return 'Out of Stock';
+    }
+  }
+
+  Color _stockFilterColor(StockFilter filter) {
+    switch (filter) {
+      case StockFilter.all:
+        return AppTheme.accentOrange;
+      case StockFilter.inStock:
+        return AppTheme.accentTeal;
+      case StockFilter.lowStock:
+        return AppTheme.accentAmber;
+      case StockFilter.outOfStock:
+        return AppTheme.accentRose;
+    }
+  }
+
+  String _sortLabel(InventorySort sort) {
+    switch (sort) {
+      case InventorySort.nameAsc:
+        return 'Name (A-Z)';
+      case InventorySort.stockLowFirst:
+        return 'Stock (Lowest first)';
+      case InventorySort.priceHighFirst:
+        return 'Price (Highest first)';
+      case InventorySort.profitHighFirst:
+        return 'Profit (Highest first)';
+    }
+  }
+
+  String _inventoryExportFileName(StockFilter filter) {
+    final slug = switch (filter) {
+      StockFilter.all => 'All_Items',
+      StockFilter.inStock => 'Healthy',
+      StockFilter.lowStock => 'Low_Stock',
+      StockFilter.outOfStock => 'Out_of_Stock',
+    };
+    final dateTag = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return 'TindaKo_Inventory_${slug}_$dateTag.pdf';
+  }
+
+  Future<void> _showExportInventoryPdfSheet({
+    required BuildContext context,
+    required List<Product> allProducts,
+    required List<String> categories,
+  }) async {
+    StockFilter exportFilter = _stockFilter;
+    String exportCategory = _selectedCategory;
+    bool isExporting = false;
+    final isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (modalCtx, setModalState) {
+            final theme = Theme.of(modalCtx);
+            final categoryFilteredBase = exportCategory == 'All'
+                ? allProducts
+                : allProducts
+                      .where((p) => p.category == exportCategory)
+                      .toList();
+            final exportProducts = _filterAndSortWith(
+              allProducts,
+              stockFilter: exportFilter,
+              category: exportCategory,
+              searchQuery: _searchQuery,
+            );
+
+            int countFor(StockFilter f) {
+              return _filterAndSortWith(
+                categoryFilteredBase,
+                stockFilter: f,
+                category: 'All',
+                searchQuery: _searchQuery,
+              ).length;
+            }
+
+            final totalUnits = exportProducts.fold<double>(
+              0.0,
+              (sum, p) => sum + p.stock,
+            );
+            final retailValue = exportProducts.fold<double>(
+              0.0,
+              (sum, p) => sum + p.stockRetailValue,
+            );
+            final hasCostData = exportProducts.any((p) => p.costPrice != null);
+            final potentialProfit = exportProducts.fold<double>(
+              0.0,
+              (sum, p) => sum + (p.potentialStockProfit ?? 0.0),
+            );
+
+            Future<void> runExport({required bool saveToFile}) async {
+              if (isExporting || exportProducts.isEmpty) return;
+              setModalState(() => isExporting = true);
+              try {
+                final settings = context.read<SettingsProvider>();
+                final filterLabel = _stockFilterLabel(exportFilter);
+                final fileName = _inventoryExportFileName(exportFilter);
+
+                if (saveToFile) {
+                  final saved = await PdfService.saveOrShareInventoryReport(
+                    products: exportProducts,
+                    filterLabel: filterLabel,
+                    sortLabel: _sortLabel(_sortBy),
+                    categoryLabel: exportCategory,
+                    storeName: settings.storeName,
+                    storeAddress: settings.storeAddress,
+                    storePhone: settings.storePhone,
+                    fileName: fileName,
+                  );
+                  if (saved != null && modalCtx.mounted) {
+                    Navigator.of(sheetCtx).pop();
+                    if (context.mounted) {
+                      AppToast.show(
+                        context,
+                        message: saved == 'shared'
+                            ? 'Inventory ($filterLabel) PDF ready to share'
+                            : 'Saved PDF: $fileName',
+                      );
+                    }
+                  }
+                } else {
+                  Navigator.of(sheetCtx).pop();
+                  await PdfService.generateInventoryReport(
+                    products: exportProducts,
+                    filterLabel: filterLabel,
+                    sortLabel: _sortLabel(_sortBy),
+                    categoryLabel: exportCategory,
+                    storeName: settings.storeName,
+                    storeAddress: settings.storeAddress,
+                    storePhone: settings.storePhone,
+                    fileName: fileName,
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  AppToast.show(
+                    context,
+                    message: 'Failed to export PDF: $e',
+                    isError: true,
+                  );
+                }
+              } finally {
+                if (modalCtx.mounted) {
+                  setModalState(() => isExporting = false);
+                }
+              }
+            }
+
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 520,
+                  maxHeight: MediaQuery.sizeOf(sheetCtx).height * 0.88,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.cardTheme.color,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    border: Border.all(color: AppTheme.borderColor(sheetCtx)),
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Center(
+                            child: Container(
+                              width: 36,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: AppTheme.borderColor(sheetCtx),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.accentOrange.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.picture_as_pdf_rounded,
+                                  color: AppTheme.accentOrange,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Export Inventory PDF',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Export All Items, Healthy, Low Stock, or Out of Stock',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () => Navigator.of(sheetCtx).pop(),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          Text(
+                            'STOCK FILTER',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                              color: AppTheme.mutedText(sheetCtx),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: StockFilter.values.map((filter) {
+                              final selected = exportFilter == filter;
+                              final accent = _stockFilterColor(filter);
+                              final count = countFor(filter);
+                              return ChoiceChip(
+                                visualDensity: VisualDensity.compact,
+                                selected: selected,
+                                showCheckmark: false,
+                                onSelected: (_) {
+                                  HapticFeedback.selectionClick();
+                                  setModalState(() => exportFilter = filter);
+                                },
+                                selectedColor: accent,
+                                backgroundColor:
+                                    AppTheme.subtleSurface(sheetCtx),
+                                side: BorderSide(
+                                  color: selected
+                                      ? accent
+                                      : AppTheme.borderColor(sheetCtx),
+                                ),
+                                label: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: BoxDecoration(
+                                        color: selected ? Colors.white : accent,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text('${_stockFilterLabel(filter)} ($count)'),
+                                  ],
+                                ),
+                                labelStyle: TextStyle(
+                                  color: selected
+                                      ? Colors.white
+                                      : theme.colorScheme.onSurface,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
+                                  fontSize: 12.5,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+
+                          if (categories.length > 1) ...[
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                Text(
+                                  'Category:',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.mutedText(sheetCtx),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.subtleSurface(sheetCtx),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: AppTheme.borderColor(sheetCtx),
+                                      ),
+                                    ),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: categories.contains(exportCategory)
+                                            ? exportCategory
+                                            : 'All',
+                                        isExpanded: true,
+                                        isDense: true,
+                                        items: categories
+                                            .map(
+                                              (c) => DropdownMenuItem(
+                                                value: c,
+                                                child: Text(
+                                                  c == 'All'
+                                                      ? 'All Categories'
+                                                      : c,
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            setModalState(
+                                              () => exportCategory = val,
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          const SizedBox(height: 14),
+
+                          // Live Preview Summary
+                          if (exportProducts.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accentAmber.withValues(
+                                  alpha: 0.12,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppTheme.accentAmber.withValues(
+                                    alpha: 0.35,
+                                  ),
+                                ),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline_rounded,
+                                    size: 18,
+                                    color: AppTheme.accentAmber,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'No products match this stock filter. Pick another filter or category.',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.subtleSurface(sheetCtx),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppTheme.borderColor(sheetCtx),
+                                ),
+                              ),
+                              child: Wrap(
+                                spacing: 14,
+                                runSpacing: 8,
+                                alignment: WrapAlignment.spaceBetween,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Products / Units',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.mutedText(sheetCtx),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${exportProducts.length} items · ${formatQuantity(totalUnits)} units',
+                                        style: const TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w700,
+                                          fontFeatures: AppTheme.tabularFigures,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Retail Value',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.mutedText(sheetCtx),
+                                        ),
+                                      ),
+                                      Text(
+                                        '₱${NumberFormat('#,##0.00').format(retailValue)}',
+                                        style: const TextStyle(
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppTheme.accentOrange,
+                                          fontFeatures: AppTheme.tabularFigures,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (hasCostData)
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Potential Profit',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.mutedText(sheetCtx),
+                                          ),
+                                        ),
+                                        Text(
+                                          '${potentialProfit < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(potentialProfit.abs())}',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: potentialProfit < 0
+                                                ? AppTheme.accentRose
+                                                : AppTheme.accentTeal,
+                                            fontFeatures:
+                                                AppTheme.tabularFigures,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 18),
+
+                          // Export Action Buttons
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed:
+                                      (isExporting || exportProducts.isEmpty)
+                                      ? null
+                                      : () => runExport(saveToFile: true),
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 44),
+                                    foregroundColor: AppTheme.accentOrange,
+                                    side: BorderSide(
+                                      color: AppTheme.accentOrange.withValues(
+                                        alpha: 0.45,
+                                      ),
+                                    ),
+                                  ),
+                                  icon: Icon(
+                                    isDesktop
+                                        ? Icons.download_rounded
+                                        : Icons.share_rounded,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    isDesktop ? 'Save PDF' : 'Share PDF',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed:
+                                      (isExporting || exportProducts.isEmpty)
+                                      ? null
+                                      : () => runExport(saveToFile: false),
+                                  style: ElevatedButton.styleFrom(
+                                    minimumSize: const Size(0, 44),
+                                  ),
+                                  icon: isExporting
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.print_rounded,
+                                          size: 18,
+                                        ),
+                                  label: const Text('Print / Preview'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _resetFilters() {
@@ -264,6 +845,61 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         ),
                       ],
                     ),
+                    if (isCompact)
+                      IconButton(
+                        tooltip: 'Export PDF',
+                        onPressed: allProducts.isEmpty
+                            ? null
+                            : () {
+                                HapticFeedback.selectionClick();
+                                _showExportInventoryPdfSheet(
+                                  context: context,
+                                  allProducts: allProducts,
+                                  categories: categories,
+                                );
+                              },
+                        icon: const Icon(
+                          Icons.picture_as_pdf_outlined,
+                          color: AppTheme.accentOrange,
+                        ),
+                      )
+                    else
+                      Padding(
+                        padding: EdgeInsets.only(
+                          right: isWide ? 6 : 16,
+                          left: 4,
+                        ),
+                        child: OutlinedButton.icon(
+                          onPressed: allProducts.isEmpty
+                              ? null
+                              : () {
+                                  HapticFeedback.selectionClick();
+                                  _showExportInventoryPdfSheet(
+                                    context: context,
+                                    allProducts: allProducts,
+                                    categories: categories,
+                                  );
+                                },
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: Size(0, isWide ? 42 : 38),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isWide ? 14 : 12,
+                              vertical: 8,
+                            ),
+                            foregroundColor: AppTheme.accentOrange,
+                            side: BorderSide(
+                              color: AppTheme.accentOrange.withValues(
+                                alpha: 0.35,
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(
+                            Icons.picture_as_pdf_outlined,
+                            size: 18,
+                          ),
+                          label: Text(isWide ? 'Export PDF' : 'PDF'),
+                        ),
+                      ),
                     if (isWide)
                       Padding(
                         padding: const EdgeInsets.only(right: 20, left: 4),
@@ -280,8 +916,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
                           label: const Text('Add Product'),
                         ),
                       )
-                    else
-                      const SizedBox(width: 8),
+                    else if (isCompact)
+                      const SizedBox(width: 4),
                   ],
                 ),
 

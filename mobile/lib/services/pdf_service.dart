@@ -1364,6 +1364,540 @@ class PdfService {
     await Printing.sharePdf(bytes: bytes, filename: safeName);
     return 'shared';
   }
+
+  /// Builds an A4 PDF byte buffer for the store's Inventory catalog filtered by
+  /// stock status (`All Items`, `Healthy`, `Low Stock`, or `Out of Stock`).
+  static Future<Uint8List> buildInventoryReportPdfBytes({
+    required List<Product> products,
+    required String filterLabel,
+    required String sortLabel,
+    String? categoryLabel,
+    required String storeName,
+    required String storeAddress,
+    String? storePhone,
+  }) async {
+    await _loadFonts();
+
+    final hasPeso = _cachedFontPeso != null;
+    final fontFallbackList =
+        hasPeso ? <pw.Font>[_cachedFontPeso!] : const <pw.Font>[];
+    final currency = hasPeso ? '₱' : 'P';
+
+    final fontRegular = _cachedFontMono ?? pw.Font.helvetica();
+    final fontBold = _cachedFontMonoBold ?? pw.Font.helveticaBold();
+
+    final moneyFmt = NumberFormat('#,##0.00');
+    final dateGenerated = DateFormat(
+      'MMM d, yyyy - h:mm a',
+    ).format(DateTime.now());
+
+    final healthyCount = products.where((p) => p.stock > 5).length;
+    final lowCount = products.where((p) => p.stock > 0 && p.stock <= 5).length;
+    final outCount = products.where((p) => p.stock <= 0).length;
+    final totalUnits = products.fold<double>(0.0, (sum, p) => sum + p.stock);
+    final totalRetailValue = products.fold<double>(
+      0.0,
+      (sum, p) => sum + p.stockRetailValue,
+    );
+    final hasCostData = products.any((p) => p.costPrice != null);
+    final totalCostValue = products.fold<double>(
+      0.0,
+      (sum, p) => sum + (p.stockCostValue ?? 0.0),
+    );
+    final totalPotentialProfit = products.fold<double>(
+      0.0,
+      (sum, p) => sum + (p.potentialStockProfit ?? 0.0),
+    );
+
+    final navyColor = PdfColor.fromHex('#131D2E');
+    final orangeColor = PdfColor.fromHex('#F97316');
+    final tealColor = PdfColor.fromHex('#0D9488');
+    final amberColor = PdfColor.fromHex('#D97706');
+    final roseColor = PdfColor.fromHex('#E11D48');
+    final borderColor = PdfColor.fromHex('#E2E8F0');
+    final mutedColor = PdfColor.fromHex('#64748B');
+    final softBg = PdfColor.fromHex('#F8FAFC');
+
+    final lowerFilter = filterLabel.toLowerCase();
+    final badgeColor = lowerFilter.contains('out')
+        ? roseColor
+        : (lowerFilter.contains('low')
+              ? amberColor
+              : (lowerFilter.contains('healthy') ? tealColor : orangeColor));
+
+    String formatMoney(double value) => '$currency${moneyFmt.format(value)}';
+    String formatSignedMoney(double value) =>
+        '${value < 0 ? '-' : '+'}$currency${moneyFmt.format(value.abs())}';
+
+    final tableHeaders = hasCostData
+        ? <String>[
+            '#',
+            'Product',
+            'Category',
+            'Cost',
+            'Selling',
+            'Profit',
+            'Stock',
+            'Status',
+          ]
+        : <String>[
+            '#',
+            'Product',
+            'Category',
+            'Price',
+            'Stock',
+            'Value',
+            'Status',
+          ];
+
+    final tableRows = <List<String>>[];
+    for (int i = 0; i < products.length; i++) {
+      final p = products[i];
+      final cleanName = _clean(p.name);
+      final nameWithVariants = p.variants.isNotEmpty
+          ? '$cleanName (${p.variants.length} var)'
+          : cleanName;
+      final cleanCat = (p.category != null && p.category!.trim().isNotEmpty)
+          ? _clean(p.category!)
+          : '-';
+      final status = p.stock <= 0
+          ? 'Out of stock'
+          : (p.stock <= 5 ? 'Low Stock' : 'Healthy');
+
+      if (hasCostData) {
+        tableRows.add([
+          '${i + 1}',
+          nameWithVariants,
+          cleanCat,
+          p.costPrice != null ? formatMoney(p.costPrice!) : '-',
+          formatMoney(p.price),
+          p.unitProfit != null ? formatSignedMoney(p.unitProfit!) : '-',
+          p.formattedStock,
+          status,
+        ]);
+      } else {
+        tableRows.add([
+          '${i + 1}',
+          nameWithVariants,
+          cleanCat,
+          formatMoney(p.price),
+          p.formattedStock,
+          formatMoney(p.stockRetailValue),
+          status,
+        ]);
+      }
+    }
+
+    final columnWidths = hasCostData
+        ? <int, pw.TableColumnWidth>{
+            0: const pw.FixedColumnWidth(24),
+            1: const pw.FlexColumnWidth(2.4),
+            2: const pw.FlexColumnWidth(1.3),
+            3: const pw.FlexColumnWidth(1.1),
+            4: const pw.FlexColumnWidth(1.1),
+            5: const pw.FlexColumnWidth(1.1),
+            6: const pw.FlexColumnWidth(1.1),
+            7: const pw.FlexColumnWidth(1.15),
+          }
+        : <int, pw.TableColumnWidth>{
+            0: const pw.FixedColumnWidth(26),
+            1: const pw.FlexColumnWidth(2.7),
+            2: const pw.FlexColumnWidth(1.4),
+            3: const pw.FlexColumnWidth(1.2),
+            4: const pw.FlexColumnWidth(1.2),
+            5: const pw.FlexColumnWidth(1.3),
+            6: const pw.FlexColumnWidth(1.2),
+          };
+
+    final cellAlignments = hasCostData
+        ? <int, pw.Alignment>{
+            0: pw.Alignment.center,
+            1: pw.Alignment.centerLeft,
+            2: pw.Alignment.centerLeft,
+            3: pw.Alignment.centerRight,
+            4: pw.Alignment.centerRight,
+            5: pw.Alignment.centerRight,
+            6: pw.Alignment.centerRight,
+            7: pw.Alignment.center,
+          }
+        : <int, pw.Alignment>{
+            0: pw.Alignment.center,
+            1: pw.Alignment.centerLeft,
+            2: pw.Alignment.centerLeft,
+            3: pw.Alignment.centerRight,
+            4: pw.Alignment.centerRight,
+            5: pw.Alignment.centerRight,
+            6: pw.Alignment.center,
+          };
+
+    pw.Widget buildSummaryBox({
+      required String label,
+      required String value,
+      PdfColor? valueColor,
+      String? subtext,
+    }) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: pw.BoxDecoration(
+            color: softBg,
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+            border: pw.Border.all(color: borderColor, width: 0.8),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                label.toUpperCase(),
+                style: pw.TextStyle(
+                  fontSize: 7.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: mutedColor,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                value,
+                style: pw.TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: valueColor ?? navyColor,
+                ),
+              ),
+              if (subtext != null) ...[
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  subtext,
+                  style: pw.TextStyle(fontSize: 7.5, color: mutedColor),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    final cleanStore = _clean(storeName).isNotEmpty
+        ? _clean(storeName)
+        : 'TindaKo POS';
+    final cleanAddress = _clean(storeAddress);
+    final cleanPhone = _clean(storePhone);
+    final cleanCategory = (categoryLabel != null &&
+            categoryLabel.trim().isNotEmpty &&
+            categoryLabel.trim() != 'All')
+        ? _clean(categoryLabel)
+        : null;
+
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: fontRegular,
+        bold: fontBold,
+        fontFallback: fontFallbackList,
+      ),
+    );
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(26, 26, 26, 30),
+        footer: (pw.Context context) => pw.Container(
+          margin: const pw.EdgeInsets.only(top: 12),
+          padding: const pw.EdgeInsets.only(top: 6),
+          decoration: pw.BoxDecoration(
+            border: pw.Border(
+              top: pw.BorderSide(color: borderColor, width: 0.7),
+            ),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                '$cleanStore - Inventory Report (${_clean(filterLabel)})',
+                style: pw.TextStyle(fontSize: 8.5, color: mutedColor),
+              ),
+              pw.Text(
+                'Page ${context.pageNumber} of ${context.pagesCount}',
+                style: pw.TextStyle(fontSize: 8.5, color: mutedColor),
+              ),
+            ],
+          ),
+        ),
+        build: (pw.Context context) => [
+          // Header
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      cleanStore.toUpperCase(),
+                      style: pw.TextStyle(
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                        color: navyColor,
+                      ),
+                    ),
+                    if (cleanAddress.isNotEmpty) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        cleanAddress,
+                        style: pw.TextStyle(fontSize: 9.5, color: mutedColor),
+                      ),
+                    ],
+                    if (cleanPhone.isNotEmpty) ...[
+                      pw.SizedBox(height: 1),
+                      pw.Text(
+                        cleanPhone,
+                        style: pw.TextStyle(fontSize: 9.5, color: mutedColor),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              pw.SizedBox(width: 16),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: pw.BoxDecoration(
+                      color: badgeColor,
+                      borderRadius: const pw.BorderRadius.all(
+                        pw.Radius.circular(4),
+                      ),
+                    ),
+                    child: pw.Text(
+                      'INVENTORY (${_clean(filterLabel).toUpperCase()})',
+                      style: pw.TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.white,
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(height: 5),
+                  if (cleanCategory != null)
+                    pw.Text(
+                      'Category: $cleanCategory',
+                      style: pw.TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: navyColor,
+                      ),
+                    ),
+                  pw.Text(
+                    'Sorted by: ${_clean(sortLabel)}',
+                    style: pw.TextStyle(fontSize: 8.5, color: mutedColor),
+                  ),
+                  pw.Text(
+                    'Generated: $dateGenerated',
+                    style: pw.TextStyle(fontSize: 8.5, color: mutedColor),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          pw.Divider(color: borderColor, thickness: 1),
+          pw.SizedBox(height: 12),
+
+          // Summary KPI Strip
+          pw.Row(
+            children: [
+              buildSummaryBox(
+                label: 'Products',
+                value: '${products.length}',
+                subtext: '${formatQuantity(totalUnits)} total units',
+              ),
+              pw.SizedBox(width: 8),
+              buildSummaryBox(
+                label: 'Retail Value',
+                value: formatMoney(totalRetailValue),
+                valueColor: orangeColor,
+              ),
+              if (hasCostData) ...[
+                pw.SizedBox(width: 8),
+                buildSummaryBox(
+                  label: 'Stock Cost',
+                  value: formatMoney(totalCostValue),
+                ),
+                pw.SizedBox(width: 8),
+                buildSummaryBox(
+                  label: 'Est. Profit',
+                  value: formatSignedMoney(totalPotentialProfit),
+                  valueColor: totalPotentialProfit < 0 ? roseColor : tealColor,
+                ),
+              ],
+            ],
+          ),
+          pw.SizedBox(height: 14),
+
+          // Inventory Products Table
+          if (tableRows.isEmpty)
+            pw.Container(
+              padding: const pw.EdgeInsets.all(24),
+              alignment: pw.Alignment.center,
+              decoration: pw.BoxDecoration(
+                color: softBg,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                border: pw.Border.all(color: borderColor),
+              ),
+              child: pw.Text(
+                'No products match this inventory filter.',
+                style: pw.TextStyle(fontSize: 11, color: mutedColor),
+              ),
+            )
+          else
+            pw.TableHelper.fromTextArray(
+              context: context,
+              headers: tableHeaders,
+              data: tableRows,
+              columnWidths: columnWidths,
+              headerStyle: pw.TextStyle(
+                fontSize: 8.5,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+              ),
+              headerDecoration: pw.BoxDecoration(color: navyColor),
+              headerAlignment: pw.Alignment.centerLeft,
+              headerAlignments: cellAlignments,
+              cellStyle: const pw.TextStyle(fontSize: 8.5),
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 5,
+              ),
+              cellAlignments: cellAlignments,
+              oddRowDecoration: pw.BoxDecoration(color: softBg),
+              border: pw.TableBorder(
+                horizontalInside: pw.BorderSide(
+                  color: borderColor,
+                  width: 0.5,
+                ),
+                bottom: pw.BorderSide(color: borderColor, width: 0.8),
+              ),
+            ),
+
+          if (tableRows.isNotEmpty) ...[
+            pw.SizedBox(height: 12),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              decoration: pw.BoxDecoration(
+                color: softBg,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                border: pw.Border.all(color: borderColor, width: 0.8),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'STOCK HEALTH: $healthyCount Healthy | $lowCount Low | $outCount Out',
+                    style: pw.TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: pw.FontWeight.bold,
+                      color: navyColor,
+                    ),
+                  ),
+                  pw.Text(
+                    'Total Retail: ${formatMoney(totalRetailValue)}',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: orangeColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  /// Opens the native print / PDF preview dialog for an Inventory report.
+  static Future<void> generateInventoryReport({
+    required List<Product> products,
+    required String filterLabel,
+    required String sortLabel,
+    String? categoryLabel,
+    required String storeName,
+    required String storeAddress,
+    String? storePhone,
+    String? fileName,
+  }) async {
+    final safeName = fileName ??
+        'inventory_${filterLabel.toLowerCase().replaceAll(' ', '_')}.pdf';
+    await Printing.layoutPdf(
+      name: safeName,
+      format: PdfPageFormat.a4,
+      onLayout: (PdfPageFormat format) => buildInventoryReportPdfBytes(
+        products: products,
+        filterLabel: filterLabel,
+        sortLabel: sortLabel,
+        categoryLabel: categoryLabel,
+        storeName: storeName,
+        storeAddress: storeAddress,
+        storePhone: storePhone,
+      ),
+    );
+  }
+
+  /// Saves the Inventory PDF via the OS save dialog on desktop, or shares it
+  /// via the native share sheet on mobile/web.
+  static Future<String?> saveOrShareInventoryReport({
+    required List<Product> products,
+    required String filterLabel,
+    required String sortLabel,
+    String? categoryLabel,
+    required String storeName,
+    required String storeAddress,
+    String? storePhone,
+    String? fileName,
+  }) async {
+    final safeName = fileName ??
+        'inventory_${filterLabel.toLowerCase().replaceAll(' ', '_')}.pdf';
+    final bytes = await buildInventoryReportPdfBytes(
+      products: products,
+      filterLabel: filterLabel,
+      sortLabel: sortLabel,
+      categoryLabel: categoryLabel,
+      storeName: storeName,
+      storeAddress: storeAddress,
+      storePhone: storePhone,
+    );
+
+    final isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    if (isDesktop) {
+      final selectedPath = await FilePicker.saveFile(
+        dialogTitle: 'Save Inventory PDF Report',
+        fileName: safeName,
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+      );
+      if (selectedPath == null || selectedPath.trim().isEmpty) return null;
+      final finalPath = selectedPath.toLowerCase().endsWith('.pdf')
+          ? selectedPath
+          : '$selectedPath.pdf';
+      await File(finalPath).writeAsBytes(bytes, flush: true);
+      return finalPath;
+    }
+
+    await Printing.sharePdf(bytes: bytes, filename: safeName);
+    return 'shared';
+  }
 }
 
 /// Custom receipt page that adapts its width/height aspect ratio when rendered
