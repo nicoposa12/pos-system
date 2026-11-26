@@ -24,6 +24,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _categoryController;
   late final TextEditingController _priceController;
+  late final TextEditingController _costPriceController;
   late final TextEditingController _stockController;
   late final TextEditingController _barcodeController;
   String _selectedUnit = 'pcs';
@@ -44,6 +45,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
   bool get isEditing => widget.product != null;
 
+  String _formatEditableMoney(double value) =>
+      value % 1 == 0 ? value.toStringAsFixed(0) : value.toString();
+
   @override
   void initState() {
     super.initState();
@@ -53,9 +57,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     );
     _priceController = TextEditingController(
       text: widget.product != null
-          ? (widget.product!.price % 1 == 0
-                ? widget.product!.price.toStringAsFixed(0)
-                : widget.product!.price.toString())
+          ? _formatEditableMoney(widget.product!.price)
+          : '',
+    );
+    _costPriceController = TextEditingController(
+      text: widget.product?.costPrice != null
+          ? _formatEditableMoney(widget.product!.costPrice!)
           : '',
     );
     _stockController = TextEditingController(
@@ -73,7 +80,12 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           _VariantField(
             nameController: TextEditingController(text: variant.name),
             priceController: TextEditingController(
-              text: variant.price.toString(),
+              text: _formatEditableMoney(variant.price),
+            ),
+            costController: TextEditingController(
+              text: variant.costPrice != null
+                  ? _formatEditableMoney(variant.costPrice!)
+                  : '',
             ),
             stockController: TextEditingController(
               text: variant.stock != null ? formatQuantity(variant.stock!) : '',
@@ -90,6 +102,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     _nameController.dispose();
     _categoryController.dispose();
     _priceController.dispose();
+    _costPriceController.dispose();
     _stockController.dispose();
     _barcodeController.dispose();
     for (final field in _variantFields) {
@@ -105,6 +118,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         _VariantField(
           nameController: TextEditingController(),
           priceController: TextEditingController(),
+          costController: TextEditingController(),
           stockController: TextEditingController(),
         ),
       );
@@ -549,6 +563,31 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                           children: [
                             Expanded(
                               child: TextFormField(
+                                controller: _costPriceController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Cost Price (₱)',
+                                  hintText: 'Original',
+                                  prefixIcon: Icon(Icons.price_change_outlined),
+                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return null; // Optional
+                                  }
+                                  final parsed = double.tryParse(value.trim());
+                                  if (parsed == null || parsed < 0) {
+                                    return 'Invalid cost';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
                                 controller: _priceController,
                                 decoration: const InputDecoration(
                                   labelText: 'Selling Price (₱)',
@@ -570,28 +609,113 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                 },
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextFormField(
-                                controller: _stockController,
-                                decoration: InputDecoration(
-                                  labelText: 'Stock Quantity (${_selectedUnit})',
-                                  prefixIcon: const Icon(Icons.layers_outlined),
-                                ),
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Required';
-                                  }
-                                  final parsed = double.tryParse(value);
-                                  if (parsed == null || parsed < 0) {
-                                    return 'Invalid qty';
-                                  }
-                                  return null;
-                                },
-                              ),
-                            ),
                           ],
+                        ),
+                        // Live Profit Preview (Original Cost vs POS Selling Price)
+                        ListenableBuilder(
+                          listenable: Listenable.merge([
+                            _costPriceController,
+                            _priceController,
+                          ]),
+                          builder: (context, _) {
+                            final costText = _costPriceController.text.trim();
+                            final sellText = _priceController.text.trim();
+                            final cost = costText.isEmpty
+                                ? null
+                                : double.tryParse(costText);
+                            final sell = sellText.isEmpty
+                                ? null
+                                : double.tryParse(sellText);
+                            if (cost == null ||
+                                cost < 0 ||
+                                sell == null ||
+                                sell < 0) {
+                              return const SizedBox.shrink();
+                            }
+                            final profit = sell - cost;
+                            final isLoss = profit < 0;
+                            final margin = sell > 0
+                                ? (profit / sell) * 100
+                                : 0.0;
+                            final accent = isLoss
+                                ? AppTheme.accentRose
+                                : AppTheme.accentTeal;
+                            return Container(
+                              margin: const EdgeInsets.only(top: 10),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 9,
+                              ),
+                              decoration: BoxDecoration(
+                                color: accent.withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: accent.withValues(alpha: 0.30),
+                                ),
+                              ),
+                              child: Wrap(
+                                spacing: 10,
+                                runSpacing: 4,
+                                alignment: WrapAlignment.spaceBetween,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        isLoss
+                                            ? Icons.warning_amber_rounded
+                                            : Icons.trending_up_rounded,
+                                        size: 16,
+                                        color: accent,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '${isLoss ? 'Loss' : 'Profit'}: ${isLoss ? '-' : '+'}₱${profit.abs().toStringAsFixed(2)} / $_selectedUnit',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: accent,
+                                          fontFeatures: AppTheme.tabularFigures,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (sell > 0)
+                                    Text(
+                                      'Margin: ${margin.toStringAsFixed(1)}%',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: accent,
+                                        fontFeatures: AppTheme.tabularFigures,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _stockController,
+                          decoration: InputDecoration(
+                            labelText: 'Stock Quantity ($_selectedUnit)',
+                            prefixIcon: const Icon(Icons.layers_outlined),
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Required';
+                            }
+                            final parsed = double.tryParse(value);
+                            if (parsed == null || parsed < 0) {
+                              return 'Invalid qty';
+                            }
+                            return null;
+                          },
                         ),
                         const SizedBox(height: 12),
                         // Unit of Measure Selector
@@ -992,14 +1116,15 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                       ),
                                       const SizedBox(height: 10),
 
-                                      // ── Row 2: Price & Quantity Inputs ──
+                                      // ── Row 2: Original Cost & Selling Price Inputs ──
                                       Row(
                                         children: [
                                           Expanded(
                                             child: TextFormField(
-                                              controller: field.priceController,
+                                              controller: field.costController,
                                               decoration: InputDecoration(
-                                                labelText: 'Price',
+                                                labelText: 'Cost Price',
+                                                hintText: 'Optional',
                                                 prefixText: '₱ ',
                                                 isDense: true,
                                                 filled: true,
@@ -1020,6 +1145,35 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                           const SizedBox(width: 10),
                                           Expanded(
                                             child: TextFormField(
+                                              controller: field.priceController,
+                                              decoration: InputDecoration(
+                                                labelText: 'Selling Price',
+                                                prefixText: '₱ ',
+                                                isDense: true,
+                                                filled: true,
+                                                fillColor:
+                                                    theme.cardTheme.color,
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 12,
+                                                    ),
+                                              ),
+                                              keyboardType:
+                                                  const TextInputType.numberWithOptions(
+                                                    decimal: true,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+
+                                      // ── Row 3: Quantity & Variant Profit Preview ──
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TextFormField(
                                               controller: field.stockController,
                                               decoration: InputDecoration(
                                                 labelText: 'Stock Qty',
@@ -1037,6 +1191,58 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
                                               keyboardType:
                                                   const TextInputType.numberWithOptions(decimal: true),
                                             ),
+                                          ),
+                                          ListenableBuilder(
+                                            listenable: Listenable.merge([
+                                              field.costController,
+                                              field.priceController,
+                                            ]),
+                                            builder: (context, _) {
+                                              final vCost = double.tryParse(
+                                                field.costController.text.trim(),
+                                              );
+                                              final vPrice = double.tryParse(
+                                                field.priceController.text.trim(),
+                                              );
+                                              if (vCost == null ||
+                                                  vCost < 0 ||
+                                                  vPrice == null ||
+                                                  vPrice < 0) {
+                                                return const SizedBox.shrink();
+                                              }
+                                              final vProfit = vPrice - vCost;
+                                              final accent = vProfit < 0
+                                                  ? AppTheme.accentRose
+                                                  : AppTheme.accentTeal;
+                                              return Padding(
+                                                padding: const EdgeInsets.only(
+                                                  left: 10,
+                                                ),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 8,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: accent.withValues(
+                                                      alpha: 0.12,
+                                                    ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(8),
+                                                  ),
+                                                  child: Text(
+                                                    '${vProfit < 0 ? '-' : '+'}₱${vProfit.abs().toStringAsFixed(2)}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: accent,
+                                                      fontFeatures:
+                                                          AppTheme.tabularFigures,
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            },
                                           ),
                                         ],
                                       ),
@@ -1134,6 +1340,8 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
         final name = _nameController.text.trim();
         final category = _categoryController.text.trim();
         final price = double.parse(_priceController.text.trim());
+        final costText = _costPriceController.text.trim();
+        final costPrice = costText.isEmpty ? null : double.parse(costText);
         final stock = double.parse(_stockController.text.trim());
         final barcode = _barcodeController.text.trim();
 
@@ -1143,12 +1351,21 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
 
         final variants = _variantFields
             .map(
-              (f) => ProductVariant(
-                name: f.nameController.text.trim(),
-                price: double.tryParse(f.priceController.text.trim()) ?? 0.0,
-                stock: double.tryParse(f.stockController.text.trim()),
-                imagePath: f.imagePath,
-              ),
+              (f) {
+                final vCostText = f.costController.text.trim();
+                final parsedVCost = vCostText.isEmpty
+                    ? null
+                    : double.tryParse(vCostText);
+                return ProductVariant(
+                  name: f.nameController.text.trim(),
+                  price: double.tryParse(f.priceController.text.trim()) ?? 0.0,
+                  costPrice: (parsedVCost != null && parsedVCost >= 0)
+                      ? parsedVCost
+                      : null,
+                  stock: double.tryParse(f.stockController.text.trim()),
+                  imagePath: f.imagePath,
+                );
+              },
             )
             .where((v) => v.name.isNotEmpty)
             .toList();
@@ -1159,6 +1376,7 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
           name: name,
           category: category.isEmpty ? null : category,
           price: price,
+          costPrice: costPrice,
           stock: stock,
           unit: _selectedUnit,
           barcode: barcode.isEmpty ? null : barcode,
@@ -1314,6 +1532,7 @@ class _ImageSourceOption extends StatelessWidget {
 class _VariantField {
   TextEditingController? _nameController;
   TextEditingController? _priceController;
+  TextEditingController? _costController;
   TextEditingController? _stockController;
   String? imagePath;
 
@@ -1321,21 +1540,26 @@ class _VariantField {
       _nameController ??= TextEditingController();
   TextEditingController get priceController =>
       _priceController ??= TextEditingController();
+  TextEditingController get costController =>
+      _costController ??= TextEditingController();
   TextEditingController get stockController =>
       _stockController ??= TextEditingController();
 
   _VariantField({
     TextEditingController? nameController,
     TextEditingController? priceController,
+    TextEditingController? costController,
     TextEditingController? stockController,
     this.imagePath,
   }) : _nameController = nameController,
        _priceController = priceController,
+       _costController = costController,
        _stockController = stockController;
 
   void dispose() {
     _nameController?.dispose();
     _priceController?.dispose();
+    _costController?.dispose();
     _stockController?.dispose();
   }
 }

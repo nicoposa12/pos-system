@@ -12,7 +12,8 @@ class SaleTransaction {
   /// Customer name of the linked debt record (pending / utang sales).
   final String? customerName;
 
-  /// Line items: `product_id`, `product_name`, `category`, `quantity`, `subtotal`.
+  /// Line items: `product_id`, `product_name`, `category`, `quantity`, `subtotal`,
+  /// plus optional `unit_cost`, `cost_total`, and `profit`.
   final List<Map<String, dynamic>> items;
 
   /// Server `updated_at` (ISO-8601), used as the incremental delta-sync cursor.
@@ -20,6 +21,62 @@ class SaleTransaction {
 
   /// Store-scoped sequential order number, falling back to [id] when absent.
   int? get displayOrderNumber => orderNumber ?? id;
+
+  /// Whether at least one line item in this order has a recorded original/cost price.
+  bool get hasCostData => items.any((item) => _tryToDouble(item['unit_cost']) != null);
+
+  /// Whether every active (non-returned) line item in this order has cost data.
+  bool get hasCompleteCostData {
+    if (!hasCostData) return false;
+    final active = items.where((item) {
+      final qty = _toDouble(item['quantity']);
+      final sub = _toDouble(item['subtotal']);
+      return qty > 0 || sub > 0;
+    }).toList();
+    if (active.isEmpty) return true;
+    return active.every((item) => _tryToDouble(item['unit_cost']) != null);
+  }
+
+  /// Total cost of goods sold (COGS) across items with recorded `unit_cost`,
+  /// or `null` when this transaction has no cost data.
+  double? get totalCost {
+    if (!hasCostData) return null;
+    double costSum = 0.0;
+    for (final item in items) {
+      final unitCost = _tryToDouble(item['unit_cost']);
+      if (unitCost == null) continue;
+      final explicitCost = _tryToDouble(item['cost_total']);
+      final qty = _toDouble(item['quantity']);
+      costSum += explicitCost ?? _roundMoney(qty * unitCost);
+    }
+    return _roundMoney(costSum);
+  }
+
+  /// Net profit (`revenue - cost - discount share`) across costed items,
+  /// accounting for returns and discounts; `null` when no cost data exists.
+  double? get totalProfit {
+    if (!hasCostData) return null;
+    double allSubtotal = 0.0;
+    double costedSubtotal = 0.0;
+    double costedCost = 0.0;
+
+    for (final item in items) {
+      final qty = _toDouble(item['quantity']);
+      final sub = _toDouble(item['subtotal']);
+      allSubtotal += sub;
+      final unitCost = _tryToDouble(item['unit_cost']);
+      if (unitCost == null) continue;
+      costedSubtotal += sub;
+      final explicitCost = _tryToDouble(item['cost_total']);
+      costedCost += explicitCost ?? _roundMoney(qty * unitCost);
+    }
+
+    if (allSubtotal <= 0.0) return 0.0;
+
+    final effectiveDiscount = discount.clamp(0.0, allSubtotal).toDouble();
+    final discountShare = effectiveDiscount * (costedSubtotal / allSubtotal);
+    return _roundMoney(costedSubtotal - costedCost - discountShare);
+  }
 
   SaleTransaction({
     this.id,
@@ -81,6 +138,7 @@ class SaleTransaction {
         final originalQty = _tryToDouble(raw['quantity']) ?? 1.0;
         final rawSubtotal = _toDouble(raw['subtotal']);
         final unitPrice = originalQty > 0 ? (rawSubtotal / originalQty) : 0.0;
+        final unitCost = _tryToDouble(raw['unit_cost']);
 
         final returnedAvailable = remainingReturns[productId] ?? 0.0;
         final returnedQty = _roundQty(
@@ -96,6 +154,12 @@ class SaleTransaction {
         final netSubtotal = netQty <= 0.0
             ? 0.0
             : _roundMoney(netQty * unitPrice);
+        final netCost = unitCost != null
+            ? (netQty <= 0.0 ? 0.0 : _roundMoney(netQty * unitCost))
+            : null;
+        final netProfit = netCost != null
+            ? _roundMoney(netSubtotal - netCost)
+            : null;
 
         computedSubtotalSum += netSubtotal;
 
@@ -107,6 +171,9 @@ class SaleTransaction {
           'original_quantity': originalQty,
           'returned_quantity': returnedQty,
           'unit_price': unitPrice,
+          'unit_cost': unitCost,
+          'cost_total': netCost,
+          'profit': netProfit,
           'subtotal': netSubtotal,
         });
       }

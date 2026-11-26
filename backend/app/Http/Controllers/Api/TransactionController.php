@@ -21,7 +21,7 @@ class TransactionController extends Controller
     public function index(Request $request)
     {
         $query = $request->user()->transactions()
-            ->with(['items.product:id,name,category,stock', 'debt', 'returns'])
+            ->with(['items.product:id,name,category,stock,cost_price', 'debt', 'returns'])
             ->orderByDesc('id');
 
         // Incremental Delta Sync: return only records modified after the specified timestamp
@@ -64,6 +64,7 @@ class TransactionController extends Controller
             ],
             'items.*.quantity' => 'required|numeric|min:0.001',
             'items.*.subtotal' => 'required|numeric|min:0',
+            'items.*.variant_name' => 'nullable|string|max:255',
         ]);
 
         return DB::transaction(function () use ($validated, $userId) {
@@ -135,11 +136,20 @@ class TransactionController extends Controller
 
             // 2. Insert items and decrement stock
             foreach ($validated['items'] as $itemData) {
+                $product = $products->get($itemData['product_id']);
+                $quantity = (float) $itemData['quantity'];
+                $unitSellingPrice = $quantity > 0 ? ((float) $itemData['subtotal'] / $quantity) : 0.0;
+                $unitCost = $product?->resolveUnitCostForSellingPrice(
+                    $unitSellingPrice,
+                    $itemData['variant_name'] ?? null
+                );
+
                 TransactionItem::create([
                     'transaction_id' => $transaction->id,
                     'product_id' => $itemData['product_id'],
                     'quantity' => $itemData['quantity'],
                     'subtotal' => $itemData['subtotal'],
+                    'unit_cost' => $unitCost,
                 ]);
 
                 // Decrement stock
@@ -161,7 +171,7 @@ class TransactionController extends Controller
                 ]);
             }
 
-            $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
+            $transaction->load(['items.product:id,name,category,stock,cost_price', 'debt', 'returns']);
 
             return response()->json([
                 'message' => 'Transaction completed successfully',
@@ -179,7 +189,7 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
+        $transaction->load(['items.product:id,name,category,stock,cost_price', 'debt', 'returns']);
 
         return response()->json(['transaction' => $transaction]);
     }
@@ -206,7 +216,7 @@ class TransactionController extends Controller
             return response()->json(['message' => 'Transaction not found'], 404);
         }
 
-        $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
+        $transaction->load(['items.product:id,name,category,stock,cost_price', 'debt', 'returns']);
 
         return response()->json(['transaction' => $transaction]);
     }
@@ -250,7 +260,7 @@ class TransactionController extends Controller
             'is_fully_paid' => $isFullyPaid,
         ]);
 
-        $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
+        $transaction->load(['items.product:id,name,category,stock,cost_price', 'debt', 'returns']);
 
         return response()->json([
             'message' => $isFullyPaid ? 'Transaction marked as paid successfully' : 'Payment recorded successfully',

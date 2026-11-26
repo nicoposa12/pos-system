@@ -14,6 +14,8 @@ import '../widgets/skeleton.dart';
 
 enum BestSellersPeriod { all, daily, weekly, monthly, yearly }
 
+enum _BestSellersSort { mostSold, topRevenue, topProfit }
+
 /// Full product sales leaderboard with Daily, Weekly, Monthly, Yearly, and All-Time filters.
 class BestSellersScreen extends StatefulWidget {
   final BestSellersPeriod initialPeriod;
@@ -33,7 +35,7 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
   DateTime _selectedWeekStart = startOfCalendarWeek(DateTime.now());
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
   int _selectedYear = DateTime.now().year;
-  bool _sortByRevenue = false;
+  _BestSellersSort _sortMode = _BestSellersSort.mostSold;
   late final TextEditingController _searchController;
   String _searchQuery = '';
 
@@ -313,7 +315,8 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
 
     final periodSales = txProvider.getProductSales(
       filter: (tx) => _matchesPeriod(tx, now),
-      sortByRevenue: _sortByRevenue,
+      sortByRevenue: _sortMode == _BestSellersSort.topRevenue,
+      sortByProfit: _sortMode == _BestSellersSort.topProfit,
     );
 
     final query = _searchQuery.trim().toLowerCase();
@@ -334,12 +337,35 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
       (sum, item) =>
           sum + ((item['total_revenue'] as num?)?.toDouble() ?? 0.0),
     );
+    final hasPeriodProfit = displayed.any((item) => item['has_cost_data'] == true);
+    final totalProfit = displayed.fold<double>(
+      0.0,
+      (sum, item) => item['has_cost_data'] == true
+          ? sum + ((item['total_profit'] as num?)?.toDouble() ?? 0.0)
+          : sum,
+    );
+    final costedRevenue = displayed.fold<double>(
+      0.0,
+      (sum, item) => item['has_cost_data'] == true
+          ? sum + ((item['total_revenue'] as num?)?.toDouble() ?? 0.0)
+          : sum,
+    );
 
     double maxMetric = 0.0;
     for (final item in displayed) {
-      final metric = _sortByRevenue
-          ? ((item['total_revenue'] as num?)?.toDouble() ?? 0.0)
-          : ((item['total_sold'] as num?)?.toDouble() ?? 0.0);
+      final metric = switch (_sortMode) {
+        _BestSellersSort.topRevenue =>
+          (item['total_revenue'] as num?)?.toDouble() ?? 0.0,
+        _BestSellersSort.topProfit =>
+          item['has_cost_data'] == true
+              ? (((item['total_profit'] as num?)?.toDouble() ?? 0.0).clamp(
+                  0.0,
+                  double.infinity,
+                ).toDouble())
+              : 0.0,
+        _BestSellersSort.mostSold =>
+          (item['total_sold'] as num?)?.toDouble() ?? 0.0,
+      };
       if (metric > maxMetric) maxMetric = metric;
     }
     if (maxMetric <= 0) maxMetric = 1.0;
@@ -713,6 +739,63 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                   ),
                                 ],
                               ),
+                              if (hasPeriodProfit) ...[
+                                const SizedBox(height: 10),
+                                Divider(
+                                  height: 1,
+                                  color: AppTheme.borderColor(context),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          totalProfit < 0
+                                              ? Icons.trending_down_rounded
+                                              : Icons.trending_up_rounded,
+                                          size: 16,
+                                          color: totalProfit < 0
+                                              ? AppTheme.accentRose
+                                              : AppTheme.accentTeal,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Est. Profit',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.mutedText(context),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Flexible(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerRight,
+                                        child: Text(
+                                          costedRevenue > 0
+                                              ? '${totalProfit < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(totalProfit.abs())} (${(totalProfit / costedRevenue * 100).toStringAsFixed(1)}%)'
+                                              : '${totalProfit < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(totalProfit.abs())}',
+                                          style: TextStyle(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: totalProfit < 0
+                                                ? AppTheme.accentRose
+                                                : AppTheme.accentTeal,
+                                            fontFeatures:
+                                                AppTheme.tabularFigures,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -742,26 +825,33 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                       horizontal: 6,
                                     ),
                                     label: const Text('Most Sold'),
-                                    selected: !_sortByRevenue,
+                                    selected:
+                                        _sortMode == _BestSellersSort.mostSold,
                                     showCheckmark: false,
                                     onSelected: (_) {
                                       HapticFeedback.selectionClick();
-                                      setState(() => _sortByRevenue = false);
+                                      setState(
+                                        () => _sortMode =
+                                            _BestSellersSort.mostSold,
+                                      );
                                     },
                                     selectedColor: AppTheme.accentTeal,
                                     backgroundColor: theme.cardTheme.color,
                                     side: BorderSide(
-                                      color: !_sortByRevenue
-                                          ? AppTheme.accentTeal
-                                          : AppTheme.borderColor(context),
+                                      color:
+                                          _sortMode == _BestSellersSort.mostSold
+                                              ? AppTheme.accentTeal
+                                              : AppTheme.borderColor(context),
                                     ),
                                     labelStyle: TextStyle(
-                                      color: !_sortByRevenue
-                                          ? Colors.white
-                                          : theme.colorScheme.onSurface,
-                                      fontWeight: !_sortByRevenue
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
+                                      color:
+                                          _sortMode == _BestSellersSort.mostSold
+                                              ? Colors.white
+                                              : theme.colorScheme.onSurface,
+                                      fontWeight:
+                                          _sortMode == _BestSellersSort.mostSold
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -771,26 +861,76 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                       horizontal: 6,
                                     ),
                                     label: const Text('Top Revenue'),
-                                    selected: _sortByRevenue,
+                                    selected:
+                                        _sortMode ==
+                                            _BestSellersSort.topRevenue,
                                     showCheckmark: false,
                                     onSelected: (_) {
                                       HapticFeedback.selectionClick();
-                                      setState(() => _sortByRevenue = true);
+                                      setState(
+                                        () => _sortMode =
+                                            _BestSellersSort.topRevenue,
+                                      );
                                     },
                                     selectedColor: AppTheme.accentIndigo,
                                     backgroundColor: theme.cardTheme.color,
                                     side: BorderSide(
-                                      color: _sortByRevenue
-                                          ? AppTheme.accentIndigo
-                                          : AppTheme.borderColor(context),
+                                      color:
+                                          _sortMode ==
+                                                  _BestSellersSort.topRevenue
+                                              ? AppTheme.accentIndigo
+                                              : AppTheme.borderColor(context),
                                     ),
                                     labelStyle: TextStyle(
-                                      color: _sortByRevenue
-                                          ? Colors.white
-                                          : theme.colorScheme.onSurface,
-                                      fontWeight: _sortByRevenue
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
+                                      color:
+                                          _sortMode ==
+                                                  _BestSellersSort.topRevenue
+                                              ? Colors.white
+                                              : theme.colorScheme.onSurface,
+                                      fontWeight:
+                                          _sortMode ==
+                                                  _BestSellersSort.topRevenue
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  ChoiceChip(
+                                    visualDensity: VisualDensity.compact,
+                                    labelPadding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                    ),
+                                    label: const Text('Top Profit'),
+                                    selected:
+                                        _sortMode == _BestSellersSort.topProfit,
+                                    showCheckmark: false,
+                                    onSelected: (_) {
+                                      HapticFeedback.selectionClick();
+                                      setState(
+                                        () => _sortMode =
+                                            _BestSellersSort.topProfit,
+                                      );
+                                    },
+                                    selectedColor: AppTheme.accentOrange,
+                                    backgroundColor: theme.cardTheme.color,
+                                    side: BorderSide(
+                                      color:
+                                          _sortMode ==
+                                                  _BestSellersSort.topProfit
+                                              ? AppTheme.accentOrange
+                                              : AppTheme.borderColor(context),
+                                    ),
+                                    labelStyle: TextStyle(
+                                      color:
+                                          _sortMode ==
+                                                  _BestSellersSort.topProfit
+                                              ? Colors.white
+                                              : theme.colorScheme.onSurface,
+                                      fontWeight:
+                                          _sortMode ==
+                                                  _BestSellersSort.topProfit
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -951,7 +1091,16 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                             (item['total_sold'] as num?)?.toDouble() ?? 0.0;
                         final revenue =
                             (item['total_revenue'] as num?)?.toDouble() ?? 0.0;
-                        final metric = _sortByRevenue ? revenue : sold;
+                        final hasCost = item['has_cost_data'] == true;
+                        final itemProfit = hasCost
+                            ? ((item['total_profit'] as num?)?.toDouble() ?? 0.0)
+                            : null;
+                        final metric = switch (_sortMode) {
+                          _BestSellersSort.topRevenue => revenue,
+                          _BestSellersSort.topProfit =>
+                            (itemProfit ?? 0.0).clamp(0.0, double.infinity).toDouble(),
+                          _BestSellersSort.mostSold => sold,
+                        };
                         final ratio = (metric / maxMetric).clamp(0.04, 1.0);
                         final sharePercent = totalRevenue > 0
                             ? (revenue / totalRevenue * 100)
@@ -967,11 +1116,13 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                           imagePath: product?.imagePath,
                           sold: sold,
                           revenue: revenue,
+                          profit: itemProfit,
                           orderCount:
                               (item['order_count'] as num?)?.toInt() ?? 0,
                           ratio: ratio,
                           sharePercent: sharePercent,
-                          sortByRevenue: _sortByRevenue,
+                          sortByRevenue:
+                              _sortMode == _BestSellersSort.topRevenue,
                           onTap: () => _showProductBreakdown(
                             context: context,
                             item: item,
@@ -1028,6 +1179,10 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
 
     final sold = (item['total_sold'] as num?)?.toDouble() ?? 0.0;
     final revenue = (item['total_revenue'] as num?)?.toDouble() ?? 0.0;
+    final hasProfit = item['has_cost_data'] == true;
+    final breakdownProfit = hasProfit
+        ? ((item['total_profit'] as num?)?.toDouble() ?? 0.0)
+        : null;
     final unit = product?.unit.trim();
     final unitSuffix = (unit != null && unit.isNotEmpty) ? ' $unit' : '';
 
@@ -1177,6 +1332,36 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                 ],
                               ),
                             ),
+                            if (breakdownProfit != null)
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Profit',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.mutedText(sheetCtx),
+                                      ),
+                                    ),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        '${breakdownProfit < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(breakdownProfit.abs())}',
+                                        style: TextStyle(
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: breakdownProfit < 0
+                                              ? AppTheme.accentRose
+                                              : AppTheme.accentTeal,
+                                          fontFeatures: AppTheme.tabularFigures,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             if (product != null)
                               Expanded(
                                 child: Column(
@@ -1310,6 +1495,7 @@ class _BestSellerRowCard extends StatelessWidget {
   final String? imagePath;
   final double sold;
   final double revenue;
+  final double? profit;
   final int orderCount;
   final double ratio;
   final double sharePercent;
@@ -1324,6 +1510,7 @@ class _BestSellerRowCard extends StatelessWidget {
     required this.imagePath,
     required this.sold,
     required this.revenue,
+    this.profit,
     required this.orderCount,
     required this.ratio,
     required this.sharePercent,
@@ -1349,6 +1536,7 @@ class _BestSellerRowCard extends StatelessWidget {
     final theme = Theme.of(context);
     final rankColor = _rankColor(context);
     final isTop3 = rank <= 3;
+    final isCompact = MediaQuery.sizeOf(context).width < 360;
     final trimmedUnit = unit?.trim();
     final soldLabel = (trimmedUnit != null && trimmedUnit.isNotEmpty)
         ? '${formatQuantity(sold)} $trimmedUnit sold'
@@ -1373,15 +1561,18 @@ class _BestSellerRowCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppTheme.radiusLg),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 10 : 14,
+              vertical: 12,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
                     Container(
-                      width: 28,
-                      height: 28,
+                      width: isCompact ? 24 : 28,
+                      height: isCompact ? 24 : 28,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: isTop3
@@ -1399,10 +1590,10 @@ class _BestSellerRowCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    SizedBox(width: isCompact ? 8 : 10),
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: isCompact ? 34 : 40,
+                      height: isCompact ? 34 : 40,
                       clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
                         color: AppTheme.subtleSurface(context),
@@ -1418,15 +1609,15 @@ class _BestSellerRowCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: isCompact ? 8 : 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             name,
-                            style: const TextStyle(
-                              fontSize: 14,
+                            style: TextStyle(
+                              fontSize: isCompact ? 13 : 14,
                               fontWeight: FontWeight.w700,
                             ),
                             maxLines: 1,
@@ -1436,7 +1627,7 @@ class _BestSellerRowCard extends StatelessWidget {
                           Text(
                             '$catLabel$ordersLabel · ${sharePercent.toStringAsFixed(1)}%',
                             style: TextStyle(
-                              fontSize: 11.5,
+                              fontSize: isCompact ? 11 : 11.5,
                               color: AppTheme.mutedText(context),
                               fontFeatures: AppTheme.tabularFigures,
                             ),
@@ -1446,30 +1637,61 @@ class _BestSellerRowCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '₱${NumberFormat('#,##0.00').format(revenue)}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.accentOrange,
-                            fontFeatures: AppTheme.tabularFigures,
+                    SizedBox(width: isCompact ? 6 : 10),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isCompact ? 96 : 140,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              '₱${NumberFormat('#,##0.00').format(revenue)}',
+                              style: TextStyle(
+                                fontSize: isCompact ? 13 : 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.accentOrange,
+                                fontFeatures: AppTheme.tabularFigures,
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          soldLabel,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.mutedText(context),
-                            fontFeatures: AppTheme.tabularFigures,
+                          const SizedBox(height: 2),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              soldLabel,
+                              style: TextStyle(
+                                fontSize: isCompact ? 10.5 : 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.mutedText(context),
+                                fontFeatures: AppTheme.tabularFigures,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                          if (profit != null) ...[
+                            const SizedBox(height: 1),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                '${profit! < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(profit!.abs())} profit',
+                                style: TextStyle(
+                                  fontSize: isCompact ? 10.5 : 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: profit! < 0
+                                      ? AppTheme.accentRose
+                                      : AppTheme.accentTeal,
+                                  fontFeatures: AppTheme.tabularFigures,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),

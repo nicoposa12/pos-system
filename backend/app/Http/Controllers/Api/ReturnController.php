@@ -115,7 +115,7 @@ class ReturnController extends Controller
             ]);
 
             $return->load('product:id,name,stock');
-            $transaction->load(['items.product:id,name,category,stock', 'debt', 'returns']);
+            $transaction->load(['items.product:id,name,category,stock,cost_price', 'debt', 'returns']);
 
             return response()->json([
                 'message' => 'Return processed and stock restored',

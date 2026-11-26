@@ -61,6 +61,8 @@ class SyncController extends Controller
             'transactions.*.items.*.product_id' => 'required|integer',
             'transactions.*.items.*.quantity' => 'required|numeric|min:0.001',
             'transactions.*.items.*.subtotal' => 'required|numeric',
+            'transactions.*.items.*.variant_name' => 'nullable|string|max:255',
+            'transactions.*.items.*.unit_cost' => 'nullable|numeric|min:0',
         ]);
 
         $userId = $request->user()->id;
@@ -73,15 +75,15 @@ class SyncController extends Controller
                 $allProductIds[] = $it['product_id'];
             }
         }
-        $validProductIds = Product::whereIn('id', array_unique($allProductIds))
+        $productsById = Product::whereIn('id', array_unique($allProductIds))
             ->where('user_id', $userId)
-            ->pluck('id')
-            ->flip();
+            ->get()
+            ->keyBy('id');
 
-        DB::transaction(function () use ($validated, $userId, $validProductIds, &$syncedMapping) {
+        DB::transaction(function () use ($validated, $userId, $productsById, &$syncedMapping) {
             foreach ($validated['transactions'] as $txData) {
-                $validItems = array_filter($txData['items'], function ($item) use ($validProductIds) {
-                    return isset($validProductIds[$item['product_id']]);
+                $validItems = array_filter($txData['items'], function ($item) use ($productsById) {
+                    return $productsById->has($item['product_id']);
                 });
 
                 if (empty($validItems)) {
@@ -101,11 +103,22 @@ class SyncController extends Controller
 
                 // Create items & deduct stock
                 foreach ($validItems as $item) {
+                    $product = $productsById->get($item['product_id']);
+                    $qty = (float) $item['quantity'];
+                    $unitSellingPrice = $qty > 0 ? ((float) $item['subtotal'] / $qty) : 0.0;
+                    $unitCost = array_key_exists('unit_cost', $item) && $item['unit_cost'] !== null
+                        ? round((float) $item['unit_cost'], 2)
+                        : $product?->resolveUnitCostForSellingPrice(
+                            $unitSellingPrice,
+                            $item['variant_name'] ?? null
+                        );
+
                     TransactionItem::create([
                         'transaction_id' => $tx->id,
                         'product_id' => $item['product_id'],
                         'quantity' => $item['quantity'],
                         'subtotal' => $item['subtotal'],
+                        'unit_cost' => $unitCost,
                     ]);
 
                     Product::where('id', $item['product_id'])
@@ -150,6 +163,7 @@ class SyncController extends Controller
             'products.*.client_id' => 'required',
             'products.*.name' => 'required|string|max:255',
             'products.*.price' => 'required|numeric|min:0',
+            'products.*.cost_price' => 'nullable|numeric|min:0',
             'products.*.stock' => 'required|numeric|min:0',
             'products.*.unit' => 'nullable|string|max:20',
             'products.*.category' => 'nullable|string|max:100',
@@ -177,6 +191,9 @@ class SyncController extends Controller
                 if ($existing) {
                     $existing->update([
                         'price' => $pData['price'],
+                        'cost_price' => array_key_exists('cost_price', $pData)
+                            ? $pData['cost_price']
+                            : $existing->cost_price,
                         'stock' => $pData['stock'],
                         'category' => $pData['category'] ?? $existing->category,
                         'barcode' => $pData['barcode'] ?? $existing->barcode,
@@ -195,6 +212,7 @@ class SyncController extends Controller
                         'user_id' => $userId,
                         'name' => $pData['name'],
                         'price' => $pData['price'],
+                        'cost_price' => $pData['cost_price'] ?? null,
                         'stock' => $pData['stock'],
                         'category' => $pData['category'] ?? null,
                         'barcode' => $pData['barcode'] ?? null,

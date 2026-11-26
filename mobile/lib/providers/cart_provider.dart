@@ -191,6 +191,7 @@ class CartProvider with ChangeNotifier {
         'product_id': cartItem.product.id!,
         'quantity': cartItem.quantity,
         'subtotal': cartItem.subtotal,
+        'variant_name': ?cartItem.variantName,
       };
     }).toList();
 

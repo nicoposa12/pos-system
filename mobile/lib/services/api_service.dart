@@ -342,6 +342,7 @@ class ApiService {
   Future<Map<String, dynamic>> createProduct({
     required String name,
     required double price,
+    double? costPrice,
     required double stock,
     String? unit,
     String? category,
@@ -357,8 +358,9 @@ class ApiService {
       final map = <String, dynamic>{
         'name': name,
         'price': price,
+        'cost_price': ?costPrice,
         'stock': stock,
-        if (unit != null) 'unit': unit,
+        'unit': ?unit,
         'image': await MultipartFile.fromFile(imageFilePath),
       };
       if (category != null && category.trim().isNotEmpty) {
@@ -385,8 +387,9 @@ class ApiService {
       final body = <String, dynamic>{
         'name': name,
         'price': price,
+        'cost_price': ?costPrice,
         'stock': stock,
-        if (unit != null) 'unit': unit,
+        'unit': ?unit,
       };
       if (category != null && category.trim().isNotEmpty) {
         body['category'] = category.trim();
@@ -416,6 +419,8 @@ class ApiService {
     int id, {
     String? name,
     double? price,
+    double? costPrice,
+    bool includeCostPrice = false,
     double? stock,
     String? unit,
     String? category,
@@ -433,6 +438,9 @@ class ApiService {
       };
       if (name != null) map['name'] = name;
       if (price != null) map['price'] = price;
+      if (includeCostPrice || costPrice != null) {
+        map['cost_price'] = costPrice?.toString() ?? '';
+      }
       if (stock != null) map['stock'] = stock;
       if (unit != null) map['unit'] = unit;
       if (category != null && category.trim().isNotEmpty) {
@@ -460,6 +468,9 @@ class ApiService {
       final body = <String, dynamic>{};
       if (name != null) body['name'] = name;
       if (price != null) body['price'] = price;
+      if (includeCostPrice || costPrice != null) {
+        body['cost_price'] = costPrice;
+      }
       if (stock != null) body['stock'] = stock;
       if (unit != null) body['unit'] = unit;
       if (category != null && category.trim().isNotEmpty) {

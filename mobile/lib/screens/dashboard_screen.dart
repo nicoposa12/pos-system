@@ -279,6 +279,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       flex: 6,
                                       child: _HeroRevenueCard(
                                         dailyTotal: txProvider.dailyTotal,
+                                        dailyProfit: txProvider.dailyProfit,
                                         dailyOrders:
                                             txProvider.dailyTransactionCount,
                                         onNewSale: widget.onOpenPos,
@@ -301,6 +302,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                                     label: 'Last 7 Days',
                                                     amount:
                                                         txProvider.weeklyTotal,
+                                                    profit:
+                                                        txProvider.weeklyProfit,
                                                     icon: Icons
                                                         .date_range_rounded,
                                                     accent:
@@ -319,6 +322,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                                     label: 'This Month',
                                                     amount:
                                                         txProvider.monthlyTotal,
+                                                    profit:
+                                                        txProvider.monthlyProfit,
                                                     icon: Icons
                                                         .calendar_month_rounded,
                                                     accent:
@@ -340,6 +345,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                               label:
                                                   'Year ${DateTime.now().year}',
                                               amount: txProvider.yearlyTotal,
+                                              profit: txProvider.yearlyProfit,
                                               icon: Icons.insights_rounded,
                                               accent: AppTheme.accentTeal,
                                               isHorizontal: true,
@@ -358,6 +364,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             else ...[
                               _HeroRevenueCard(
                                 dailyTotal: txProvider.dailyTotal,
+                                dailyProfit: txProvider.dailyProfit,
                                 dailyOrders: txProvider.dailyTransactionCount,
                                 onNewSale: widget.onOpenPos,
                                 onTapCard: () => _navigateToHistory(
@@ -372,6 +379,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     child: _PeriodMetricTile(
                                       label: '7 Days',
                                       amount: txProvider.weeklyTotal,
+                                      profit: txProvider.weeklyProfit,
                                       icon: Icons.date_range_rounded,
                                       accent: AppTheme.accentOrange,
                                       onTap: () => _navigateToHistory(
@@ -385,6 +393,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     child: _PeriodMetricTile(
                                       label: 'Month',
                                       amount: txProvider.monthlyTotal,
+                                      profit: txProvider.monthlyProfit,
                                       icon: Icons.calendar_month_rounded,
                                       accent: AppTheme.accentIndigo,
                                       onTap: () => _navigateToHistory(
@@ -398,6 +407,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     child: _PeriodMetricTile(
                                       label: 'Year',
                                       amount: txProvider.yearlyTotal,
+                                      profit: txProvider.yearlyProfit,
                                       icon: Icons.insights_rounded,
                                       accent: AppTheme.accentTeal,
                                       onTap: () => _navigateToHistory(
@@ -927,12 +937,14 @@ class _SectionHeader extends StatelessWidget {
 
 class _HeroRevenueCard extends StatelessWidget {
   final double dailyTotal;
+  final double? dailyProfit;
   final int dailyOrders;
   final VoidCallback? onNewSale;
   final VoidCallback onTapCard;
 
   const _HeroRevenueCard({
     required this.dailyTotal,
+    this.dailyProfit,
     required this.dailyOrders,
     this.onNewSale,
     required this.onTapCard,
@@ -1093,6 +1105,17 @@ class _HeroRevenueCard extends StatelessWidget {
                           iconColor: AppTheme.accentTeal,
                           text: 'Avg: ₱${avgTicket.toStringAsFixed(0)}',
                         ),
+                        if (dailyProfit != null)
+                          _HeroStatBadge(
+                            icon: dailyProfit! < 0
+                                ? Icons.trending_down_rounded
+                                : Icons.trending_up_rounded,
+                            iconColor: dailyProfit! < 0
+                                ? AppTheme.accentRose
+                                : AppTheme.accentTeal,
+                            text:
+                                'Profit: ${dailyProfit! < 0 ? '-' : ''}₱${NumberFormat('#,##0.00').format(dailyProfit!.abs())}',
+                          ),
                       ],
                     ),
                     if (onNewSale != null)
@@ -1183,6 +1206,7 @@ class _HeroStatBadge extends StatelessWidget {
 class _PeriodMetricTile extends StatelessWidget {
   final String label;
   final double amount;
+  final double? profit;
   final IconData icon;
   final Color accent;
   final bool isHorizontal;
@@ -1191,18 +1215,28 @@ class _PeriodMetricTile extends StatelessWidget {
   const _PeriodMetricTile({
     required this.label,
     required this.amount,
+    this.profit,
     required this.icon,
     required this.accent,
     this.isHorizontal = false,
     required this.onTap,
   });
 
+  String _formatCompactPeso(double value) {
+    final abs = value.abs();
+    final prefix = value < 0 ? '-₱' : '₱';
+    return abs >= 100000
+        ? '$prefix${(abs / 1000).toStringAsFixed(1)}k'
+        : '$prefix${NumberFormat('#,##0').format(abs)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final formatted = amount >= 100000
-        ? '₱${(amount / 1000).toStringAsFixed(1)}k'
-        : '₱${NumberFormat('#,##0').format(amount)}';
+    final formatted = _formatCompactPeso(amount);
+    final profitColor = (profit ?? 0) < 0
+        ? AppTheme.accentRose
+        : AppTheme.accentTeal;
 
     return Container(
       decoration: BoxDecoration(
@@ -1240,14 +1274,30 @@ class _PeriodMetricTile extends StatelessWidget {
                           ),
                         ),
                       ),
-                      Text(
-                        formatted,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: theme.colorScheme.onSurface,
-                          fontFeatures: AppTheme.tabularFigures,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            formatted,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: theme.colorScheme.onSurface,
+                              fontFeatures: AppTheme.tabularFigures,
+                            ),
+                          ),
+                          if (profit != null)
+                            Text(
+                              'Profit ${_formatCompactPeso(profit!)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: profitColor,
+                                fontFeatures: AppTheme.tabularFigures,
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   )
@@ -1287,6 +1337,22 @@ class _PeriodMetricTile extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (profit != null) ...[
+                        const SizedBox(height: 2),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Profit ${_formatCompactPeso(profit!)}',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: profitColor,
+                              fontFeatures: AppTheme.tabularFigures,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
           ),

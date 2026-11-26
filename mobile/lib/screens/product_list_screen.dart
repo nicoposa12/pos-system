@@ -13,7 +13,7 @@ import 'scanner_screen.dart';
 
 enum StockFilter { all, inStock, lowStock, outOfStock }
 
-enum InventorySort { nameAsc, stockLowFirst, priceHighFirst }
+enum InventorySort { nameAsc, stockLowFirst, priceHighFirst, profitHighFirst }
 
 class ProductListScreen extends StatefulWidget {
   final ValueNotifier<StockFilter?>? filterRequest;
@@ -133,6 +133,18 @@ class _ProductListScreenState extends State<ProductListScreen> {
       case InventorySort.priceHighFirst:
         list.sort((a, b) => b.price.compareTo(a.price));
         break;
+      case InventorySort.profitHighFirst:
+        list.sort((a, b) {
+          final pa = a.unitProfit;
+          final pb = b.unitProfit;
+          if (pa == null && pb == null) {
+            return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          }
+          if (pa == null) return 1;
+          if (pb == null) return -1;
+          return pb.compareTo(pa);
+        });
+        break;
     }
     return list;
   }
@@ -245,6 +257,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         PopupMenuItem(
                           value: InventorySort.priceHighFirst,
                           child: Text('Price (Highest first)'),
+                        ),
+                        PopupMenuItem(
+                          value: InventorySort.profitHighFirst,
+                          child: Text('Profit (Highest first)'),
                         ),
                       ],
                     ),
@@ -469,7 +485,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                         maxCrossAxisExtent:
                             MediaQuery.sizeOf(context).width >= 1140 ? 420 : 480,
-                        mainAxisExtent: 98,
+                        mainAxisExtent: 112,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
                       ),
@@ -841,7 +857,7 @@ class _InventoryProductCard extends StatelessWidget {
                 ),
                 SizedBox(width: isCompactCard ? 6 : 8),
 
-                // Price & Stock Status
+                // Price, Cost/Profit & Stock Status
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -855,7 +871,23 @@ class _InventoryProductCard extends StatelessWidget {
                         fontFeatures: AppTheme.tabularFigures,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    if (product.costPrice != null && product.unitProfit != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        isCompactCard
+                            ? '${product.unitProfit! < 0 ? '-' : '+'}₱${product.unitProfit!.abs().toStringAsFixed(2)}'
+                            : 'Cost ₱${product.costPrice!.toStringAsFixed(2)} · ${product.unitProfit! < 0 ? '-' : '+'}₱${product.unitProfit!.abs().toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: product.unitProfit! < 0
+                              ? AppTheme.accentRose
+                              : AppTheme.accentTeal,
+                          fontWeight: FontWeight.w700,
+                          fontSize: isCompactCard ? 10 : 11,
+                          fontFeatures: AppTheme.tabularFigures,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 4),
                     Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: isCompactCard ? 6 : 8,

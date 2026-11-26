@@ -170,13 +170,28 @@ class ProductProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Verifies that the server actually supports and returned `cost_price`
+  /// when the user explicitly provided one, preventing silent data loss against
+  /// an older backend deployment.
+  void _assertCostPricePersisted(Map<String, dynamic> res, Product submitted) {
+    if (submitted.costPrice == null) return;
+    final raw = res['product'];
+    if (raw is Map && !raw.containsKey('cost_price')) {
+      throw Exception(
+        'Product saved, but Cost Price was ignored by the server. Deploy the latest backend update and migration to Render first.',
+      );
+    }
+  }
+
   /// Creates the product on the server. Throws with a readable message on failure.
   /// Returns `true` once the product is saved to the cloud.
   Future<bool> addProduct(Product product) async {
+    final Map<String, dynamic> res;
     try {
-      final res = await ApiService.instance.createProduct(
+      res = await ApiService.instance.createProduct(
         name: product.name,
         price: product.price,
+        costPrice: product.costPrice,
         stock: product.stock,
         unit: product.unit,
         category: product.category,
@@ -184,21 +199,25 @@ class ProductProvider with ChangeNotifier {
         variants: product.variantsPayload,
         imageFilePath: product.imagePath,
       );
-      _upsert(_fromResponse(res, product));
-      return true;
     } catch (e) {
       throw Exception(ApiService.describeError(e, 'Failed to save product.'));
     }
+    _upsert(_fromResponse(res, product));
+    _assertCostPricePersisted(res, product);
+    return true;
   }
 
   /// Updates the product on the server. Throws with a readable message on failure.
   Future<void> updateProduct(Product product) async {
     if (product.id == null) return;
+    final Map<String, dynamic> res;
     try {
-      final res = await ApiService.instance.updateProduct(
+      res = await ApiService.instance.updateProduct(
         product.id!,
         name: product.name,
         price: product.price,
+        costPrice: product.costPrice,
+        includeCostPrice: true,
         stock: product.stock,
         unit: product.unit,
         category: product.category,
@@ -206,11 +225,27 @@ class ProductProvider with ChangeNotifier {
         variants: product.variantsPayload,
         imageFilePath: product.imagePath,
       );
-      _upsert(_fromResponse(res, product));
     } catch (e) {
       throw Exception(ApiService.describeError(e, 'Failed to update product.'));
     }
+    _upsert(_fromResponse(res, product));
+    _assertCostPricePersisted(res, product);
   }
+
+  /// Total retail value of all current inventory stock (`price * stock`).
+  double get totalInventoryRetailValue =>
+      _products.fold(0.0, (sum, p) => sum + p.stockRetailValue);
+
+  /// Total original capital (cost) value across products with a set `costPrice`.
+  double get totalInventoryCostValue =>
+      _products.fold(0.0, (sum, p) => sum + (p.stockCostValue ?? 0.0));
+
+  /// Total expected profit across products with a set `costPrice`.
+  double get totalPotentialInventoryProfit =>
+      _products.fold(0.0, (sum, p) => sum + (p.potentialStockProfit ?? 0.0));
+
+  /// Number of products that have an original/cost price configured.
+  int get costedProductCount => _products.where((p) => p.hasCostPrice).length;
 
   /// Deletes the product on the server. Throws with a readable message on failure.
   Future<void> deleteProduct(int id) async {

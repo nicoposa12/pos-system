@@ -21,6 +21,7 @@ class TransactionProvider with ChangeNotifier {
   List<Map<String, dynamic>>? _topProductsCache;
   List<Map<String, dynamic>>? _categorySalesCache;
   final Map<String, double> _totalsCache = {};
+  final Map<String, double?> _profitsCache = {};
 
   TransactionProvider() {
     RealtimeService.instance.addTransactionListener(_onRemoteChange);
@@ -62,6 +63,7 @@ class TransactionProvider with ChangeNotifier {
     _topProductsCache = null;
     _categorySalesCache = null;
     _totalsCache.clear();
+    _profitsCache.clear();
     for (final t in list) {
       final u = t.updatedAt;
       if (u != null && (_cursor == null || u.compareTo(_cursor!) > 0)) {
@@ -142,6 +144,25 @@ class TransactionProvider with ChangeNotifier {
         .fold<double>(0.0, (sum, t) => sum + t.totalAmount);
   }
 
+  /// Sums net profit for transactions matching [test] that have cost data.
+  /// Returns `null` if no matching transactions contain recorded cost prices.
+  double? _sumProfitWhere(String key, bool Function(SaleTransaction t) test) {
+    if (_profitsCache.containsKey(key)) return _profitsCache[key];
+    double profit = 0.0;
+    bool hasAny = false;
+    for (final t in transactions) {
+      if (!test(t)) continue;
+      final p = t.totalProfit;
+      if (p != null) {
+        hasAny = true;
+        profit += p;
+      }
+    }
+    final result = hasAny ? double.parse(profit.toStringAsFixed(2)) : null;
+    _profitsCache[key] = result;
+    return result;
+  }
+
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
@@ -166,6 +187,29 @@ class TransactionProvider with ChangeNotifier {
   double get yearlyTotal {
     final today = DateTime.now();
     return _sumWhere('year', (t) => t.date.year == today.year);
+  }
+
+  double? get dailyProfit {
+    final today = DateTime.now();
+    return _sumProfitWhere('day', (t) => _isSameDay(t.date, today));
+  }
+
+  double? get weeklyProfit {
+    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
+    return _sumProfitWhere('week', (t) => t.date.isAfter(weekAgo));
+  }
+
+  double? get monthlyProfit {
+    final today = DateTime.now();
+    return _sumProfitWhere(
+      'month',
+      (t) => t.date.year == today.year && t.date.month == today.month,
+    );
+  }
+
+  double? get yearlyProfit {
+    final today = DateTime.now();
+    return _sumProfitWhere('year', (t) => t.date.year == today.year);
   }
 
   // Get sales data for the last 7 days
@@ -197,12 +241,14 @@ class TransactionProvider with ChangeNotifier {
   /// Aggregates sold products across [transactions] matching [filter].
   ///
   /// Each entry includes `product_id`, `name`, `category`, `total_sold`,
-  /// `total_revenue`, and `order_count`. Items with zero net sold quantity and
-  /// zero revenue (such as fully returned items) are excluded.
+  /// `total_revenue`, `total_cost`, `total_profit`, `has_cost_data`, and
+  /// `order_count`. Items with zero net sold quantity and zero revenue (such
+  /// as fully returned items) are excluded.
   List<Map<String, dynamic>> getProductSales({
     bool Function(SaleTransaction tx)? filter,
     int? limit,
     bool sortByRevenue = false,
+    bool sortByProfit = false,
   }) {
     final byProduct = <String, Map<String, dynamic>>{};
 
@@ -217,6 +263,15 @@ class TransactionProvider with ChangeNotifier {
         final rev = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
         if (qty <= 0 && rev <= 0) continue;
 
+        final rawUnitCost = item['unit_cost'];
+        final unitCost = rawUnitCost is num
+            ? rawUnitCost.toDouble()
+            : double.tryParse(rawUnitCost?.toString() ?? '');
+        final explicitCost = (item['cost_total'] as num?)?.toDouble();
+        final lineCost = unitCost != null ? (explicitCost ?? (qty * unitCost)) : null;
+        final explicitProfit = (item['profit'] as num?)?.toDouble();
+        final lineProfit = lineCost != null ? (explicitProfit ?? (rev - lineCost)) : null;
+
         final key = id > 0 ? 'id:$id' : 'name:${name.toLowerCase()}';
         final rawCat = item['category']?.toString().trim();
         final category = (rawCat != null && rawCat.isNotEmpty) ? rawCat : null;
@@ -229,6 +284,9 @@ class TransactionProvider with ChangeNotifier {
             'category': category,
             'total_sold': 0.0,
             'total_revenue': 0.0,
+            'total_cost': 0.0,
+            'total_profit': 0.0,
+            'has_cost_data': false,
             'order_count': 0,
           },
         );
@@ -238,6 +296,11 @@ class TransactionProvider with ChangeNotifier {
         }
         entry['total_sold'] = (entry['total_sold'] as double) + qty;
         entry['total_revenue'] = (entry['total_revenue'] as double) + rev;
+        if (lineCost != null && lineProfit != null) {
+          entry['has_cost_data'] = true;
+          entry['total_cost'] = (entry['total_cost'] as double) + lineCost;
+          entry['total_profit'] = (entry['total_profit'] as double) + lineProfit;
+        }
         if (seenInOrder.add(key)) {
           entry['order_count'] = (entry['order_count'] as int) + 1;
         }
@@ -246,6 +309,16 @@ class TransactionProvider with ChangeNotifier {
 
     final list = byProduct.values.toList()
       ..sort((a, b) {
+        if (sortByProfit) {
+          final hasA = a['has_cost_data'] == true;
+          final hasB = b['has_cost_data'] == true;
+          if (hasA != hasB) return hasA ? -1 : 1;
+          final cmpProfit = (b['total_profit'] as double).compareTo(
+            a['total_profit'] as double,
+          );
+          if (cmpProfit != 0) return cmpProfit;
+        }
+
         final primaryA = sortByRevenue
             ? (a['total_revenue'] as double)
             : (a['total_sold'] as double);

@@ -14,6 +14,7 @@ class Product extends Model
         'name',
         'category',
         'price',
+        'cost_price',
         'stock',
         'unit',
         'barcode',
@@ -23,9 +24,66 @@ class Product extends Model
 
     protected $casts = [
         'price' => 'float',
+        'cost_price' => 'float',
         'stock' => 'float',
         'variants' => 'array',
     ];
+
+    /**
+     * Resolves the original/cost price to snapshot for a sale item.
+     *
+     * Prefers an exact variant match (by name, then by selling price within 5 cents)
+     * when that variant specifies its own `cost_price` / `costPrice`, falling back
+     * to the product's base `cost_price`.
+     */
+    public function resolveUnitCostForSellingPrice(float $unitSellingPrice, ?string $variantName = null): ?float
+    {
+        $variants = $this->variants;
+        if (is_array($variants) && !empty($variants)) {
+            $trimmedName = $variantName !== null ? strtolower(trim($variantName)) : '';
+
+            if ($trimmedName !== '') {
+                foreach ($variants as $variant) {
+                    if (!is_array($variant)) {
+                        continue;
+                    }
+                    $vName = strtolower(trim((string) ($variant['name'] ?? '')));
+                    if ($vName === $trimmedName) {
+                        $variantCost = $this->extractNumericCost($variant);
+                        if ($variantCost !== null) {
+                            return $variantCost;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            foreach ($variants as $variant) {
+                if (!is_array($variant) || !isset($variant['price'])) {
+                    continue;
+                }
+                if (abs((float) $variant['price'] - $unitSellingPrice) < 0.05) {
+                    $variantCost = $this->extractNumericCost($variant);
+                    if ($variantCost !== null) {
+                        return $variantCost;
+                    }
+                }
+            }
+        }
+
+        return $this->cost_price !== null ? round((float) $this->cost_price, 2) : null;
+    }
+
+    private function extractNumericCost(array $variant): ?float
+    {
+        $raw = $variant['cost_price'] ?? $variant['costPrice'] ?? null;
+        if ($raw === null || $raw === '' || !is_numeric($raw)) {
+            return null;
+        }
+        $value = (float) $raw;
+
+        return $value >= 0 ? round($value, 2) : null;
+    }
 
     public function user()
     {

@@ -257,6 +257,9 @@ Future<void> showOrderDetailsModal(
                                       final originalQty = (item['original_quantity'] as num?)?.toDouble() ?? netQty;
                                       final returnedQty = (item['returned_quantity'] as num?)?.toDouble() ?? 0.0;
                                       final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
+                                      final unitCost = (item['unit_cost'] as num?)?.toDouble();
+                                      final itemProfit = (item['profit'] as num?)?.toDouble() ??
+                                          (unitCost != null ? (subtotal - (netQty * unitCost)) : null);
                                       final isFullyReturned = netQty <= 0 && returnedQty > 0;
                                       final isPartiallyReturned = returnedQty > 0 && netQty > 0;
 
@@ -302,6 +305,21 @@ Future<void> showOrderDetailsModal(
                                                       color: isFullyReturned ? AppTheme.mutedText(sheetCtx) : null,
                                                     ),
                                                   ),
+                                                  if (!isFullyReturned && unitCost != null && itemProfit != null)
+                                                    Padding(
+                                                      padding: const EdgeInsets.only(top: 2),
+                                                      child: Text(
+                                                        'Cost ₱${unitCost.toStringAsFixed(2)} · Profit ${itemProfit >= 0 ? '+' : '-'}₱${itemProfit.abs().toStringAsFixed(2)}',
+                                                        style: TextStyle(
+                                                          color: itemProfit >= 0
+                                                              ? AppTheme.accentTeal
+                                                              : AppTheme.accentRose,
+                                                          fontWeight: FontWeight.w600,
+                                                          fontSize: 11,
+                                                          fontFeatures: AppTheme.tabularFigures,
+                                                        ),
+                                                      ),
+                                                    ),
                                                   if (isFullyReturned)
                                                     Padding(
                                                       padding: const EdgeInsets.only(top: 2),
@@ -457,6 +475,87 @@ Future<void> showOrderDetailsModal(
                             value: '₱${currentTx.totalAmount.toStringAsFixed(2)}',
                             isTotal: true,
                           ),
+                          if (currentTx.hasCostData) ...[
+                            const SizedBox(height: 14),
+                            Builder(
+                              builder: (context) {
+                                final orderCost = currentTx.totalCost ?? 0.0;
+                                final orderProfit = currentTx.totalProfit ?? 0.0;
+                                final isLoss = orderProfit < 0;
+                                final profitColor = isLoss
+                                    ? AppTheme.accentRose
+                                    : AppTheme.accentTeal;
+                                final margin = currentTx.totalAmount > 0
+                                    ? (orderProfit / currentTx.totalAmount) * 100
+                                    : 0.0;
+
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 11,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: profitColor.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: profitColor.withValues(alpha: 0.25),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            isLoss
+                                                ? Icons.trending_down_rounded
+                                                : Icons.trending_up_rounded,
+                                            size: 15,
+                                            color: profitColor,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'ORDER PROFIT (INTERNAL)',
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: 0.6,
+                                              color: profitColor,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      ReceiptRow(
+                                        label: 'Original Cost (COGS)',
+                                        value: '₱${orderCost.toStringAsFixed(2)}',
+                                      ),
+                                      const SizedBox(height: 4),
+                                      ReceiptRow(
+                                        label: currentTx.totalAmount > 0
+                                            ? 'Net Profit (${margin.toStringAsFixed(1)}%)'
+                                            : 'Net Profit',
+                                        value:
+                                            '${isLoss ? '-' : '+'}₱${orderProfit.abs().toStringAsFixed(2)}',
+                                        valueColor: profitColor,
+                                      ),
+                                      if (!currentTx.hasCompleteCostData) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Calculated from items with an original cost price set.',
+                                          style: TextStyle(
+                                            fontSize: 10.5,
+                                            fontStyle: FontStyle.italic,
+                                            color: AppTheme.mutedText(sheetCtx),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ],
                       ),
                     ),

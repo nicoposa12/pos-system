@@ -14,11 +14,13 @@ class TransactionItem extends Model
         'product_id',
         'quantity',
         'subtotal',
+        'unit_cost',
     ];
 
     protected $casts = [
         'quantity' => 'float',
         'subtotal' => 'float',
+        'unit_cost' => 'float',
     ];
 
     public function transaction()
