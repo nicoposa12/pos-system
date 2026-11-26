@@ -17,8 +17,13 @@ Act like a senior full-stack developer: understand the existing codebase first, 
      cd mobile; shorebird patch android --release-version 1.0.2+3 --track stable --allow-asset-diffs
      ```
      *(Or run the root shortcut: `.\patch_android.ps1`)*
-  2. **Windows Desktop (1-Click Installer Build)**:
+  2. **Windows Desktop (1-Click Installer Build & GitHub Release)**:
      ```powershell
-     .\build_windows.ps1
+     .\build_windows.ps1 -Version "<semVer>+<buildNum>"
      ```
-- Never consider a multi-platform release finished without explicitly presenting both Windows and Android update commands to the user.
+     *(Or `.\build_windows.ps1` to rebuild the current version in `pubspec.yaml`.)*
+     Then publish the GitHub Release **before** deploying an updated `backend/config/updates.php` to Render:
+     ```powershell
+     gh release create v<semVer> "mobile\build\windows\installer\TindaKo-Setup-v<semVer>.exe" --title "TindaKo v<semVer>" --notes "<release summary>"
+     ```
+- Never consider a multi-platform release finished without explicitly presenting both Windows (build + `gh release create`) and Android update commands to the user.
