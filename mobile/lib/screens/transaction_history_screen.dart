@@ -275,6 +275,17 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     final avgAmount = filteredTransactions.isEmpty
         ? 0.0
         : totalAmount / filteredTransactions.length;
+    final hasPeriodProfit = filteredTransactions.any(
+      (t) => t.totalProfit != null,
+    );
+    final totalProfit = filteredTransactions.fold<double>(
+      0.0,
+      (sum, t) => sum + (t.totalProfit ?? 0.0),
+    );
+    final costedRevenue = filteredTransactions.fold<double>(
+      0.0,
+      (sum, t) => t.totalProfit != null ? sum + t.totalAmount : sum,
+    );
     final isWide = MediaQuery.sizeOf(context).width >= 840;
 
     return Scaffold(
@@ -602,126 +613,217 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                             ),
                             boxShadow: AppTheme.cardShadow(context),
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Expanded(
-                                flex: 5,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    InkWell(
-                                      onTap: () {
-                                        if (_currentFilter == TransactionFilter.monthly) {
-                                          _pickMonthYear();
-                                        } else if (_currentFilter == TransactionFilter.yearly) {
-                                          _pickYear();
-                                        } else if (_currentFilter == TransactionFilter.daily) {
-                                          _pickCustomDate();
-                                        }
-                                      },
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 2),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Flexible(
-                                              child: Text(
-                                                _getFilterLabel(),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: AppTheme.mutedText(context),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    flex: 5,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        InkWell(
+                                          onTap: () {
+                                            if (_currentFilter ==
+                                                TransactionFilter.monthly) {
+                                              _pickMonthYear();
+                                            } else if (_currentFilter ==
+                                                TransactionFilter.yearly) {
+                                              _pickYear();
+                                            } else if (_currentFilter ==
+                                                TransactionFilter.daily) {
+                                              _pickCustomDate();
+                                            }
+                                          },
+                                          borderRadius:
+                                              BorderRadius.circular(6),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 2,
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    _getFilterLabel(),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: AppTheme.mutedText(
+                                                        context,
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
+                                                if (_currentFilter ==
+                                                        TransactionFilter
+                                                            .daily ||
+                                                    _currentFilter ==
+                                                        TransactionFilter
+                                                            .monthly ||
+                                                    _currentFilter ==
+                                                        TransactionFilter
+                                                            .yearly) ...[
+                                                  const SizedBox(width: 4),
+                                                  const Icon(
+                                                    Icons
+                                                        .arrow_drop_down_rounded,
+                                                    size: 16,
+                                                    color:
+                                                        AppTheme.accentOrange,
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            '₱${NumberFormat('#,##0.00').format(totalAmount)}',
+                                            style: const TextStyle(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                              color: AppTheme.accentOrange,
+                                              letterSpacing: -0.5,
+                                              fontFeatures:
+                                                  AppTheme.tabularFigures,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 38,
+                                    color: AppTheme.borderColor(context),
+                                  ),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: 14),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Orders',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: AppTheme.mutedText(
+                                                context,
                                               ),
                                             ),
-                                            if (_currentFilter == TransactionFilter.daily ||
-                                                _currentFilter == TransactionFilter.monthly ||
-                                                _currentFilter == TransactionFilter.yearly) ...[
-                                              const SizedBox(width: 4),
-                                              const Icon(
-                                                Icons.arrow_drop_down_rounded,
-                                                size: 16,
-                                                color: AppTheme.accentOrange,
-                                              ),
-                                            ],
-                                          ],
-                                        ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${filteredTransactions.length}',
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w800,
+                                              fontFeatures:
+                                                  AppTheme.tabularFigures,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '₱${NumberFormat('#,##0.00').format(totalAmount)}',
-                                      style: const TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w800,
-                                        color: AppTheme.accentOrange,
-                                        letterSpacing: -0.5,
-                                        fontFeatures: AppTheme.tabularFigures,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                width: 1,
-                                height: 38,
-                                color: AppTheme.borderColor(context),
-                              ),
-                              Expanded(
-                                flex: 3,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(left: 14),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Orders',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: AppTheme.mutedText(context),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${filteredTransactions.length}',
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                          fontFeatures: AppTheme.tabularFigures,
-                                        ),
-                                      ),
-                                    ],
                                   ),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 4,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      'Avg. Ticket',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: AppTheme.mutedText(context),
-                                      ),
+                                  Expanded(
+                                    flex: 4,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          'Avg. Ticket',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: AppTheme.mutedText(context),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '₱${avgAmount.toStringAsFixed(0)}',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                            fontFeatures:
+                                                AppTheme.tabularFigures,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '₱${avgAmount.toStringAsFixed(0)}',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                        fontFeatures: AppTheme.tabularFigures,
+                                  ),
+                                ],
+                              ),
+                              if (hasPeriodProfit) ...[
+                                const SizedBox(height: 10),
+                                Divider(
+                                  height: 1,
+                                  color: AppTheme.borderColor(context),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          totalProfit < 0
+                                              ? Icons.trending_down_rounded
+                                              : Icons.trending_up_rounded,
+                                          size: 16,
+                                          color: totalProfit < 0
+                                              ? AppTheme.accentRose
+                                              : AppTheme.accentTeal,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Est. Profit',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.mutedText(context),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Flexible(
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerRight,
+                                        child: Text(
+                                          costedRevenue > 0
+                                              ? '${totalProfit < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(totalProfit.abs())} (${(totalProfit / costedRevenue * 100).toStringAsFixed(1)}%)'
+                                              : '${totalProfit < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(totalProfit.abs())}',
+                                          style: TextStyle(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: totalProfit < 0
+                                                ? AppTheme.accentRose
+                                                : AppTheme.accentTeal,
+                                            fontFeatures:
+                                                AppTheme.tabularFigures,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ),
@@ -795,7 +897,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                       gridDelegate:
                           const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 520,
-                            mainAxisExtent: 82,
+                            mainAxisExtent: 98,
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
                           ),
@@ -898,11 +1000,15 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      'Order #${currentTx.displayOrderNumber}',
-                                      style: theme.textTheme.titleLarge?.copyWith(
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: -0.3,
+                                    Flexible(
+                                      child: Text(
+                                        'Order #${currentTx.displayOrderNumber}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.titleLarge?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: -0.3,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 10),
@@ -993,6 +1099,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                   final originalQty = (item['original_quantity'] as num?)?.toDouble() ?? netQty;
                                   final returnedQty = (item['returned_quantity'] as num?)?.toDouble() ?? 0.0;
                                   final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
+                                  final unitCost = (item['unit_cost'] as num?)?.toDouble();
+                                  final itemProfit = (item['profit'] as num?)?.toDouble() ??
+                                      (unitCost != null ? (subtotal - (netQty * unitCost)) : null);
                                   final isFullyReturned = netQty <= 0 && returnedQty > 0;
                                   final isPartiallyReturned = returnedQty > 0 && netQty > 0;
 
@@ -1043,6 +1152,21 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                                                   color: isFullyReturned ? AppTheme.mutedText(sheetCtx) : null,
                                                 ),
                                               ),
+                                              if (!isFullyReturned && unitCost != null && itemProfit != null)
+                                                Padding(
+                                                  padding: const EdgeInsets.only(top: 2),
+                                                  child: Text(
+                                                    'Cost ₱${unitCost.toStringAsFixed(2)} · Profit ${itemProfit >= 0 ? '+' : '-'}₱${itemProfit.abs().toStringAsFixed(2)}',
+                                                    style: TextStyle(
+                                                      color: itemProfit >= 0
+                                                          ? AppTheme.accentTeal
+                                                          : AppTheme.accentRose,
+                                                      fontWeight: FontWeight.w600,
+                                                      fontSize: 11,
+                                                      fontFeatures: AppTheme.tabularFigures,
+                                                    ),
+                                                  ),
+                                                ),
                                               if (isFullyReturned)
                                                 Padding(
                                                   padding: const EdgeInsets.only(top: 2),
@@ -1205,6 +1329,101 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                               value: '₱${currentTx.totalAmount.toStringAsFixed(2)}',
                               isTotal: true,
                             ),
+                            if (currentTx.hasCostData) ...[
+                              const SizedBox(height: 14),
+                              Builder(
+                                builder: (context) {
+                                  final orderCost = currentTx.totalCost ?? 0.0;
+                                  final orderProfit =
+                                      currentTx.totalProfit ?? 0.0;
+                                  final isLoss = orderProfit < 0;
+                                  final profitColor = isLoss
+                                      ? AppTheme.accentRose
+                                      : AppTheme.accentTeal;
+                                  final margin = currentTx.totalAmount > 0
+                                      ? (orderProfit / currentTx.totalAmount) *
+                                            100
+                                      : 0.0;
+
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 11,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: profitColor.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: profitColor.withValues(
+                                          alpha: 0.25,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              isLoss
+                                                  ? Icons.trending_down_rounded
+                                                  : Icons.trending_up_rounded,
+                                              size: 15,
+                                              color: profitColor,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                'ORDER PROFIT (INTERNAL)',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: 0.6,
+                                                  color: profitColor,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        _ReceiptRow(
+                                          label: 'Original Cost (COGS)',
+                                          value:
+                                              '₱${orderCost.toStringAsFixed(2)}',
+                                        ),
+                                        const SizedBox(height: 4),
+                                        _ReceiptRow(
+                                          label: currentTx.totalAmount > 0
+                                              ? 'Net Profit (${margin.toStringAsFixed(1)}%)'
+                                              : 'Net Profit',
+                                          value:
+                                              '${isLoss ? '-' : '+'}₱${orderProfit.abs().toStringAsFixed(2)}',
+                                          valueColor: profitColor,
+                                        ),
+                                        if (!currentTx.hasCompleteCostData) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'Calculated from items with an original cost price set.',
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              fontStyle: FontStyle.italic,
+                                              color: AppTheme.mutedText(
+                                                sheetCtx,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -1852,21 +2071,34 @@ class _ReceiptRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: isTotal ? onSurface : AppTheme.mutedText(context),
-            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w500,
-            fontSize: isTotal ? 16 : 13,
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isTotal ? onSurface : AppTheme.mutedText(context),
+              fontWeight: isTotal ? FontWeight.w800 : FontWeight.w500,
+              fontSize: isTotal ? 16 : 13,
+            ),
           ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            color: valueColor ?? (isTotal ? AppTheme.accentOrange : onSurface),
-            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w700,
-            fontSize: isTotal ? 20 : 14,
-            fontFeatures: AppTheme.tabularFigures,
+        const SizedBox(width: 8),
+        Flexible(
+          flex: 0,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              value,
+              style: TextStyle(
+                color: valueColor ??
+                    (isTotal ? AppTheme.accentOrange : onSurface),
+                fontWeight: isTotal ? FontWeight.w800 : FontWeight.w700,
+                fontSize: isTotal ? 20 : 14,
+                fontFeatures: AppTheme.tabularFigures,
+              ),
+            ),
           ),
         ),
       ],
@@ -1993,6 +2225,20 @@ class _TransactionCard extends StatelessWidget {
                         fontFeatures: AppTheme.tabularFigures,
                       ),
                     ),
+                    if (transaction.totalProfit != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '${transaction.totalProfit! < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(transaction.totalProfit!.abs())} profit',
+                        style: TextStyle(
+                          color: transaction.totalProfit! < 0
+                              ? AppTheme.accentRose
+                              : AppTheme.accentTeal,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                          fontFeatures: AppTheme.tabularFigures,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     _PaymentBadge(method: transaction.paymentMethod),
                   ],

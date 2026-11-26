@@ -142,11 +142,15 @@ Future<void> showOrderDetailsModal(
                             children: [
                               Row(
                                 children: [
-                                  Text(
-                                    'Order #${currentTx.displayOrderNumber}',
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: -0.3,
+                                  Flexible(
+                                    child: Text(
+                                      'Order #${currentTx.displayOrderNumber}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleLarge?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.3,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -514,13 +518,17 @@ Future<void> showOrderDetailsModal(
                                             color: profitColor,
                                           ),
                                           const SizedBox(width: 6),
-                                          Text(
-                                            'ORDER PROFIT (INTERNAL)',
-                                            style: TextStyle(
-                                              fontSize: 10.5,
-                                              fontWeight: FontWeight.w800,
-                                              letterSpacing: 0.6,
-                                              color: profitColor,
+                                          Expanded(
+                                            child: Text(
+                                              'ORDER PROFIT (INTERNAL)',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 10.5,
+                                                fontWeight: FontWeight.w800,
+                                                letterSpacing: 0.6,
+                                                color: profitColor,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -994,21 +1002,33 @@ class ReceiptRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: isTotal ? 16 : 13,
-            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
-            color: isTotal ? null : AppTheme.mutedText(context),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: isTotal ? 16 : 13,
+              fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
+              color: isTotal ? null : AppTheme.mutedText(context),
+            ),
           ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: isTotal ? 20 : 14,
-            fontWeight: FontWeight.w800,
-            color: valueColor ?? (isTotal ? AppTheme.accentOrange : null),
-            fontFeatures: AppTheme.tabularFigures,
+        const SizedBox(width: 8),
+        Flexible(
+          flex: 0,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: isTotal ? 20 : 14,
+                fontWeight: FontWeight.w800,
+                color: valueColor ?? (isTotal ? AppTheme.accentOrange : null),
+                fontFeatures: AppTheme.tabularFigures,
+              ),
+            ),
           ),
         ),
       ],

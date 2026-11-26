@@ -12,6 +12,8 @@ import 'package:tindako/providers/transaction_provider.dart';
 import 'package:tindako/screens/add_edit_product_screen.dart';
 import 'package:tindako/screens/best_sellers_screen.dart';
 import 'package:tindako/screens/dashboard_screen.dart';
+import 'package:tindako/screens/transaction_history_screen.dart';
+import 'package:tindako/services/pdf_service.dart';
 
 class _FakeAuthProvider extends ChangeNotifier implements AuthProvider {
   @override
@@ -453,5 +455,80 @@ void main() {
       expect(find.text('30 pcs left'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      'TransactionHistoryScreen shows period profit, order card profit, and order detail profit without overflow on 320x568',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 568);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        final now = DateTime.now();
+        final transactions = [
+          SaleTransaction.fromJson({
+            'id': 1,
+            'order_number': 137,
+            'user_id': 1,
+            'total_amount': 245.0,
+            'discount': 0.0,
+            'cash_received': 250.0,
+            'change_amount': 5.0,
+            'payment_method': 'cash',
+            'created_at': now.toUtc().toIso8601String(),
+            'items': [
+              {
+                'product_id': 1,
+                'quantity': 5,
+                'subtotal': 125.0,
+                'unit_cost': 17.0,
+                'product': {'id': 1, 'name': 'Coke Mismo', 'category': 'Beverages'},
+              },
+              {
+                'product_id': 2,
+                'quantity': 1,
+                'subtotal': 120.0,
+                'unit_cost': 70.0,
+                'product': {'id': 2, 'name': 'Premium Coffee', 'category': 'Beverages'},
+              },
+            ],
+            'returns': [],
+          }),
+        ];
+
+        await tester.pumpWidget(
+          _wrapWithProviders(
+            const TransactionHistoryScreen(
+              initialFilter: TransactionFilter.daily,
+            ),
+            transactions: transactions,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Est. Profit'), findsOneWidget);
+        expect(find.textContaining('+₱90.00 (36.7%)'), findsOneWidget);
+        expect(find.text('+₱90.00 profit'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        // Tap order card to inspect Order Profit breakdown
+        await tester.tap(find.text('Order #137'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('ORDER PROFIT (INTERNAL)'), findsOneWidget);
+        expect(find.text('Original Cost (COGS)'), findsOneWidget);
+        expect(find.text('₱155.00'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        // Sales report PDF bytes with profit data
+        final pdfBytes = await PdfService.buildSalesReportPdfBytes(
+          transactions: transactions,
+          periodLabel: 'Today',
+          storeName: 'Jicca Store',
+          storeAddress: 'Manila, PH',
+        );
+        expect(pdfBytes.length, greaterThan(1000));
+        expect(String.fromCharCodes(pdfBytes.take(5)), '%PDF-');
+      },
+    );
   });
 }

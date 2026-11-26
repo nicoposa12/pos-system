@@ -694,18 +694,50 @@ class PdfService {
     );
   }
 
-  /// Generates clean sales summary reports on standard A4 format.
-  static Future<void> generateSalesReport({
+  /// Builds clean sales summary report PDF bytes on standard A4 format,
+  /// including Est. Profit summary and per-order Profit column when cost data exists.
+  static Future<Uint8List> buildSalesReportPdfBytes({
     required List<SaleTransaction> transactions,
     required String periodLabel,
     required String storeName,
     required String storeAddress,
   }) async {
-    final pdf = pw.Document();
+    await _loadFonts();
+
+    final hasPeso = _cachedFontPeso != null;
+    final fontFallbackList =
+        hasPeso ? <pw.Font>[_cachedFontPeso!] : const <pw.Font>[];
+    final currency = hasPeso ? '₱' : 'P';
+
+    final fontRegular = _cachedFontMono ?? pw.Font.helvetica();
+    final fontBold = _cachedFontMonoBold ?? pw.Font.helveticaBold();
+
+    final moneyFmt = NumberFormat('#,##0.00');
     final total = transactions.fold(0.0, (sum, t) => sum + t.totalAmount);
+    final hasProfitData = transactions.any((t) => t.totalProfit != null);
+    final totalProfit = transactions.fold(
+      0.0,
+      (sum, t) => sum + (t.totalProfit ?? 0.0),
+    );
     final dateGenerated = DateFormat(
       'MMM d, yyyy - h:mm a',
     ).format(DateTime.now());
+
+    String formatMoney(double value) => '$currency${moneyFmt.format(value)}';
+    String formatSignedMoney(double value) =>
+        '${value < 0 ? '-' : '+'}$currency${moneyFmt.format(value.abs())}';
+
+    final navyColor = PdfColor.fromHex('#131D2E');
+    final tealColor = PdfColor.fromHex('#0D9488');
+    final roseColor = PdfColor.fromHex('#E11D48');
+
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: fontRegular,
+        bold: fontBold,
+        fontFallback: fontFallbackList,
+      ),
+    );
 
     pdf.addPage(
       pw.MultiPage(
@@ -717,21 +749,24 @@ class PdfService {
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      _clean(storeName).toUpperCase(),
-                      style: pw.TextStyle(
-                        fontSize: 24,
-                        fontWeight: pw.FontWeight.bold,
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        _clean(storeName).toUpperCase(),
+                        style: pw.TextStyle(
+                          fontSize: 20,
+                          fontWeight: pw.FontWeight.bold,
+                          color: navyColor,
+                        ),
                       ),
-                    ),
-                    pw.Text(
-                      _clean(storeAddress),
-                      style: const pw.TextStyle(fontSize: 12),
-                    ),
-                  ],
+                      pw.Text(
+                        _clean(storeAddress),
+                        style: const pw.TextStyle(fontSize: 10.5),
+                      ),
+                    ],
+                  ),
                 ),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
@@ -739,22 +774,22 @@ class PdfService {
                     pw.Text(
                       'SALES REPORT',
                       style: pw.TextStyle(
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: pw.FontWeight.bold,
                         color: PdfColors.indigo,
                       ),
                     ),
                     pw.Text(
                       'Generated: $dateGenerated',
-                      style: const pw.TextStyle(fontSize: 10),
+                      style: const pw.TextStyle(fontSize: 9.5),
                     ),
                   ],
                 ),
               ],
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 16),
             pw.Divider(),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 16),
 
             // Summary
             pw.Row(
@@ -769,58 +804,97 @@ class PdfService {
                     ),
                     pw.Text(
                       _clean(periodLabel),
-                      style: const pw.TextStyle(fontSize: 14),
+                      style: const pw.TextStyle(fontSize: 13),
                     ),
                   ],
                 ),
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                pw.Row(
                   children: [
-                    pw.Text(
-                      'Total Revenue:',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text(
+                          'Total Revenue:',
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                        ),
+                        pw.Text(
+                          formatMoney(total),
+                          style: pw.TextStyle(
+                            fontSize: 16,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.orange,
+                          ),
+                        ),
+                      ],
                     ),
-                    pw.Text(
-                      'P${total.toStringAsFixed(2)}',
-                      style: pw.TextStyle(
-                        fontSize: 18,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.green,
+                    if (hasProfitData) ...[
+                      pw.SizedBox(width: 24),
+                      pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Text(
+                            'Est. Profit:',
+                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                          ),
+                          pw.Text(
+                            formatSignedMoney(totalProfit),
+                            style: pw.TextStyle(
+                              fontSize: 16,
+                              fontWeight: pw.FontWeight.bold,
+                              color: totalProfit < 0 ? roseColor : tealColor,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ],
             ),
-            pw.SizedBox(height: 30),
+            pw.SizedBox(height: 24),
 
             // Table
             pw.TableHelper.fromTextArray(
               context: context,
               headerStyle: pw.TextStyle(
+                fontSize: 9.5,
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColors.white,
               ),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo),
-              cellHeight: 30,
+              headerDecoration: pw.BoxDecoration(color: navyColor),
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              cellHeight: 28,
               cellAlignments: {
                 0: pw.Alignment.centerLeft,
                 1: pw.Alignment.centerLeft,
-                2: pw.Alignment.centerRight,
+                2: pw.Alignment.center,
+                3: pw.Alignment.centerRight,
+                if (hasProfitData) 4: pw.Alignment.centerRight,
               },
               headerAlignment: pw.Alignment.centerLeft,
               data: <List<String>>[
-                <String>['Transaction ID', 'Date & Time', 'Amount'],
+                <String>[
+                  'Order #',
+                  'Date & Time',
+                  'Payment',
+                  'Amount',
+                  if (hasProfitData) 'Profit',
+                ],
                 ...transactions.map(
                   (t) => [
                     '#${t.displayOrderNumber ?? t.id}',
                     DateFormat('MMM d, yyyy - h:mm a').format(t.date),
-                    'P${t.totalAmount.toStringAsFixed(2)}',
+                    t.paymentMethod.toUpperCase(),
+                    formatMoney(t.totalAmount),
+                    if (hasProfitData)
+                      t.totalProfit != null
+                          ? formatSignedMoney(t.totalProfit!)
+                          : '-',
                   ],
                 ),
               ],
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: 18),
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.end,
               children: [
@@ -835,8 +909,23 @@ class PdfService {
       ),
     );
 
+    return pdf.save();
+  }
+
+  /// Generates clean sales summary reports on standard A4 format.
+  static Future<void> generateSalesReport({
+    required List<SaleTransaction> transactions,
+    required String periodLabel,
+    required String storeName,
+    required String storeAddress,
+  }) async {
     await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
+      onLayout: (PdfPageFormat format) => buildSalesReportPdfBytes(
+        transactions: transactions,
+        periodLabel: periodLabel,
+        storeName: storeName,
+        storeAddress: storeAddress,
+      ),
       name: 'sales_report_${DateTime.now().millisecondsSinceEpoch}.pdf',
     );
   }
