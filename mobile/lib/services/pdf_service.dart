@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -837,6 +839,530 @@ class PdfService {
       onLayout: (PdfPageFormat format) async => pdf.save(),
       name: 'sales_report_${DateTime.now().millisecondsSinceEpoch}.pdf',
     );
+  }
+
+  /// Builds an A4 PDF byte buffer for the Best Sellers product leaderboard
+  /// (Daily, Weekly, Monthly, Yearly, or All Time), including revenue, units
+  /// sold, remaining inventory stock, and estimated profit when cost data exists.
+  static Future<Uint8List> buildBestSellersReportPdfBytes({
+    required List<Map<String, dynamic>> items,
+    required String periodTypeLabel,
+    required String periodRangeLabel,
+    required String sortLabel,
+    required String storeName,
+    required String storeAddress,
+    String? storePhone,
+    Map<int, Product> productsById = const {},
+  }) async {
+    await _loadFonts();
+
+    final hasPeso = _cachedFontPeso != null;
+    final fontFallbackList =
+        hasPeso ? <pw.Font>[_cachedFontPeso!] : const <pw.Font>[];
+    final currency = hasPeso ? '₱' : 'P';
+
+    final fontRegular = _cachedFontMono ?? pw.Font.helvetica();
+    final fontBold = _cachedFontMonoBold ?? pw.Font.helveticaBold();
+
+    final moneyFmt = NumberFormat('#,##0.00');
+    final dateGenerated = DateFormat(
+      'MMM d, yyyy - h:mm a',
+    ).format(DateTime.now());
+
+    final totalUnits = items.fold<double>(
+      0.0,
+      (sum, item) => sum + ((item['total_sold'] as num?)?.toDouble() ?? 0.0),
+    );
+    final totalRevenue = items.fold<double>(
+      0.0,
+      (sum, item) =>
+          sum + ((item['total_revenue'] as num?)?.toDouble() ?? 0.0),
+    );
+    final hasProfitData = items.any((item) => item['has_cost_data'] == true);
+    final totalProfit = items.fold<double>(
+      0.0,
+      (sum, item) => item['has_cost_data'] == true
+          ? sum + ((item['total_profit'] as num?)?.toDouble() ?? 0.0)
+          : sum,
+    );
+    final costedRevenue = items.fold<double>(
+      0.0,
+      (sum, item) => item['has_cost_data'] == true
+          ? sum + ((item['total_revenue'] as num?)?.toDouble() ?? 0.0)
+          : sum,
+    );
+
+    final navyColor = PdfColor.fromHex('#131D2E');
+    final orangeColor = PdfColor.fromHex('#F97316');
+    final tealColor = PdfColor.fromHex('#0D9488');
+    final roseColor = PdfColor.fromHex('#E11D48');
+    final borderColor = PdfColor.fromHex('#E2E8F0');
+    final mutedColor = PdfColor.fromHex('#64748B');
+    final softBg = PdfColor.fromHex('#F8FAFC');
+
+    String formatMoney(double value) => '$currency${moneyFmt.format(value)}';
+    String formatSignedMoney(double value) =>
+        '${value < 0 ? '-' : '+'}$currency${moneyFmt.format(value.abs())}';
+
+    final tableHeaders = <String>[
+      '#',
+      'Product',
+      'Category',
+      'Sold',
+      'Stock Left',
+      'Revenue',
+      if (hasProfitData) 'Profit',
+    ];
+
+    final tableRows = <List<String>>[];
+    for (int i = 0; i < items.length; i++) {
+      final item = items[i];
+      final productId = (item['product_id'] as num?)?.toInt() ?? 0;
+      final product = productId > 0 ? productsById[productId] : null;
+      final name = _clean((item['name'] ?? 'Item').toString());
+      final rawCat = (item['category'] ?? product?.category)?.toString().trim();
+      final category = (rawCat != null && rawCat.isNotEmpty)
+          ? _clean(rawCat)
+          : '-';
+      final unit = product?.unit.trim();
+      final unitSuffix = (unit != null && unit.isNotEmpty) ? ' $unit' : '';
+      final sold = (item['total_sold'] as num?)?.toDouble() ?? 0.0;
+      final revenue = (item['total_revenue'] as num?)?.toDouble() ?? 0.0;
+      final stockText = product == null
+          ? '-'
+          : (product.stock <= 0
+                ? 'Out of stock'
+                : '${formatQuantity(product.stock)}$unitSuffix');
+      final hasItemCost = item['has_cost_data'] == true;
+      final itemProfit = hasItemCost
+          ? ((item['total_profit'] as num?)?.toDouble() ?? 0.0)
+          : null;
+
+      tableRows.add([
+        '${i + 1}',
+        name,
+        category,
+        '${formatQuantity(sold)}$unitSuffix',
+        stockText,
+        formatMoney(revenue),
+        if (hasProfitData)
+          itemProfit != null ? formatSignedMoney(itemProfit) : '-',
+      ]);
+    }
+
+    final columnWidths = hasProfitData
+        ? <int, pw.TableColumnWidth>{
+            0: const pw.FixedColumnWidth(26),
+            1: const pw.FlexColumnWidth(2.6),
+            2: const pw.FlexColumnWidth(1.5),
+            3: const pw.FlexColumnWidth(1.1),
+            4: const pw.FlexColumnWidth(1.2),
+            5: const pw.FlexColumnWidth(1.4),
+            6: const pw.FlexColumnWidth(1.3),
+          }
+        : <int, pw.TableColumnWidth>{
+            0: const pw.FixedColumnWidth(28),
+            1: const pw.FlexColumnWidth(3.0),
+            2: const pw.FlexColumnWidth(1.7),
+            3: const pw.FlexColumnWidth(1.2),
+            4: const pw.FlexColumnWidth(1.3),
+            5: const pw.FlexColumnWidth(1.5),
+          };
+
+    final cellAlignments = <int, pw.Alignment>{
+      0: pw.Alignment.center,
+      1: pw.Alignment.centerLeft,
+      2: pw.Alignment.centerLeft,
+      3: pw.Alignment.centerRight,
+      4: pw.Alignment.centerRight,
+      5: pw.Alignment.centerRight,
+      if (hasProfitData) 6: pw.Alignment.centerRight,
+    };
+
+    pw.Widget buildSummaryBox({
+      required String label,
+      required String value,
+      PdfColor? valueColor,
+      String? subtext,
+    }) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: pw.BoxDecoration(
+            color: softBg,
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+            border: pw.Border.all(color: borderColor, width: 0.8),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                label.toUpperCase(),
+                style: pw.TextStyle(
+                  fontSize: 7.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: mutedColor,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                value,
+                style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                  color: valueColor ?? navyColor,
+                ),
+              ),
+              if (subtext != null) ...[
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  subtext,
+                  style: pw.TextStyle(fontSize: 8, color: mutedColor),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    final cleanStore = _clean(storeName).isNotEmpty
+        ? _clean(storeName)
+        : 'TindaKo POS';
+    final cleanAddress = _clean(storeAddress);
+    final cleanPhone = _clean(storePhone);
+
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: fontRegular,
+        bold: fontBold,
+        fontFallback: fontFallbackList,
+      ),
+    );
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 32),
+        footer: (pw.Context context) => pw.Container(
+          margin: const pw.EdgeInsets.only(top: 12),
+          padding: const pw.EdgeInsets.only(top: 6),
+          decoration: pw.BoxDecoration(
+            border: pw.Border(
+              top: pw.BorderSide(color: borderColor, width: 0.7),
+            ),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                '$cleanStore - Best Sellers Report (${_clean(periodTypeLabel)})',
+                style: pw.TextStyle(fontSize: 8.5, color: mutedColor),
+              ),
+              pw.Text(
+                'Page ${context.pageNumber} of ${context.pagesCount}',
+                style: pw.TextStyle(fontSize: 8.5, color: mutedColor),
+              ),
+            ],
+          ),
+        ),
+        build: (pw.Context context) => [
+          // Header
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      cleanStore.toUpperCase(),
+                      style: pw.TextStyle(
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                        color: navyColor,
+                      ),
+                    ),
+                    if (cleanAddress.isNotEmpty) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        cleanAddress,
+                        style: pw.TextStyle(fontSize: 9.5, color: mutedColor),
+                      ),
+                    ],
+                    if (cleanPhone.isNotEmpty) ...[
+                      pw.SizedBox(height: 1),
+                      pw.Text(
+                        cleanPhone,
+                        style: pw.TextStyle(fontSize: 9.5, color: mutedColor),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              pw.SizedBox(width: 16),
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: pw.BoxDecoration(
+                      color: orangeColor,
+                      borderRadius: const pw.BorderRadius.all(
+                        pw.Radius.circular(4),
+                      ),
+                    ),
+                    child: pw.Text(
+                      'BEST SELLERS (${_clean(periodTypeLabel).toUpperCase()})',
+                      style: pw.TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.white,
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(height: 5),
+                  pw.Text(
+                    _clean(periodRangeLabel),
+                    style: pw.TextStyle(
+                      fontSize: 11,
+                      fontWeight: pw.FontWeight.bold,
+                      color: navyColor,
+                    ),
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Sorted by: ${_clean(sortLabel)}',
+                    style: pw.TextStyle(fontSize: 8.5, color: mutedColor),
+                  ),
+                  pw.Text(
+                    'Generated: $dateGenerated',
+                    style: pw.TextStyle(fontSize: 8.5, color: mutedColor),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          pw.Divider(color: borderColor, thickness: 1),
+          pw.SizedBox(height: 12),
+
+          // Summary KPI Strip
+          pw.Row(
+            children: [
+              buildSummaryBox(
+                label: 'Product Sales',
+                value: formatMoney(totalRevenue),
+                valueColor: orangeColor,
+              ),
+              pw.SizedBox(width: 8),
+              if (hasProfitData) ...[
+                buildSummaryBox(
+                  label: 'Est. Profit',
+                  value: formatSignedMoney(totalProfit),
+                  valueColor: totalProfit < 0 ? roseColor : tealColor,
+                  subtext: costedRevenue > 0
+                      ? '${(totalProfit / costedRevenue * 100).toStringAsFixed(1)}% margin'
+                      : null,
+                ),
+                pw.SizedBox(width: 8),
+              ],
+              buildSummaryBox(
+                label: 'Units Sold',
+                value: formatQuantity(totalUnits),
+              ),
+              pw.SizedBox(width: 8),
+              buildSummaryBox(
+                label: 'Products',
+                value: '${items.length}',
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+
+          // Ranked Products Table
+          if (tableRows.isEmpty)
+            pw.Container(
+              padding: const pw.EdgeInsets.all(24),
+              alignment: pw.Alignment.center,
+              decoration: pw.BoxDecoration(
+                color: softBg,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                border: pw.Border.all(color: borderColor),
+              ),
+              child: pw.Text(
+                'No product sales recorded for this period.',
+                style: pw.TextStyle(fontSize: 11, color: mutedColor),
+              ),
+            )
+          else
+            pw.TableHelper.fromTextArray(
+              context: context,
+              headers: tableHeaders,
+              data: tableRows,
+              columnWidths: columnWidths,
+              headerStyle: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+              ),
+              headerDecoration: pw.BoxDecoration(color: navyColor),
+              headerAlignment: pw.Alignment.centerLeft,
+              headerAlignments: cellAlignments,
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 6,
+              ),
+              cellAlignments: cellAlignments,
+              oddRowDecoration: pw.BoxDecoration(color: softBg),
+              border: pw.TableBorder(
+                horizontalInside: pw.BorderSide(
+                  color: borderColor,
+                  width: 0.5,
+                ),
+                bottom: pw.BorderSide(color: borderColor, width: 0.8),
+              ),
+            ),
+
+          if (tableRows.isNotEmpty) ...[
+            pw.SizedBox(height: 12),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              decoration: pw.BoxDecoration(
+                color: softBg,
+                borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                border: pw.Border.all(color: borderColor, width: 0.8),
+              ),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text(
+                    'TOTAL (${items.length} ${items.length == 1 ? 'product' : 'products'} | ${formatQuantity(totalUnits)} units sold)',
+                    style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: navyColor,
+                    ),
+                  ),
+                  pw.Row(
+                    children: [
+                      pw.Text(
+                        'Sales: ${formatMoney(totalRevenue)}',
+                        style: pw.TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: pw.FontWeight.bold,
+                          color: orangeColor,
+                        ),
+                      ),
+                      if (hasProfitData) ...[
+                        pw.SizedBox(width: 12),
+                        pw.Text(
+                          'Profit: ${formatSignedMoney(totalProfit)}',
+                          style: pw.TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: pw.FontWeight.bold,
+                            color: totalProfit < 0 ? roseColor : tealColor,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  /// Opens the native print / PDF preview dialog for a Best Sellers report.
+  static Future<void> generateBestSellersReport({
+    required List<Map<String, dynamic>> items,
+    required String periodTypeLabel,
+    required String periodRangeLabel,
+    required String sortLabel,
+    required String storeName,
+    required String storeAddress,
+    String? storePhone,
+    Map<int, Product> productsById = const {},
+    String? fileName,
+  }) async {
+    final safeName = fileName ??
+        'best_sellers_${periodTypeLabel.toLowerCase().replaceAll(' ', '_')}.pdf';
+    await Printing.layoutPdf(
+      name: safeName,
+      format: PdfPageFormat.a4,
+      onLayout: (PdfPageFormat format) => buildBestSellersReportPdfBytes(
+        items: items,
+        periodTypeLabel: periodTypeLabel,
+        periodRangeLabel: periodRangeLabel,
+        sortLabel: sortLabel,
+        storeName: storeName,
+        storeAddress: storeAddress,
+        storePhone: storePhone,
+        productsById: productsById,
+      ),
+    );
+  }
+
+  /// Saves the Best Sellers PDF directly via the OS save dialog on desktop,
+  /// or opens the native share sheet on mobile/web. Returns the saved file path
+  /// (desktop), `'shared'` (mobile/web), or `null` if cancelled.
+  static Future<String?> saveOrShareBestSellersReport({
+    required List<Map<String, dynamic>> items,
+    required String periodTypeLabel,
+    required String periodRangeLabel,
+    required String sortLabel,
+    required String storeName,
+    required String storeAddress,
+    String? storePhone,
+    Map<int, Product> productsById = const {},
+    String? fileName,
+  }) async {
+    final safeName = fileName ??
+        'best_sellers_${periodTypeLabel.toLowerCase().replaceAll(' ', '_')}.pdf';
+    final bytes = await buildBestSellersReportPdfBytes(
+      items: items,
+      periodTypeLabel: periodTypeLabel,
+      periodRangeLabel: periodRangeLabel,
+      sortLabel: sortLabel,
+      storeName: storeName,
+      storeAddress: storeAddress,
+      storePhone: storePhone,
+      productsById: productsById,
+    );
+
+    final isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    if (isDesktop) {
+      final selectedPath = await FilePicker.saveFile(
+        dialogTitle: 'Save Best Sellers PDF Report',
+        fileName: safeName,
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+      );
+      if (selectedPath == null || selectedPath.trim().isEmpty) return null;
+      final finalPath = selectedPath.toLowerCase().endsWith('.pdf')
+          ? selectedPath
+          : '$selectedPath.pdf';
+      await File(finalPath).writeAsBytes(bytes, flush: true);
+      return finalPath;
+    }
+
+    await Printing.sharePdf(bytes: bytes, filename: safeName);
+    return 'shared';
   }
 }
 

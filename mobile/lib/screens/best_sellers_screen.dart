@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -6,7 +8,10 @@ import '../core/app_theme.dart';
 import '../models/product.dart';
 import '../models/transaction.dart';
 import '../providers/product_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/transaction_provider.dart';
+import '../services/pdf_service.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/order_details_modal.dart';
 import '../widgets/period_picker_dialogs.dart';
 import '../widgets/product_image_view.dart';
@@ -47,6 +52,7 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
     Future.microtask(() {
       if (!mounted) return;
       context.read<TransactionProvider>().fetchTransactions();
+      context.read<ProductProvider>().fetchProducts(silent: true);
     });
   }
 
@@ -56,8 +62,11 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
     super.dispose();
   }
 
-  bool _matchesPeriod(SaleTransaction tx, DateTime now) {
-    switch (_period) {
+  bool _matchesPeriod(SaleTransaction tx, DateTime now) =>
+      _matchesPeriodFor(tx, _period);
+
+  bool _matchesPeriodFor(SaleTransaction tx, BestSellersPeriod period) {
+    switch (period) {
       case BestSellersPeriod.all:
         return true;
       case BestSellersPeriod.daily:
@@ -157,7 +166,10 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
           }
           break;
         case BestSellersPeriod.monthly:
-          final next = DateTime(_selectedMonth.year, _selectedMonth.month + delta);
+          final next = DateTime(
+            _selectedMonth.year,
+            _selectedMonth.month + delta,
+          );
           final currentMonth = DateTime(now.year, now.month);
           if (next.isAfter(currentMonth)) {
             _selectedMonth = currentMonth;
@@ -279,8 +291,11 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
     }
   }
 
-  String _periodSummaryLabel(DateTime now) {
-    switch (_period) {
+  String _periodSummaryLabel(DateTime now) =>
+      _periodSummaryLabelFor(_period, now);
+
+  String _periodSummaryLabelFor(BestSellersPeriod period, DateTime now) {
+    switch (period) {
       case BestSellersPeriod.all:
         return 'All Time';
       case BestSellersPeriod.daily:
@@ -293,12 +308,622 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
           startOfCalendarWeek(now),
         );
         final rangeLabel = formatWeekRangeLabel(_selectedWeekStart);
-        return isCurrentWeek ? 'This Week ($rangeLabel)' : 'Week of $rangeLabel';
+        return isCurrentWeek
+            ? 'This Week ($rangeLabel)'
+            : 'Week of $rangeLabel';
       case BestSellersPeriod.monthly:
         return DateFormat('MMMM yyyy').format(_selectedMonth);
       case BestSellersPeriod.yearly:
         return 'Year $_selectedYear';
     }
+  }
+
+  String _periodTypeLabel(BestSellersPeriod period) {
+    switch (period) {
+      case BestSellersPeriod.daily:
+        return 'Daily';
+      case BestSellersPeriod.weekly:
+        return 'Weekly';
+      case BestSellersPeriod.monthly:
+        return 'Monthly';
+      case BestSellersPeriod.yearly:
+        return 'Yearly';
+      case BestSellersPeriod.all:
+        return 'All Time';
+    }
+  }
+
+  String _sortModeLabel() {
+    switch (_sortMode) {
+      case _BestSellersSort.mostSold:
+        return 'Most Sold';
+      case _BestSellersSort.topRevenue:
+        return 'Top Revenue';
+      case _BestSellersSort.topProfit:
+        return 'Top Profit';
+    }
+  }
+
+  String _exportFileName(BestSellersPeriod period) {
+    switch (period) {
+      case BestSellersPeriod.daily:
+        return 'TindaKo_BestSellers_Daily_${DateFormat('yyyy-MM-dd').format(_selectedDate)}.pdf';
+      case BestSellersPeriod.weekly:
+        return 'TindaKo_BestSellers_Weekly_${DateFormat('yyyy-MM-dd').format(_selectedWeekStart)}.pdf';
+      case BestSellersPeriod.monthly:
+        return 'TindaKo_BestSellers_Monthly_${DateFormat('yyyy-MM').format(_selectedMonth)}.pdf';
+      case BestSellersPeriod.yearly:
+        return 'TindaKo_BestSellers_Yearly_$_selectedYear.pdf';
+      case BestSellersPeriod.all:
+        return 'TindaKo_BestSellers_AllTime.pdf';
+    }
+  }
+
+  Future<void> _showExportPdfSheet({
+    required BuildContext context,
+    required TransactionProvider txProvider,
+    required Map<int, Product> productsById,
+  }) async {
+    final now = DateTime.now();
+    BestSellersPeriod exportPeriod =
+        _period == BestSellersPeriod.all ? BestSellersPeriod.daily : _period;
+    bool isExporting = false;
+    final isDesktop =
+        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (modalCtx, setModalState) {
+            final theme = Theme.of(modalCtx);
+            final exportItems = txProvider.getProductSales(
+              filter: (tx) => _matchesPeriodFor(tx, exportPeriod),
+              sortByRevenue: _sortMode == _BestSellersSort.topRevenue,
+              sortByProfit: _sortMode == _BestSellersSort.topProfit,
+            );
+            final query = _searchQuery.trim().toLowerCase();
+            final filteredExportItems = query.isEmpty
+                ? exportItems
+                : exportItems.where((item) {
+                    final name = (item['name'] ?? '').toString().toLowerCase();
+                    final category =
+                        (item['category'] ?? '').toString().toLowerCase();
+                    return name.contains(query) || category.contains(query);
+                  }).toList();
+
+            final exportUnits = filteredExportItems.fold<double>(
+              0.0,
+              (sum, item) =>
+                  sum + ((item['total_sold'] as num?)?.toDouble() ?? 0.0),
+            );
+            final exportRevenue = filteredExportItems.fold<double>(
+              0.0,
+              (sum, item) =>
+                  sum + ((item['total_revenue'] as num?)?.toDouble() ?? 0.0),
+            );
+            final exportHasProfit = filteredExportItems.any(
+              (item) => item['has_cost_data'] == true,
+            );
+            final exportProfit = filteredExportItems.fold<double>(
+              0.0,
+              (sum, item) => item['has_cost_data'] == true
+                  ? sum + ((item['total_profit'] as num?)?.toDouble() ?? 0.0)
+                  : sum,
+            );
+
+            Future<void> pickRangeForExport() async {
+              switch (exportPeriod) {
+                case BestSellersPeriod.daily:
+                  final picked = await showDatePicker(
+                    context: modalCtx,
+                    initialDate: _selectedDate.isAfter(now) ? now : _selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: now.add(const Duration(days: 365)),
+                  );
+                  if (picked != null && mounted) {
+                    setState(() => _selectedDate = picked);
+                    setModalState(() {});
+                  }
+                  break;
+                case BestSellersPeriod.weekly:
+                  final picked = await showWeekPickerDialog(
+                    modalCtx,
+                    initialWeekStart: _selectedWeekStart,
+                  );
+                  if (picked != null && mounted) {
+                    setState(() => _selectedWeekStart = picked);
+                    setModalState(() {});
+                  }
+                  break;
+                case BestSellersPeriod.monthly:
+                  final picked = await showMonthYearPickerDialog(
+                    modalCtx,
+                    initialMonth: _selectedMonth,
+                  );
+                  if (picked != null && mounted) {
+                    setState(() => _selectedMonth = picked);
+                    setModalState(() {});
+                  }
+                  break;
+                case BestSellersPeriod.yearly:
+                  final picked = await showYearPickerDialog(
+                    modalCtx,
+                    initialYear: _selectedYear,
+                  );
+                  if (picked != null && mounted) {
+                    setState(() => _selectedYear = picked);
+                    setModalState(() {});
+                  }
+                  break;
+                case BestSellersPeriod.all:
+                  break;
+              }
+            }
+
+            Future<void> runExport({required bool saveToFile}) async {
+              if (isExporting || filteredExportItems.isEmpty) return;
+              setModalState(() => isExporting = true);
+              try {
+                final settings = context.read<SettingsProvider>();
+                final periodType = _periodTypeLabel(exportPeriod);
+                final periodRange = _periodSummaryLabelFor(exportPeriod, now);
+                final fileName = _exportFileName(exportPeriod);
+
+                if (saveToFile) {
+                  final saved = await PdfService.saveOrShareBestSellersReport(
+                    items: filteredExportItems,
+                    periodTypeLabel: periodType,
+                    periodRangeLabel: periodRange,
+                    sortLabel: _sortModeLabel(),
+                    storeName: settings.storeName,
+                    storeAddress: settings.storeAddress,
+                    storePhone: settings.storePhone,
+                    productsById: productsById,
+                    fileName: fileName,
+                  );
+                  if (saved != null && modalCtx.mounted) {
+                    Navigator.of(sheetCtx).pop();
+                    if (context.mounted) {
+                      AppToast.show(
+                        context,
+                        message: saved == 'shared'
+                            ? 'Best Sellers ($periodType) PDF ready to share'
+                            : 'Saved PDF: $fileName',
+                      );
+                    }
+                  }
+                } else {
+                  Navigator.of(sheetCtx).pop();
+                  await PdfService.generateBestSellersReport(
+                    items: filteredExportItems,
+                    periodTypeLabel: periodType,
+                    periodRangeLabel: periodRange,
+                    sortLabel: _sortModeLabel(),
+                    storeName: settings.storeName,
+                    storeAddress: settings.storeAddress,
+                    storePhone: settings.storePhone,
+                    productsById: productsById,
+                    fileName: fileName,
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  AppToast.show(
+                    context,
+                    message: 'Failed to export PDF: $e',
+                    isError: true,
+                  );
+                }
+              } finally {
+                if (modalCtx.mounted) {
+                  setModalState(() => isExporting = false);
+                }
+              }
+            }
+
+            const exportOptions = <BestSellersPeriod>[
+              BestSellersPeriod.daily,
+              BestSellersPeriod.weekly,
+              BestSellersPeriod.monthly,
+              BestSellersPeriod.yearly,
+              BestSellersPeriod.all,
+            ];
+
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 520,
+                  maxHeight: MediaQuery.sizeOf(sheetCtx).height * 0.88,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: theme.cardTheme.color,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    border: Border.all(color: AppTheme.borderColor(sheetCtx)),
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Center(
+                            child: Container(
+                              width: 36,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: AppTheme.borderColor(sheetCtx),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.accentOrange.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.picture_as_pdf_rounded,
+                                  color: AppTheme.accentOrange,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Export Best Sellers PDF',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Choose Daily, Weekly, Monthly, or Yearly report',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () => Navigator.of(sheetCtx).pop(),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          Text(
+                            'REPORT PERIOD',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                              color: AppTheme.mutedText(sheetCtx),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 8,
+                            children: exportOptions.map((period) {
+                              final selected = exportPeriod == period;
+                              return ChoiceChip(
+                                visualDensity: VisualDensity.compact,
+                                label: Text(_periodTypeLabel(period)),
+                                selected: selected,
+                                showCheckmark: false,
+                                onSelected: (_) {
+                                  HapticFeedback.selectionClick();
+                                  setModalState(() => exportPeriod = period);
+                                },
+                                selectedColor: AppTheme.accentOrange,
+                                backgroundColor:
+                                    AppTheme.subtleSurface(sheetCtx),
+                                side: BorderSide(
+                                  color: selected
+                                      ? AppTheme.accentOrange
+                                      : AppTheme.borderColor(sheetCtx),
+                                ),
+                                labelStyle: TextStyle(
+                                  color: selected
+                                      ? Colors.white
+                                      : theme.colorScheme.onSurface,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
+                                  fontSize: 12.5,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 14),
+
+                          // Selected range + picker button
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.subtleSurface(sheetCtx),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppTheme.borderColor(sheetCtx),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.calendar_month_rounded,
+                                  size: 18,
+                                  color: AppTheme.accentOrange,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _periodSummaryLabelFor(
+                                          exportPeriod,
+                                          now,
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        'Sorted by ${_sortModeLabel()}',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          color: AppTheme.mutedText(sheetCtx),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (exportPeriod != BestSellersPeriod.all)
+                                  TextButton(
+                                    onPressed: pickRangeForExport,
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppTheme.accentOrange,
+                                      minimumSize: const Size(0, 34),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Change',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // Live Preview Summary
+                          if (filteredExportItems.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accentAmber.withValues(
+                                  alpha: 0.12,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppTheme.accentAmber.withValues(
+                                    alpha: 0.35,
+                                  ),
+                                ),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline_rounded,
+                                    size: 18,
+                                    color: AppTheme.accentAmber,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'No product sales recorded for this period. Pick another date or period.',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.subtleSurface(sheetCtx),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: AppTheme.borderColor(sheetCtx),
+                                ),
+                              ),
+                              child: Wrap(
+                                spacing: 14,
+                                runSpacing: 8,
+                                alignment: WrapAlignment.spaceBetween,
+                                children: [
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Sales',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.mutedText(sheetCtx),
+                                        ),
+                                      ),
+                                      Text(
+                                        '₱${NumberFormat('#,##0.00').format(exportRevenue)}',
+                                        style: const TextStyle(
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: AppTheme.accentOrange,
+                                          fontFeatures: AppTheme.tabularFigures,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (exportHasProfit)
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Est. Profit',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppTheme.mutedText(sheetCtx),
+                                          ),
+                                        ),
+                                        Text(
+                                          '${exportProfit < 0 ? '-' : '+'}₱${NumberFormat('#,##0.00').format(exportProfit.abs())}',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: exportProfit < 0
+                                                ? AppTheme.accentRose
+                                                : AppTheme.accentTeal,
+                                            fontFeatures:
+                                                AppTheme.tabularFigures,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Products / Units',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.mutedText(sheetCtx),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${filteredExportItems.length} items · ${formatQuantity(exportUnits)} sold',
+                                        style: const TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w700,
+                                          fontFeatures: AppTheme.tabularFigures,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          const SizedBox(height: 18),
+
+                          // Export Action Buttons
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed:
+                                      (isExporting ||
+                                          filteredExportItems.isEmpty)
+                                      ? null
+                                      : () => runExport(saveToFile: true),
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 44),
+                                    foregroundColor: AppTheme.accentOrange,
+                                    side: BorderSide(
+                                      color: AppTheme.accentOrange.withValues(
+                                        alpha: 0.45,
+                                      ),
+                                    ),
+                                  ),
+                                  icon: Icon(
+                                    isDesktop
+                                        ? Icons.download_rounded
+                                        : Icons.share_rounded,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    isDesktop ? 'Save PDF' : 'Share PDF',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed:
+                                      (isExporting ||
+                                          filteredExportItems.isEmpty)
+                                      ? null
+                                      : () => runExport(saveToFile: false),
+                                  style: ElevatedButton.styleFrom(
+                                    minimumSize: const Size(0, 44),
+                                  ),
+                                  icon: isExporting
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.print_rounded,
+                                          size: 18,
+                                        ),
+                                  label: const Text('Print / Preview'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -334,10 +959,11 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
     );
     final totalRevenue = displayed.fold<double>(
       0.0,
-      (sum, item) =>
-          sum + ((item['total_revenue'] as num?)?.toDouble() ?? 0.0),
+      (sum, item) => sum + ((item['total_revenue'] as num?)?.toDouble() ?? 0.0),
     );
-    final hasPeriodProfit = displayed.any((item) => item['has_cost_data'] == true);
+    final hasPeriodProfit = displayed.any(
+      (item) => item['has_cost_data'] == true,
+    );
     final totalProfit = displayed.fold<double>(
       0.0,
       (sum, item) => item['has_cost_data'] == true
@@ -358,10 +984,9 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
           (item['total_revenue'] as num?)?.toDouble() ?? 0.0,
         _BestSellersSort.topProfit =>
           item['has_cost_data'] == true
-              ? (((item['total_profit'] as num?)?.toDouble() ?? 0.0).clamp(
-                  0.0,
-                  double.infinity,
-                ).toDouble())
+              ? (((item['total_profit'] as num?)?.toDouble() ?? 0.0)
+                    .clamp(0.0, double.infinity)
+                    .toDouble())
               : 0.0,
         _BestSellersSort.mostSold =>
           (item['total_sold'] as num?)?.toDouble() ?? 0.0,
@@ -390,14 +1015,59 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                   toolbarHeight: 68,
                   backgroundColor: theme.scaffoldBackgroundColor,
                   titleSpacing: 8,
-                  title: const Text(
+                  title: Text(
                     'Best Sellers',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: MediaQuery.sizeOf(context).width < 360
+                          ? 19
+                          : 22,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.4,
                     ),
                   ),
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 16, left: 4),
+                      child: OutlinedButton.icon(
+                        onPressed: txProvider.transactions.isEmpty
+                            ? null
+                            : () {
+                                HapticFeedback.selectionClick();
+                                _showExportPdfSheet(
+                                  context: context,
+                                  txProvider: txProvider,
+                                  productsById: productsById,
+                                );
+                              },
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 38),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: MediaQuery.sizeOf(context).width < 360
+                                ? 10
+                                : 14,
+                            vertical: 8,
+                          ),
+                          foregroundColor: AppTheme.accentOrange,
+                          side: BorderSide(
+                            color: AppTheme.accentOrange.withValues(
+                              alpha: 0.35,
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.picture_as_pdf_outlined,
+                          size: 18,
+                        ),
+                        label: Text(
+                          MediaQuery.sizeOf(context).width < 360
+                              ? 'PDF'
+                              : 'Export PDF',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
 
                 SliverToBoxAdapter(
@@ -462,10 +1132,11 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                     message: _period == BestSellersPeriod.weekly
                                         ? 'Select Week'
                                         : (_period == BestSellersPeriod.monthly
-                                            ? 'Select Month & Year'
-                                            : (_period == BestSellersPeriod.yearly
-                                                ? 'Select Year'
-                                                : 'Select Date')),
+                                              ? 'Select Month & Year'
+                                              : (_period ==
+                                                        BestSellersPeriod.yearly
+                                                    ? 'Select Year'
+                                                    : 'Select Date')),
                                     child: const Icon(
                                       Icons.calendar_month_rounded,
                                       color: AppTheme.accentOrange,
@@ -840,18 +1511,18 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                     side: BorderSide(
                                       color:
                                           _sortMode == _BestSellersSort.mostSold
-                                              ? AppTheme.accentTeal
-                                              : AppTheme.borderColor(context),
+                                          ? AppTheme.accentTeal
+                                          : AppTheme.borderColor(context),
                                     ),
                                     labelStyle: TextStyle(
                                       color:
                                           _sortMode == _BestSellersSort.mostSold
-                                              ? Colors.white
-                                              : theme.colorScheme.onSurface,
+                                          ? Colors.white
+                                          : theme.colorScheme.onSurface,
                                       fontWeight:
                                           _sortMode == _BestSellersSort.mostSold
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -863,7 +1534,7 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                     label: const Text('Top Revenue'),
                                     selected:
                                         _sortMode ==
-                                            _BestSellersSort.topRevenue,
+                                        _BestSellersSort.topRevenue,
                                     showCheckmark: false,
                                     onSelected: (_) {
                                       HapticFeedback.selectionClick();
@@ -877,21 +1548,21 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                     side: BorderSide(
                                       color:
                                           _sortMode ==
-                                                  _BestSellersSort.topRevenue
-                                              ? AppTheme.accentIndigo
-                                              : AppTheme.borderColor(context),
+                                              _BestSellersSort.topRevenue
+                                          ? AppTheme.accentIndigo
+                                          : AppTheme.borderColor(context),
                                     ),
                                     labelStyle: TextStyle(
                                       color:
                                           _sortMode ==
-                                                  _BestSellersSort.topRevenue
-                                              ? Colors.white
-                                              : theme.colorScheme.onSurface,
+                                              _BestSellersSort.topRevenue
+                                          ? Colors.white
+                                          : theme.colorScheme.onSurface,
                                       fontWeight:
                                           _sortMode ==
-                                                  _BestSellersSort.topRevenue
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
+                                              _BestSellersSort.topRevenue
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -916,21 +1587,21 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                     side: BorderSide(
                                       color:
                                           _sortMode ==
-                                                  _BestSellersSort.topProfit
-                                              ? AppTheme.accentOrange
-                                              : AppTheme.borderColor(context),
+                                              _BestSellersSort.topProfit
+                                          ? AppTheme.accentOrange
+                                          : AppTheme.borderColor(context),
                                     ),
                                     labelStyle: TextStyle(
                                       color:
                                           _sortMode ==
-                                                  _BestSellersSort.topProfit
-                                              ? Colors.white
-                                              : theme.colorScheme.onSurface,
+                                              _BestSellersSort.topProfit
+                                          ? Colors.white
+                                          : theme.colorScheme.onSurface,
                                       fontWeight:
                                           _sortMode ==
-                                                  _BestSellersSort.topProfit
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
+                                              _BestSellersSort.topProfit
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -1057,7 +1728,8 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                                   if (_period != BestSellersPeriod.weekly)
                                     OutlinedButton(
                                       onPressed: () => setState(
-                                        () => _period = BestSellersPeriod.weekly,
+                                        () =>
+                                            _period = BestSellersPeriod.weekly,
                                       ),
                                       child: const Text('View Weekly'),
                                     ),
@@ -1093,12 +1765,15 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                             (item['total_revenue'] as num?)?.toDouble() ?? 0.0;
                         final hasCost = item['has_cost_data'] == true;
                         final itemProfit = hasCost
-                            ? ((item['total_profit'] as num?)?.toDouble() ?? 0.0)
+                            ? ((item['total_profit'] as num?)?.toDouble() ??
+                                  0.0)
                             : null;
                         final metric = switch (_sortMode) {
                           _BestSellersSort.topRevenue => revenue,
                           _BestSellersSort.topProfit =>
-                            (itemProfit ?? 0.0).clamp(0.0, double.infinity).toDouble(),
+                            (itemProfit ?? 0.0)
+                                .clamp(0.0, double.infinity)
+                                .toDouble(),
                           _BestSellersSort.mostSold => sold,
                         };
                         final ratio = (metric / maxMetric).clamp(0.04, 1.0);
@@ -1109,12 +1784,12 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
                         return _BestSellerRowCard(
                           rank: index + 1,
                           name: (item['name'] ?? 'Item').toString(),
-                          category:
-                              (item['category'] ?? product?.category)
-                                  ?.toString(),
+                          category: (item['category'] ?? product?.category)
+                              ?.toString(),
                           unit: product?.unit,
                           imagePath: product?.imagePath,
                           sold: sold,
+                          currentStock: product?.stock,
                           revenue: revenue,
                           profit: itemProfit,
                           orderCount:
@@ -1494,6 +2169,7 @@ class _BestSellerRowCard extends StatelessWidget {
   final String? unit;
   final String? imagePath;
   final double sold;
+  final double? currentStock;
   final double revenue;
   final double? profit;
   final int orderCount;
@@ -1509,6 +2185,7 @@ class _BestSellerRowCard extends StatelessWidget {
     required this.unit,
     required this.imagePath,
     required this.sold,
+    this.currentStock,
     required this.revenue,
     this.profit,
     required this.orderCount,
@@ -1538,15 +2215,26 @@ class _BestSellerRowCard extends StatelessWidget {
     final isTop3 = rank <= 3;
     final isCompact = MediaQuery.sizeOf(context).width < 360;
     final trimmedUnit = unit?.trim();
-    final soldLabel = (trimmedUnit != null && trimmedUnit.isNotEmpty)
-        ? '${formatQuantity(sold)} $trimmedUnit sold'
-        : '${formatQuantity(sold)} sold';
-    final catLabel =
-        (category != null && category!.trim().isNotEmpty)
-            ? '${category!.trim()} · '
-            : '';
-    final ordersLabel =
-        '$orderCount ${orderCount == 1 ? 'order' : 'orders'}';
+    final unitSuffix = (trimmedUnit != null && trimmedUnit.isNotEmpty)
+        ? ' $trimmedUnit'
+        : '';
+    final soldLabel = '${formatQuantity(sold)}$unitSuffix sold';
+    final catLabel = (category != null && category!.trim().isNotEmpty)
+        ? '${category!.trim()} · '
+        : '';
+    final ordersLabel = '$orderCount ${orderCount == 1 ? 'order' : 'orders'}';
+
+    final bool hasStock = currentStock != null;
+    final bool isOutOfStock = hasStock && currentStock! <= 0;
+    final bool isLowStock = hasStock && currentStock! > 0 && currentStock! <= 5;
+    final Color stockColor = isOutOfStock
+        ? AppTheme.accentRose
+        : (isLowStock ? AppTheme.accentAmber : AppTheme.accentTeal);
+    final String stockLabel = isOutOfStock
+        ? 'Out of stock'
+        : isLowStock
+        ? '${formatQuantity(currentStock!)}$unitSuffix left · Low'
+        : '${formatQuantity(currentStock!)}$unitSuffix left';
 
     return Container(
       decoration: BoxDecoration(
@@ -1634,6 +2322,46 @@ class _BestSellerRowCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
+                          if (hasStock) ...[
+                            const SizedBox(height: 5),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: stockColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 5,
+                                    height: 5,
+                                    decoration: BoxDecoration(
+                                      color: stockColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      stockLabel,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: isCompact ? 10 : 10.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: stockColor,
+                                        fontFeatures: AppTheme.tabularFigures,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1705,8 +2433,8 @@ class _BestSellerRowCard extends StatelessWidget {
                     color: rank == 1
                         ? AppTheme.accentOrange
                         : (sortByRevenue
-                            ? AppTheme.accentIndigo
-                            : AppTheme.accentTeal),
+                              ? AppTheme.accentIndigo
+                              : AppTheme.accentTeal),
                   ),
                 ),
               ],

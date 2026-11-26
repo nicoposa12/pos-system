@@ -449,6 +449,8 @@ void main() {
       final coffeeY = tester.getTopLeft(find.text('Premium Coffee')).dy;
       final cokeY = tester.getTopLeft(find.text('Coke Mismo')).dy;
       expect(coffeeY, lessThan(cokeY));
+      expect(find.text('15 pack left'), findsOneWidget);
+      expect(find.text('30 pcs left'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

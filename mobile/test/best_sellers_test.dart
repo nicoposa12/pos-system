@@ -12,6 +12,7 @@ import 'package:tindako/providers/settings_provider.dart';
 import 'package:tindako/providers/transaction_provider.dart';
 import 'package:tindako/screens/best_sellers_screen.dart';
 import 'package:tindako/screens/dashboard_screen.dart';
+import 'package:tindako/services/pdf_service.dart';
 import 'package:tindako/widgets/period_picker_dialogs.dart';
 
 class _FakeAuthProvider extends ChangeNotifier implements AuthProvider {
@@ -537,6 +538,97 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Coffee Pack'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('PdfService builds valid Best Sellers PDF bytes across Daily, Weekly, Monthly, and Yearly', () async {
+    final productsById = <int, Product>{
+      for (final p in sampleProducts)
+        if (p.id != null) p.id!: p.copyWith(costPrice: p.price * 0.6),
+    };
+
+    final items = <Map<String, dynamic>>[
+      {
+        'product_id': 1,
+        'name': 'Coke',
+        'category': 'Beverages',
+        'total_sold': 5.0,
+        'total_revenue': 125.0,
+        'total_cost': 75.0,
+        'total_profit': 50.0,
+        'has_cost_data': true,
+        'order_count': 2,
+      },
+      {
+        'product_id': 2,
+        'name': 'Super Crunch',
+        'category': 'Snacks',
+        'total_sold': 7.0,
+        'total_revenue': 70.0,
+        'total_cost': 42.0,
+        'total_profit': 28.0,
+        'has_cost_data': true,
+        'order_count': 1,
+      },
+    ];
+
+    for (final entry in const [
+      ('Daily', 'Nov 26, 2026'),
+      ('Weekly', 'Nov 22 - Nov 28, 2026'),
+      ('Monthly', 'November 2026'),
+      ('Yearly', 'Year 2026'),
+    ]) {
+      final bytes = await PdfService.buildBestSellersReportPdfBytes(
+        items: items,
+        periodTypeLabel: entry.$1,
+        periodRangeLabel: entry.$2,
+        sortLabel: 'Most Sold',
+        storeName: 'Jicca Store',
+        storeAddress: 'Manila, PH',
+        storePhone: '0917-123-4567',
+        productsById: productsById,
+      );
+
+      expect(bytes.length, greaterThan(1000));
+      // Valid PDF header %PDF-
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+    }
+  });
+
+  testWidgets('Export PDF sheet switches Daily, Weekly, Monthly, Yearly cleanly on 320x568', (tester) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      _wrapTest(
+        child: const BestSellersScreen(initialPeriod: BestSellersPeriod.daily),
+        products: sampleProducts,
+        transactions: sampleTransactions,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Compact label on 320px AppBar
+    await tester.tap(find.text('PDF'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Export Best Sellers PDF'), findsOneWidget);
+    expect(find.text('REPORT PERIOD'), findsOneWidget);
+
+    // Switch through Weekly, Monthly, Yearly inside the export sheet
+    for (final label in const ['Weekly', 'Monthly', 'Yearly']) {
+      await tester.tap(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text(label),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    }
+
+    expect(find.text('Print / Preview'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
