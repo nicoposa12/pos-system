@@ -16,6 +16,8 @@ class TransactionProvider with ChangeNotifier {
   int? _userId;
   String? _cursor; // newest server updated_at held in memory
   Future<void>? _inFlight;
+  DateTime? _lastFetchedAt;
+  static const Duration _freshnessWindow = Duration(seconds: 25);
 
   // Memoized aggregates
   List<Map<String, dynamic>>? _topProductsCache;
@@ -34,7 +36,7 @@ class TransactionProvider with ChangeNotifier {
   }
 
   void _onRemoteChange() {
-    if (_userId != null) fetchTransactions(silent: true);
+    if (_userId != null) refreshTransactions(silent: true);
   }
 
   List<SaleTransaction> get transactions => _transactions;
@@ -52,6 +54,7 @@ class TransactionProvider with ChangeNotifier {
     if (_userId != userId) {
       _userId = userId;
       _hasLoaded = false;
+      _lastFetchedAt = null;
       _cursor = null;
       _setTransactions([]);
       fetchTransactions();
@@ -89,9 +92,22 @@ class TransactionProvider with ChangeNotifier {
     _setTransactions(merged);
   }
 
-  /// Loads sales from the API. Concurrent calls share one request; once loaded,
+  /// Loads sales from the API. Concurrent calls share one request, redundant
+  /// automatic calls within [_freshnessWindow] are skipped, and once loaded
   /// refreshes are silent and fetch only changed records.
   Future<void> fetchTransactions({bool silent = false}) {
+    if (_userId == null) return Future.value();
+    if (_hasLoaded &&
+        _lastFetchedAt != null &&
+        DateTime.now().difference(_lastFetchedAt!) < _freshnessWindow) {
+      return Future.value();
+    }
+    return refreshTransactions(silent: silent);
+  }
+
+  /// Forces a delta sync from the API (used by pull-to-refresh, returns,
+  /// payments, and remote change notifications), bypassing [_freshnessWindow].
+  Future<void> refreshTransactions({bool silent = false}) {
     if (_userId == null) return Future.value();
     return _inFlight ??= _load(silent: silent || _hasLoaded).whenComplete(() {
       _inFlight = null;
@@ -122,6 +138,7 @@ class TransactionProvider with ChangeNotifier {
         _merge(parsed);
       }
       _hasLoaded = true;
+      _lastFetchedAt = DateTime.now();
       _errorMessage = null;
     } catch (e) {
       debugPrint('[TransactionProvider] fetch error: $e');
@@ -448,7 +465,7 @@ class TransactionProvider with ChangeNotifier {
       }
 
       // Re-fetch transactions to immediately reflect updated quantity and price across all screens
-      await fetchTransactions(silent: true);
+      await refreshTransactions(silent: true);
 
       return (res['product_stock'] as num?)?.toDouble() ?? -1.0;
     } catch (e) {
@@ -472,7 +489,7 @@ class TransactionProvider with ChangeNotifier {
         cashReceived: cashReceived,
         changeAmount: changeAmount,
       );
-      await fetchTransactions(silent: true);
+      await refreshTransactions(silent: true);
       return true;
     } catch (e) {
       debugPrint('Error marking transaction paid: $e');
@@ -485,6 +502,7 @@ class TransactionProvider with ChangeNotifier {
     _setTransactions([]);
     _userId = null;
     _hasLoaded = false;
+    _lastFetchedAt = null;
     _cursor = null;
     _errorMessage = null;
     notifyListeners();

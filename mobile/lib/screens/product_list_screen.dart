@@ -763,7 +763,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
     return Scaffold(
       body: RefreshIndicator(
         color: AppTheme.accentOrange,
-        onRefresh: () => context.read<ProductProvider>().fetchProducts(),
+        onRefresh: () => context.read<ProductProvider>().refreshProducts(),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1200),

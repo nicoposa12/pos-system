@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/disk_image_cache.dart';
 
 /// Reusable widget for rendering store and business storefront/logo photos.
 /// Supports:
@@ -96,35 +97,15 @@ class StoreImageView extends StatelessWidget {
 
     final networkUrl = _resolvedNetworkUrl;
     if (networkUrl != null) {
-      content = Image.network(
-        networkUrl,
+      content = CachedCloudImage(
+        url: networkUrl,
         width: width,
         height: height,
         fit: fit,
         cacheWidth: _decodeWidth,
         cacheHeight: _decodeHeight,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return SizedBox(
-            width: width,
-            height: height,
-            child: Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
-                      : null,
-                ),
-              ),
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) =>
-            _buildPlaceholder(context),
+        spinnerSize: 18,
+        errorBuilder: _buildPlaceholder,
       );
     } else if (_isLocalFile) {
       content = Image.file(

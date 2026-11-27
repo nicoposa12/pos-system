@@ -14,32 +14,30 @@ class SyncController extends Controller
 {
     /**
      * Fast lightweight sync status & change-detection hashes.
-     * Allows mobile clients to detect changes in real-time with near-zero latency and bandwidth.
-     * Uses one indexed aggregate query per table (user_id, updated_at) instead of a
-     * database-backed cache, which cost more round-trips to Neon than it saved.
+     * Allows mobile clients to detect changes in real-time with minimal latency and bandwidth.
+     * Executes all three table aggregates in a single SQL round-trip to Neon PostgreSQL.
      */
     public function status(Request $request)
     {
-        $userId = $request->user()->id;
+        $userId = (int) $request->user()->id;
+
+        $row = DB::selectOne(
+            'SELECT
+                (SELECT MAX(updated_at) FROM products WHERE user_id = ?) AS p_latest,
+                (SELECT COUNT(*) FROM products WHERE user_id = ?) AS p_total,
+                (SELECT MAX(updated_at) FROM transactions WHERE user_id = ?) AS t_latest,
+                (SELECT COUNT(*) FROM transactions WHERE user_id = ?) AS t_total,
+                (SELECT MAX(updated_at) FROM debts WHERE user_id = ?) AS d_latest,
+                (SELECT COUNT(*) FROM debts WHERE user_id = ?) AS d_total',
+            [$userId, $userId, $userId, $userId, $userId, $userId]
+        );
 
         return response()->json([
-            'products_version' => $this->versionHash(Product::where('user_id', $userId)),
-            'transactions_version' => $this->versionHash(Transaction::where('user_id', $userId)),
-            'debts_version' => $this->versionHash(Debt::where('user_id', $userId)),
+            'products_version' => md5(($row->p_latest ?? '') . '|' . ($row->p_total ?? 0)),
+            'transactions_version' => md5(($row->t_latest ?? '') . '|' . ($row->t_total ?? 0)),
+            'debts_version' => md5(($row->d_latest ?? '') . '|' . ($row->d_total ?? 0)),
             'timestamp' => now()->toIso8601String(),
         ]);
-    }
-
-    /**
-     * Hash of the latest modification time and row count for a scoped query.
-     */
-    private function versionHash($query): string
-    {
-        $row = $query->toBase()
-            ->selectRaw('MAX(updated_at) as latest, COUNT(*) as total')
-            ->first();
-
-        return md5(($row->latest ?? '') . '|' . ($row->total ?? 0));
     }
 
     /**

@@ -16,6 +16,8 @@ class ProductProvider with ChangeNotifier {
   String _selectedCategory = 'All';
   int? _userId;
   Future<void>? _inFlight;
+  DateTime? _lastFetchedAt;
+  static const Duration _freshnessWindow = Duration(seconds: 25);
 
   // Memoized derived views (recomputed only when inputs change)
   List<Product>? _filteredCache;
@@ -33,7 +35,7 @@ class ProductProvider with ChangeNotifier {
   }
 
   void _onRemoteChange() {
-    if (_userId != null) fetchProducts(silent: true);
+    if (_userId != null) refreshProducts(silent: true);
   }
 
   void _setProducts(List<Product> products) {
@@ -94,14 +96,28 @@ class ProductProvider with ChangeNotifier {
     if (_userId != userId) {
       _userId = userId;
       _hasLoaded = false;
+      _lastFetchedAt = null;
       _setProducts([]);
       fetchProducts();
     }
   }
 
-  /// Loads the catalog from the API. Concurrent calls share one request, and
+  /// Loads the catalog from the API. Concurrent calls share one request,
+  /// redundant automatic fetches within [_freshnessWindow] are skipped, and
   /// once data is loaded refreshes run silently (stale-while-revalidate).
   Future<void> fetchProducts({bool silent = false}) {
+    if (_userId == null) return Future.value();
+    if (_hasLoaded &&
+        _lastFetchedAt != null &&
+        DateTime.now().difference(_lastFetchedAt!) < _freshnessWindow) {
+      return Future.value();
+    }
+    return refreshProducts(silent: silent);
+  }
+
+  /// Forces a fresh catalog fetch from the API (used by pull-to-refresh and
+  /// remote change notifications), bypassing [_freshnessWindow].
+  Future<void> refreshProducts({bool silent = false}) {
     if (_userId == null) return Future.value();
     return _inFlight ??= _load(silent: silent || _hasLoaded).whenComplete(() {
       _inFlight = null;
@@ -125,6 +141,7 @@ class ProductProvider with ChangeNotifier {
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _setProducts(list);
       _hasLoaded = true;
+      _lastFetchedAt = DateTime.now();
       _errorMessage = null;
     } catch (e) {
       debugPrint('[ProductProvider] fetch error: $e');
@@ -283,6 +300,7 @@ class ProductProvider with ChangeNotifier {
     _setProducts([]);
     _userId = null;
     _hasLoaded = false;
+    _lastFetchedAt = null;
     _errorMessage = null;
     _selectedCategory = 'All';
     _searchQuery = '';

@@ -146,9 +146,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: source,
-      maxWidth: 800,
-      maxHeight: 800,
-      imageQuality: 85,
+      maxWidth: 600,
+      maxHeight: 600,
+      imageQuality: 75,
     );
     if (pickedFile != null && mounted) {
       setState(() {
@@ -161,9 +161,9 @@ class _AddEditProductScreenState extends State<AddEditProductScreen> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: source,
-      maxWidth: 600,
-      maxHeight: 600,
-      imageQuality: 80,
+      maxWidth: 500,
+      maxHeight: 500,
+      imageQuality: 75,
     );
     if (pickedFile != null && mounted) {
       setState(() {

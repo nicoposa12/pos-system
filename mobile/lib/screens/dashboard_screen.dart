@@ -126,8 +126,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           final prodProv = context.read<ProductProvider>();
           final transProv = context.read<TransactionProvider>();
           await Future.wait([
-            prodProv.fetchProducts(),
-            transProv.fetchTransactions(),
+            prodProv.refreshProducts(),
+            transProv.refreshTransactions(),
           ]);
         },
         child: Center(

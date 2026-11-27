@@ -292,7 +292,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       body: RefreshIndicator(
         color: AppTheme.accentOrange,
         onRefresh: () =>
-            context.read<TransactionProvider>().fetchTransactions(),
+            context.read<TransactionProvider>().refreshTransactions(),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1200),

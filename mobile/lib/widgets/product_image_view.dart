@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/disk_image_cache.dart';
 
 /// Reusable widget for rendering product images supporting:
 /// 1. Cloud Network URLs (API Image Proxy / Cloudflare R2 / S3 / CDN)
@@ -73,35 +74,15 @@ class ProductImageView extends StatelessWidget {
 
     final networkUrl = _resolvedNetworkUrl;
     if (networkUrl != null) {
-      content = Image.network(
-        networkUrl,
+      content = CachedCloudImage(
+        url: networkUrl,
         width: width,
         height: height,
         fit: fit,
         cacheWidth: _decodeWidth,
         cacheHeight: _decodeHeight,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return SizedBox(
-            width: width,
-            height: height,
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded /
-                          loadingProgress.expectedTotalBytes!
-                      : null,
-                ),
-              ),
-            ),
-          );
-        },
-        errorBuilder: (context, error, stackTrace) =>
-            _buildPlaceholder(context),
+        spinnerSize: 20,
+        errorBuilder: _buildPlaceholder,
       );
     } else if (_isLocalFile) {
       content = Image.file(

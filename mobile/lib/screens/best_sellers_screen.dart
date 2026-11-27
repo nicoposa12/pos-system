@@ -1000,8 +1000,8 @@ class _BestSellersScreenState extends State<BestSellersScreen> {
         color: AppTheme.accentOrange,
         onRefresh: () async {
           await Future.wait([
-            txProvider.fetchTransactions(),
-            productProvider.fetchProducts(),
+            txProvider.refreshTransactions(),
+            productProvider.refreshProducts(),
           ]);
         },
         child: Center(

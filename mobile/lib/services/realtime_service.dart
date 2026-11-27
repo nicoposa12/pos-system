@@ -6,15 +6,16 @@ import 'api_service.dart';
 ///
 /// Polls the tiny `/sync/status` hash endpoint and notifies providers only when
 /// products or transactions actually changed on the server, so they can refresh
-/// their in-memory state. Polling is adaptive to keep Render / Neon free-tier
-/// usage low:
-/// - Active: every 15s
-/// - Idle 3+ min: every 60s
-/// - Idle 15+ min or app in background: stopped (server can sleep)
+/// their in-memory state. Polling is tuned to minimize Render & Neon usage:
+/// - Active: every 60s
+/// - Idle 3+ min or app hidden/paused: stopped (so Neon & Render can sleep)
+/// - Tab switches & manual checks: throttled with a 30s cooldown unless forced
 class RealtimeService with WidgetsBindingObserver {
   static final RealtimeService instance = RealtimeService._init();
 
-  static const _tick = Duration(seconds: 15);
+  static const Duration _tick = Duration(seconds: 60);
+  static const Duration _idleStopAfter = Duration(minutes: 3);
+  static const Duration _minCheckCooldown = Duration(seconds: 30);
 
   final Set<VoidCallback> _productListeners = {};
   final Set<VoidCallback> _transactionListeners = {};
@@ -26,7 +27,7 @@ class RealtimeService with WidgetsBindingObserver {
   String? _transactionsVersion;
   String? _debtsVersion;
   DateTime _lastUserActivity = DateTime.now();
-  int _idleTickCounter = 0;
+  DateTime? _lastCheckAt;
 
   RealtimeService._init() {
     WidgetsBinding.instance.addObserver(this);
@@ -44,6 +45,7 @@ class RealtimeService with WidgetsBindingObserver {
     _productsVersion = null;
     _transactionsVersion = null;
     _debtsVersion = null;
+    _lastCheckAt = null;
     recordUserActivity();
     _startTimer();
   }
@@ -57,7 +59,6 @@ class RealtimeService with WidgetsBindingObserver {
   /// Marks user interaction (tap, navigation, sale) to keep polling active.
   void recordUserActivity() {
     _lastUserActivity = DateTime.now();
-    _idleTickCounter = 0;
     if (_enabled && _timer == null) _startTimer();
   }
 
@@ -66,8 +67,9 @@ class RealtimeService with WidgetsBindingObserver {
     if (!_enabled) return;
     if (state == AppLifecycleState.resumed) {
       recordUserActivity();
-      checkNow();
-    } else if (state == AppLifecycleState.paused) {
+      checkNow(force: true);
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
       _stopTimer();
     }
   }
@@ -75,14 +77,10 @@ class RealtimeService with WidgetsBindingObserver {
   void _startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(_tick, (_) {
-      final idleMinutes = DateTime.now().difference(_lastUserActivity).inMinutes;
-      if (idleMinutes >= 15) {
+      final idleDuration = DateTime.now().difference(_lastUserActivity);
+      if (idleDuration >= _idleStopAfter) {
         _stopTimer();
         return;
-      }
-      if (idleMinutes >= 3) {
-        _idleTickCounter = (_idleTickCounter + 1) % 4;
-        if (_idleTickCounter != 0) return;
       }
       checkNow();
     });
@@ -95,9 +93,18 @@ class RealtimeService with WidgetsBindingObserver {
 
   /// Checks server version hashes and notifies listeners of changed entities.
   /// The first check only records a baseline (providers load fresh data on start).
-  Future<void> checkNow() async {
+  /// Non-forced calls respect [_minCheckCooldown] so rapid tab switches don't
+  /// spam `/sync/status`.
+  Future<void> checkNow({bool force = false}) async {
     if (!_enabled || _isChecking || !ApiService.instance.isAuthenticated) return;
+    final now = DateTime.now();
+    if (!force &&
+        _lastCheckAt != null &&
+        now.difference(_lastCheckAt!) < _minCheckCooldown) {
+      return;
+    }
     _isChecking = true;
+    _lastCheckAt = now;
     try {
       final status = await ApiService.instance.getSyncStatus();
       if (status == null || !_enabled) return;
